@@ -1,8 +1,8 @@
 // WRONG-LANDING: on a phone (390px, opening from the room list) every room lands where it should
 // (the newest message, or the first unread) and CHAT-TIMING's wrong_landing reports 0 for it.
 // Covers the room mounted under the list on plain /chat (it used to stay at its top, unmeasured),
-// a room switch onto an unread spot, a room that opens into an unread thread (its covered list
-// is not judged; it used to read as thousands of px off), and back. Runs against
+// a room switch onto an unread spot, a room whose oldest unread is a reply (#500: it opens on its
+// main conversation at that reply's message, not in the thread, and is judged like any room), and back. Runs against
 // chat-mobile-fixture.mjs.
 import puppeteer from 'puppeteer';
 import assert from 'node:assert/strict';
@@ -65,11 +65,15 @@ try{
  assert.ok(await rowInView(firstUnread),'SOCIAL opened at its first unread message');
  assert.ok(await fromBottom()>844,'and not at the bottom (the unread spot is far above it)');
 
- // 3. Back; a reply arrives on an older LB message, so LB opens into that unread thread.
+ // 3. Back; a reply arrives on an older LB message. #500: LB opens on its main conversation at that
+ // message (no reply screen); choosing it opens the thread at the unread reply.
  await page.tap(back);await listShows();
  const [parent]=await rest('longboard_chat_messages?select=id&room_slug=eq.main&body=eq.History%20message%2060');
  await rest('longboard_chat_messages',{room_slug:'main',member_id:bob.id,guest_id:bob.id,author_label:'Bob',body:'Unread reply for the phone',reply_to_id:parent.id});
- await tapRoom('main');
+ await tapRoom('main');await settled();await judged();
+ assert.equal(await page.$('aside[aria-label="Comment replies"]'),null,'LB opens on its main conversation, not the reply screen');
+ assert.ok(await rowInView(parent.id),'LB shows the message with the unread reply');
+ await page.tap(`[id="chat-message-${parent.id}"] button[data-has-replies]`);
  await page.waitForFunction(()=>[...document.querySelectorAll('[data-unread-start]')].some(n=>n.textContent.includes('Unread reply for the phone')&&n.getBoundingClientRect().width>0));
  await pause(1200);
  await page.screenshot({path:'/tmp/phone-landing-thread.png'});
@@ -82,7 +86,7 @@ try{
  await page.tap(back);await listShows();
  await tapRoom('social');await page.waitForSelector('textarea[aria-label="Message SOCIAL" i]');await settled();await judged();
 
- // The sampled session's beacon: every judged landing is 0, and the thread opening is not judged.
+ // The sampled session's beacon: every judged landing is 0 (LB's second landing is its main conversation).
  await page.evaluate(()=>{Object.defineProperty(document,'visibilityState',{value:'hidden',configurable:true});Object.defineProperty(document,'hidden',{value:true,configurable:true});document.dispatchEvent(new Event('visibilitychange'));});
  await pause(800);
  const beacons=await page.evaluate(()=>window.__beacons);
@@ -90,8 +94,8 @@ try{
  const batch=JSON.parse(beacons[0]);
  assert.equal(batch.device,'phone');
  const landings=batch.rows.filter(r=>r.m==='wrong_landing');
- assert.deepEqual(landings.map(r=>[r.r,r.v]),[['main',0],['social',0],['social',0]],beacons[0]);
+ assert.deepEqual(landings.map(r=>[r.r,r.v]),[['main',0],['social',0],['main',0],['social',0]],beacons[0]);
  assert.ok(batch.rows.filter(r=>r.m==='room_switch').length>=3,'room switches are still timed, the thread opening too');
  assert.deepEqual(errors,[]);
- console.log('PASS phone landing: LB from the list at the newest message, SOCIAL at its first unread, LB into an unread thread (not judged) and back to its message, SOCIAL again; wrong_landing',JSON.stringify(landings));
+ console.log('PASS phone landing: LB from the list at the newest message, SOCIAL at its first unread, LB at the message with an unread reply, its thread on request and back to the message, SOCIAL again; wrong_landing',JSON.stringify(landings));
 }finally{await browser.close();}

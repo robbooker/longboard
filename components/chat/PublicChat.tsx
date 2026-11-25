@@ -1266,13 +1266,17 @@ function PublicChatContent({
         setHistoryPage({ hasMore: !!preset.window?.hasMore, hasNewer: !!preset.window?.hasNewer });
         setUnreadStart(preset.parentId ? null : (preset.unreadMessageId ?? preset.messageId));
         if (preset.parentId && preset.unreadMessageId) {
-          openingChildPending.current = true;
           setUnreadThread({
             parentId: preset.parentId,
             messageId: preset.unreadMessageId,
             readThrough: preset.readThrough || 0,
           });
-          openReplies(preset.parentId);
+          // #500: a room opens on its main conversation, at the conversation holding the unread
+          // reply; its thread opens there when chosen. Only a Quad pane opens straight into it.
+          if (quadPane) {
+            openingChildPending.current = true;
+            openReplies(preset.parentId);
+          }
         }
       }
       openingPending.current = false;
@@ -1315,13 +1319,16 @@ function PublicChatContent({
         setUnreadStart(result.parentId ? null : (result.unreadMessageId ?? result.messageId));
         setMessages((current) => reconcileRoomMessages(current, page.messages));
         if (result.parentId && result.unreadMessageId) {
-          openingChildPending.current = true;
           setUnreadThread({
             parentId: result.parentId,
             messageId: result.unreadMessageId,
             readThrough: Number(result.readThrough) || 0,
           });
-          openReplies(result.parentId);
+          // #500: as above, the room's main conversation; a Quad pane opens the thread.
+          if (quadPane) {
+            openingChildPending.current = true;
+            openReplies(result.parentId);
+          }
         }
       }
       if (controller.signal.aborted || intent !== pinJumpRequest.current) return;
@@ -1354,6 +1361,7 @@ function PublicChatContent({
     setMessages,
     pane?.visible,
     pane?.active,
+    quadPane,
     openReplies,
   ]);
   // After the opening's effect, so these timings see each opening's own marks (cancelled, anchor),
