@@ -386,6 +386,11 @@ try{
  // #510: the admin's live stage (the "Live video" card with its address and key, the empty hands
  // list, the sample panels) in a light, a dark, both Terminal and the most colourful looks, changed
  // while it plays. (Every look on an admin's stage: chat-stage-mode, -hand and -on-screen.)
+ // #524: the room's "live now" message is posted about now and slides into the stage's chat. The
+ // looks are measured once it has landed (a row caught half-way in is faded, and reads as low contrast).
+ await until(async()=>(await notices()).length,'the live message, before the looks are measured');
+ await a.waitForSelector('[data-stage-notice]',{visible:true,timeout:10000*scale}).catch(()=>null);
+ await a.evaluate(()=>Promise.all(document.getAnimations().filter(x=>Number.isFinite(x.effect?.getComputedTiming().endTime)).map(x=>x.finished.catch(()=>{}))));
  await checkStageLooks(a,{looks:LOOKS.filter(look=>['light','dark','blade-runner','terminal','paper-terminal'].includes(look.id)),each:async look=>{if(shots&&['light','paper-terminal'].includes(look.id))await a.screenshot({path:`${shots}/admin-stage-live-${look.id}.png`});}});
  assert(await a.$eval('[data-stage-video-feed]',v=>!v.hidden&&v.srcObject!==null&&!v.paused),'the video played on through every theme change');
  // #504: the admin's three columns: the same widescreen player, in a narrower column.
