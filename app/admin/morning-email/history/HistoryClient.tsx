@@ -264,6 +264,9 @@ function Modal({ id, onClose, onToast }: ModalProps) {
             <iframe
               title={`morning-email-${detail.sent_date}-${detail.id}`}
               srcDoc={detail.html}
+              // #518: same as the preview on /admin/morning-email. A stored email can never run
+              // scripts, submit forms or move this tab (so links inside it do not open).
+              sandbox=""
               style={modalIframe}
             />
           )}
