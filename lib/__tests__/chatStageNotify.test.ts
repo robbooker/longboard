@@ -245,7 +245,7 @@ describe("following LiveKit (syncStageNotice)", () => {
   type Ingress = { publishing: boolean; startedAt?: number };
   function setup(first: Ingress[]) {
     const db = fakeStore();
-    const lk = { ingresses: first, reads: 0, waits: [] as number[], afterWait: null as Ingress[] | null, now: T0 };
+    const lk = { ingresses: first, reads: 0, waits: [] as number[], afterWait: null as Ingress[] | null, now: T0, stoppedFor: undefined as number | null | undefined };
     const sync = () =>
       syncStageNotice(
         {
@@ -260,6 +260,7 @@ describe("following LiveKit (syncStageNotice)", () => {
           },
           now: () => ((db.state.clock = lk.now), lk.now),
           origin: ORIGIN,
+          stoppedFor: () => lk.stoppedFor ?? null,
         },
         "main",
       );
@@ -293,6 +294,38 @@ describe("following LiveKit (syncStageNotice)", () => {
     expect(db.bodies()).toEqual([LIVE]);
     expect(db.state.withdrawn).toEqual([]);
     expect(db.state.notified).toHaveLength(1);
+  });
+  it("#521: waits only the rest of the grace when it is known how long the broadcast has been stopped", async () => {
+    // Stopped 8 seconds ago: 12 more, then looked at again. It came back: nothing changes.
+    const back = setup([{ publishing: true, startedAt: T0 }]);
+    await back.sync();
+    back.lk.ingresses = [{ publishing: false }];
+    back.lk.afterWait = [{ publishing: true, startedAt: T0 + 9_000 }];
+    back.lk.stoppedFor = 8_000;
+    expect(await back.sync()).toBe("already");
+    expect(back.lk.waits).toEqual([STAGE_DROP_GRACE_MS - 8_000]);
+    // Stopped for longer than the grace already (a look that was lost and is run again): no wait
+    // and no second LiveKit read; the message says it ended at once.
+    for (const stoppedFor of [STAGE_DROP_GRACE_MS, 10 * MIN]) {
+      const lost = setup([{ publishing: true, startedAt: T0 }]);
+      await lost.sync();
+      lost.lk.ingresses = [{ publishing: false }];
+      lost.lk.stoppedFor = stoppedFor;
+      const reads = lost.lk.reads;
+      expect(await lost.sync()).toBe("ended");
+      expect(lost.lk.waits).toEqual([]);
+      expect(lost.lk.reads).toBe(reads + 1);
+      expect(lost.db.bodies()).toEqual([ENDED]);
+    }
+    // Not known, or nonsense: the whole grace, as before.
+    for (const stoppedFor of [null, -5_000, 0]) {
+      const unknown = setup([{ publishing: true, startedAt: T0 }]);
+      await unknown.sync();
+      unknown.lk.ingresses = [{ publishing: false }];
+      unknown.lk.stoppedFor = stoppedFor;
+      expect(await unknown.sync()).toBe("ended");
+      expect(unknown.lk.waits).toEqual([STAGE_DROP_GRACE_MS]);
+    }
   });
   it("a drop that lasts: the message says it ended; an ingress deleted at LiveKit marks it at once", async () => {
     const dropped = setup([{ publishing: true, startedAt: T0 }]);

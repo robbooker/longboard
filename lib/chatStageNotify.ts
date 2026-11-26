@@ -128,6 +128,8 @@ export async function syncStageNotice(
     wait: (ms: number) => Promise<unknown>;
     now: () => number;
     origin: string;
+    /** #521: how long the broadcast is already known to have been stopped (ms), when that is known: only the rest of the grace is waited. */
+    stoppedFor?: () => number | null;
   },
   room: ChatRoom,
 ): Promise<StageSyncResult> {
@@ -136,8 +138,11 @@ export async function syncStageNotice(
     const last = latest(await deps.store.notices(stageNoticeIds(room, deps.now())));
     if (!last || !isLive(last)) return "none";
     if (ingresses.length) {
-      await deps.wait(STAGE_DROP_GRACE_MS);
-      ingresses = await deps.ingresses();
+      const left = STAGE_DROP_GRACE_MS - Math.min(STAGE_DROP_GRACE_MS, Math.max(0, deps.stoppedFor?.() ?? 0));
+      if (left > 0) {
+        await deps.wait(left);
+        ingresses = await deps.ingresses();
+      }
     }
     if (stageStateOf(ingresses) !== "live") return (await tellStageEnded(deps.store, room, deps.now())) ? "ended" : "none";
   }
