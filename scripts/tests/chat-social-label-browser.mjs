@@ -12,9 +12,17 @@ async function steady(page,selector){let last='',same=0;for(const end=Date.now()
 // UI-PHONE-NAV: a phone conversation goes back to the room list instead of opening a drawer.
 // Back can load /chat as a new page, so poll rather than wait inside the old document.
 async function mobileNav(page){const back='button[aria-label="Back to all chats"]',listShown=()=>page.evaluate(()=>{const e=document.querySelector('nav[aria-label="Chat rooms"]');return !!e&&!e.inert&&!e.closest('[inert]')&&e.getBoundingClientRect().width>0;}).catch(()=>false);
- await ready(page,back);await page.tap(back);
+ // #526: a reload on the list's own history entry opens on the list, with the conversation and its Back button
+ // off screen beside it. A tap sent there scrolled the page sideways and landed on the list's "notifications are
+ // off" bell; its dialog then took the keys typed below and the draft check read an empty box. So first see which
+ // screen this is (the page marks the history entry once it knows it is a phone), and press Back only where a
+ // finger could: on screen, with nothing over it.
+ const pressable=()=>page.evaluate(selector=>{const e=document.querySelector(selector),r=e?.getBoundingClientRect();return !!r&&r.width>0&&!e.closest('[inert]')&&e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));},back).catch(()=>false);
+ await page.waitForFunction(()=>['list','conversation'].includes(history.state?.chatPhone),{timeout:10000});
+ if(await page.evaluate(()=>history.state?.chatPhone==='list')){await page.waitForFunction(()=>{const e=document.querySelector('nav[aria-label="Chat rooms"]');return !!e&&!e.inert&&!e.closest('[inert]')&&e.getBoundingClientRect().width>0;},{timeout:10000});return;}
+ await ready(page,back);await page.waitForFunction(selector=>{const e=document.querySelector(selector),r=e?.getBoundingClientRect();return !!r&&r.width>0&&!e.closest('[inert]')&&e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));},{timeout:10000},back);await page.tap(back);
  // A press while the header is still re-rendering after a resize can be lost; press again if the list has not come.
- for(let tries=0,since=Date.now();!(await listShown());await new Promise(r=>setTimeout(r,200))){if(Date.now()-since>3000){assert.ok(++tries<6,'the room list shows after Back');since=Date.now();if(await page.$(back).catch(()=>null))await page.tap(back).catch(()=>{});}}}
+ for(let tries=0,since=Date.now();!(await listShown());await new Promise(r=>setTimeout(r,200))){if(Date.now()-since>3000){assert.ok(++tries<6,'the room list shows after Back');since=Date.now();if(await pressable())await page.tap(back).catch(()=>{});}}}
 async function geometry(page,selector,badge=true){const result=await page.$eval(selector,(link,badge)=>{
  // The row now starts with a small colour mark; the name is the span holding the qualifier.
  const label=link.querySelector('span:has(> small)'),mark=link.querySelector('span[aria-hidden="true"]'),qualifier=label?.querySelector('small'),unread=link.querySelector('[aria-label$="unread messages"]');
@@ -30,7 +38,11 @@ try{
   await page.setViewport({width,height:950,isMobile:width===320,hasTouch:width===320});await page.evaluate(theme=>localStorage.setItem('longboard-public-chat-theme-v1',theme),theme);await page.reload();await page.waitForSelector(`main[data-theme="${theme}"]`);if(width===320)await mobileNav(page);await ready(page,social);await page.waitForSelector(social+' [aria-label$="unread messages"]');
   console.log('Geometry '+width+' '+theme+' '+JSON.stringify(await geometry(page,social)));await page.screenshot({path:`/tmp/chat-social-label-${width}-${theme}.png`});
  }
- console.log('Navigate mobile Social');await steady(page,social);await page.$eval(social,e=>e.click());await page.waitForSelector('main[data-room="social"]',{visible:true});await page.waitForSelector('textarea[aria-label="Message Social"]',{visible:true});assert.equal(await page.$eval('header[data-phone="true"] h1',e=>e.textContent),'Social');assert.equal(new URL(page.url()).searchParams.get('room'),'social');console.log('Type draft');await page.type('textarea[aria-label="Message Social"]','Preserved social draft');await mobileNav(page);await ready(page,social);await steady(page,social);await page.$eval(social,e=>e.click());assert.equal(await page.$eval('textarea[aria-label="Message Social"]',e=>e.value),'Preserved social draft');
+ console.log('Navigate mobile Social');await steady(page,social);await page.$eval(social,e=>e.click());await page.waitForSelector('main[data-room="social"]',{visible:true});await page.waitForSelector('textarea[aria-label="Message Social"]',{visible:true});assert.equal(await page.$eval('header[data-phone="true"] h1',e=>e.textContent),'Social');assert.equal(new URL(page.url()).searchParams.get('room'),'social');console.log('Type draft');assert.deepEqual(await page.evaluate(()=>[...document.querySelectorAll('dialog[open]')].map(d=>d.textContent.slice(0,40))),[],'nothing is open over the room');await page.type('textarea[aria-label="Message Social"]','Preserved social draft');
+ // The draft is in the box before leaving, so a failure after coming back is the app losing it, not the typing missing the box (#526).
+ assert.equal(await page.$eval('textarea[aria-label="Message Social"]',e=>e.value),'Preserved social draft','the draft is typed');await mobileNav(page);await ready(page,social);await steady(page,social);await page.$eval(social,e=>e.click());
+ // No wait here on purpose: a phone keeps the conversation mounted under its list, so the box still holds the draft.
+ assert.equal(await page.$eval('textarea[aria-label="Message Social"]',e=>e.value),'Preserved social draft');
  console.log('Return desktop');await page.setViewport({width:1440,height:950,isMobile:false,hasTouch:false});await ready(page,'#chat-room-navigation > a[href="/chat?room=main"]');
  // Click the links themselves: right after the viewport change the list is still laying out, and a coordinate
  // click could miss LB (local run: main[data-room="main"] never showed).

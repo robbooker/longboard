@@ -22,4 +22,18 @@ try{
  await p.waitForFunction(s=>document.querySelector(s).value==='',{},composer);
  await p.waitForFunction(()=>document.body.textContent.includes('Typed before the page was ready and kept'));
  console.log('PASS text typed before hydration is kept, editable and sent.');
+ // #526: a saved draft comes back only once the page takes over, so on a reload the box is empty for a moment.
+ // What is typed into it then is kept after the saved draft (it used to be replaced by the draft).
+ const taken=()=>p.waitForFunction(s=>{const t=document.querySelector(s);return !!t&&Object.keys(t).some(k=>k.startsWith('__reactProps'));},{timeout:60000},composer);
+ const stored=()=>p.evaluate(()=>Object.keys(sessionStorage).filter(k=>k.startsWith('chat-refresh-draft:')&&k.endsWith(encodeURIComponent('room:main'))).map(k=>JSON.parse(sessionStorage.getItem(k)).text));
+ await p.type(composer,'Saved draft');await p.waitForFunction(s=>document.querySelector(s).value==='Saved draft',{},composer);assert.deepEqual(await stored(),['Saved draft']);
+ await p.goto(base+'/chat?room=main',{waitUntil:'domcontentloaded'});await p.waitForSelector(composer);
+ assert.equal(await hydrated(p),false,'typed before the page took over, with a draft saved');assert.equal(await p.$eval(composer,e=>e.value),'');
+ await p.type(composer,'typed early');await taken();
+ await p.waitForFunction(s=>document.querySelector(s).value==='Saved draft typed early',{timeout:15000},composer).catch(async()=>assert.equal(await p.$eval(composer,e=>e.value),'Saved draft typed early','the saved draft and the early typing are both kept'));
+ await p.waitForFunction(()=>Object.keys(sessionStorage).some(k=>k.startsWith('chat-refresh-draft:')&&sessionStorage.getItem(k).includes('Saved draft typed early')),{timeout:15000});
+ // With nothing typed in between, the saved draft comes back as it was.
+ await p.goto(base+'/chat?room=main',{waitUntil:'domcontentloaded'});await p.waitForSelector(composer);await taken();
+ await p.waitForFunction(s=>document.querySelector(s).value==='Saved draft typed early',{timeout:15000},composer);assert.deepEqual(await stored(),['Saved draft typed early']);
+ console.log('PASS a saved draft and text typed before hydration are both kept; an untouched reload restores the draft.');
 }finally{await browser.close();}
