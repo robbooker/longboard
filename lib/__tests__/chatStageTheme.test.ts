@@ -147,6 +147,11 @@ const stageTokens = tokensOf(stageCss, STAGE_SCOPE);
 const playerTokens = tokensOf(stageCss, ".player");
 const phoneTokens = tokensOf(phoneCss, STAGE_SCOPE);
 const phoneLandscape = tokensOf(phoneCss, ".root ~ section, .root ~ aside");
+// #527: the hands list on a phone (StageHands, drawn with the stage's tokens): the sheet sets them
+// from the viewing room's, upright in the member's theme and, on its side, fixed for the dark scrim.
+const SHEET_SIDEWAYS = '.root[data-stage-hands="open"] .sheet';
+const sheetTokens = tokensOf(phoneCss, ".sheet");
+const sheetLandscape = tokensOf(phoneCss, SHEET_SIDEWAYS);
 const names = (tokens: Tokens, prefix: string) => Object.keys(tokens).filter((name) => name.startsWith(prefix));
 
 /** The computer stage's pairings in one look. Text needs 4.5:1; the last group (shapes) 3:1. */
@@ -220,6 +225,17 @@ function measurePhone(chat: Tokens): { text: Record<string, number>; shapes: Rec
   const s = (name: string) => colour(resolve(side[name], side));
   const scrims = [over(c("--sp-scrim"), WHITE), over(c("--sp-scrim"), BLACK)];
   const onScrim = (name: string) => Math.min(...scrims.map((ground) => contrast(s(name), ground)));
+  // #527: the hands list. Upright it is a sheet in the theme; on its side, light on the scrim.
+  const sheet = { ...all, ...sheetTokens };
+  const h = (name: string) => colour(resolve(sheet[name], sheet));
+  const sheetGrounds = [panel, h("--stage-panel-2"), h("--stage-accent-soft"), h("--stage-control")];
+  const onSheet = (name: string) => Math.min(...sheetGrounds.map((ground) => contrast(h(name), ground)));
+  const sideSheet = { ...all, ...sheetLandscape };
+  const hs = (name: string) => colour(resolve(sideSheet[name], sideSheet));
+  // The first hand in the queue is tinted: the tint over the scrim, over a white and a black picture.
+  const sideGrounds = [...scrims, ...scrims.map((ground) => over(hs("--stage-accent-soft"), ground))];
+  const onSideSheet = (name: string) => Math.min(...sideGrounds.map((ground) => contrast(hs(name), ground)));
+  const overPicture = (name: string) => Math.min(contrast(c(name), over(c("--sp-video-button"), WHITE)), contrast(c(name), over(c("--sp-video-button"), BLACK)));
   return {
     text: {
       "messages over the video (waiting, ended)": Math.min(contrast(c("--sp-video-text"), page), contrast(c("--sp-video-text-2"), page)),
@@ -231,10 +247,18 @@ function measurePhone(chat: Tokens): { text: Record<string, number>; shapes: Rec
       "upright: chat text and labels on the panel": Math.min(contrast(c("--sp-text"), panel), contrast(c("--sp-text-2"), panel)),
       "on its side: chat text, labels, links and errors on the scrim": Math.min(onScrim("--chat-text"), onScrim("--chat-muted"), onScrim("--chat-dim"), onScrim("--chat-palm"), onScrim("--chat-error"), onScrim("--chat-success")),
       "on its side: Send (text on the accent fill)": contrast(s("--chat-on-fill"), s("--chat-palm-fill")),
+      "Raise hand, the hands count and the hand's error line over any picture": Math.min(overPicture("--sp-video-white"), overPicture("--sp-video-text")),
+      "the Hand up chip (dark on amber)": contrast(c("--sp-video-ink"), c("--sp-video-accent")),
+      "upright: the hands list (names, times and labels on the sheet, its rows and its buttons)": Math.min(onSheet("--stage-text"), onSheet("--stage-text-2"), onSheet("--stage-label")),
+      "upright: the hands list's error text": contrast(h("--stage-negative"), panel),
+      "on its side: the hands list (names, times, labels and errors on the scrim and the first row's tint)": Math.min(onSideSheet("--stage-text"), onSideSheet("--stage-text-2"), onSideSheet("--stage-label"), onSideSheet("--stage-negative")),
     },
     shapes: {
       "upright: focus ring and icons on the strip": Math.min(contrast(c("--sp-focus"), bar), contrast(c("--sp-text"), bar)),
       "focus ring over the dark video": contrast(c("--sp-video-accent"), page),
+      "upright: a raised hand on the strip (the icon on the theme's fill, and the ring around it on the strip)": Math.min(contrast(c("--sp-on-fill"), c("--sp-fill")), contrast(c("--sp-focus"), bar)),
+      "upright: focus ring on the hands list": contrast(c("--sp-focus"), panel),
+      "on its side: focus ring and button outlines on the hands list": Math.min(...scrims.flatMap((ground) => [contrast(c("--sp-video-accent"), ground), contrast(over(hs("--stage-control-line"), ground), ground)])),
     },
   };
 }
@@ -287,6 +311,16 @@ describe("stage mode follows the member's theme (#510)", () => {
     // The phone's themed parts.
     for (const [phone, chat] of Object.entries({ "--sp-panel": "--chat-panel", "--sp-panel-2": "--chat-panel-raised", "--sp-line": "--chat-line", "--sp-text": "--chat-text", "--sp-text-2": "--chat-muted", "--sp-focus": "--chat-palm" }))
       expect(phoneTokens[phone], phone).toMatch(new RegExp(`^var\\(${chat}, [^)]+\\)$`));
+    // #527: a raised hand on the strip and the hands list's error text are the theme's too.
+    for (const [phone, chat] of Object.entries({ "--sp-fill": "--chat-palm-fill", "--sp-on-fill": "--chat-on-fill", "--sp-error": "--chat-error" }))
+      expect(phoneTokens[phone], phone).toMatch(new RegExp(`^var\\(${chat}, [^)]+\\)$`));
+    // The hands list is the computer stage's own component: upright, every stage colour it draws
+    // with comes from the viewing room's themed tokens (the same mapping as the computer stage).
+    for (const name of names(sheetTokens, "--stage-").filter((item) => !/radius|font/.test(item))) {
+      expect(sheetTokens[name], name).toMatch(/var\(--sp-(text|text-2|line|panel|panel-2|focus|error)\)/);
+      expect(sheetTokens[name], name).not.toMatch(/--sp-video|#|rgba?\(/);
+    }
+    expect(tokensOf(phoneCss, ".sheet").background).toBe("var(--sp-panel)");
   });
 
   it("writes no colour of its own outside the token blocks", () => {
@@ -338,6 +372,16 @@ describe("stage mode follows the member's theme (#510)", () => {
     expect(tokensOf(stageCss, ".liveBadge").background).toBe("var(--stage-live)");
     expect(tokensOf(stageCss, ".liveVideoBadge").background).toBe("var(--stage-live)");
     expect(tokensOf(phoneCss, ".liveBadge").background).toBe("var(--sp-red)");
+    // #527: over the picture the hand button, the count and the error line are the same dark pill
+    // as Chat in every theme, and a raised hand is the fixed amber chip.
+    expect(tokensOf(phoneCss, ".handButton, .handsCount").background).toBe("var(--sp-video-button)");
+    expect(tokensOf(phoneCss, ".handButton, .handsCount").color).toBe("var(--sp-video-white)");
+    expect(tokensOf(phoneCss, ".handNote").background).toBe("var(--sp-video-button)");
+    expect(tokensOf(phoneCss, '.root.root .handButton.handButton[aria-pressed="true"]').background).toBe("var(--sp-video-accent)");
+    // On its side the hands list is on the same scrim as the chat, and every colour it draws with is fixed.
+    expect(sheetLandscape.background).toBe("var(--sp-scrim)");
+    for (const name of names(sheetLandscape, "--stage-")) expect(sheetLandscape[name], name).toMatch(/^(transparent|var\(--sp-video-[a-z0-9-]+\))$/);
+    expect(names(sheetLandscape, "--stage-").sort()).toEqual(names(sheetTokens, "--stage-").filter((item) => !/radius|font/.test(item)).sort());
   });
 
   it("the player's fixed dark colours are readable", () => check("player", measurePlayer()));

@@ -7,12 +7,23 @@
 //  - on its side: as a see-through panel over the right half of the video.
 // Closing it gives the whole screen back to the video. Turning the phone only changes the styles:
 // the video element and its connection stay as they are.
-// Nothing else from the computer's stage is here (no stock panel, trades, questions, chapters,
-// raise hand or broadcast controls). Downloaded only when someone opens it; livekit-client comes
-// later still, when the connection is made (stageFeed.ts).
-import { useCallback, useEffect, useRef, useState } from "react";
+// #527: Raise hand is here too, with the computer's own logic (useStageHand.ts, StageHands.tsx):
+//  - a Raise hand / Lower hand button with the controls; while your hand is up it stays on screen
+//    after the controls fade, as a "Hand up" chip (a tap on the chip brings the controls back; it
+//    lowers only once they are showing, so a stray touch never takes your place in the queue);
+//  - "N hands up" beside it opens the list (admins: Lower and Lower all) as a sheet that leaves the
+//    picture alone: upright over the chat (or the bottom third when the chat is closed), on its side
+//    in the right half the chat uses;
+//  - what went wrong is said in a short line near the button, read out, and goes by itself.
+// Nothing else from the computer's stage is here (no stock panel, trades, questions, chapters or
+// broadcast controls). Downloaded only when someone opens it; livekit-client comes later still,
+// when the connection is made (stageFeed.ts).
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { ChatRoom, PublicChatMessage } from "@/lib/publicChat";
 import type { StageState } from "@/lib/chatStageLive";
+import { stageHandCountLabel } from "@/lib/chatStageHand";
+import StageHands from "./StageHands";
+import { useStageHand } from "./useStageHand";
 import { useStageLink, type StageLink } from "./useStageLink";
 import styles from "./StagePhone.module.css";
 
@@ -61,6 +72,10 @@ function stageHref(href: string, on: boolean) {
 
 /** The controls fade this long after the last touch, while the video is playing. */
 const CHROME_MS = 4000;
+/** What went wrong with a hand stays on screen this long. */
+const HAND_NOTE_MS = 6000;
+/** A touch on the faded "Hand up" chip brings the controls back; the click that follows within this long does not lower the hand. */
+const CHIP_WAKE_MS = 1000;
 /** This viewing room's own history entry, so the phone's back gesture returns to the room. */
 const HISTORY_KEY = "chatStagePhone";
 const marked = () => !!(window.history.state as Record<string, unknown> | null)?.[HISTORY_KEY];
@@ -231,26 +246,73 @@ export default function StagePhone({
   const unread = chatOpen ? 0 : Math.max(stagePhoneUnread(messages, since, memberId), roomUnread - unreadBase);
   const chatButton = useRef<HTMLButtonElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
+  // #527: raising a hand, and the list of who has one up (the computer stage's own hook).
+  const hand = useStageHand(room);
+  const [handsOpen, setHandsOpen] = useState(false);
+  const handsId = useId();
+  const handsClose = useRef<HTMLButtonElement>(null);
+  // The connection went (the broadcast ended, or it failed): its hands went with it.
+  useEffect(() => {
+    if (!hand.connected) setHandsOpen(false);
+  }, [hand.connected]);
+  /** The keyboard goes when something else takes the composer's place. */
+  const dropKeyboard = () => {
+    if (document.activeElement instanceof HTMLElement && !rootRef.current?.contains(document.activeElement))
+      document.activeElement.blur();
+  };
+  /** After the list closes: focus goes to whichever of the count and the hand button is on screen. */
+  const focusHandControl = () =>
+    requestAnimationFrame(() => {
+      const onScreen = (selector: string) =>
+        [...(rootRef.current?.querySelectorAll<HTMLElement>(selector) ?? [])].find((el) => el.offsetParent !== null);
+      (onScreen("[data-stage-hands-toggle]") ?? onScreen("[data-stage-hand]"))?.focus({ preventScroll: true });
+    });
+  const openHands = () => {
+    // The list takes the chat's place: the composer lets go of the keyboard, and of the focus.
+    dropKeyboard();
+    setHandsOpen(true);
+    requestAnimationFrame(() => handsClose.current?.focus({ preventScroll: true }));
+  };
+  const closeHands = () => {
+    setHandsOpen(false);
+    focusHandControl();
+  };
   const openChat = () => {
     // During a broadcast it is a live chat: it opens on its newest message and follows new ones.
     onLatest();
+    setHandsOpen(false);
     setChatOpen(true);
     requestAnimationFrame(() => closeButton.current?.focus({ preventScroll: true }));
   };
   const closeChat = () => {
     // The keyboard goes with the chat.
-    if (document.activeElement instanceof HTMLElement && !rootRef.current?.contains(document.activeElement))
-      document.activeElement.blur();
+    dropKeyboard();
+    setHandsOpen(false);
     setSince(newest);
     setUnreadBase(roomUnread);
     setChatOpen(false);
     requestAnimationFrame(() => chatButton.current?.focus({ preventScroll: true }));
   };
 
+  // #527: what went wrong with a hand, in a line near the button. It is read out (the line is a
+  // live region), goes by itself, and keeps the controls on screen while it is there.
+  const [handNote, setHandNote] = useState("");
+  const [handNoted, setHandNoted] = useState(0);
+  const sayHand = useCallback((text: string) => {
+    setHandNote(text);
+    setHandNoted((n) => n + 1);
+  }, []);
+  useEffect(() => sayHand(hand.error), [hand.error, sayHand]);
+  useEffect(() => {
+    if (!handNote) return;
+    const timer = setTimeout(() => setHandNote(""), HAND_NOTE_MS);
+    return () => clearTimeout(timer);
+  }, [handNote, handNoted]);
+
   // The controls: shown on arrival and on a tap, then they fade while the video plays.
   const [chrome, setChrome] = useState(true);
   const [touched, setTouched] = useState(0);
-  const settled = live && !held && !chatOpen;
+  const settled = live && !held && !chatOpen && !handsOpen && !handNote;
   useEffect(() => {
     if (!settled) {
       setChrome(true);
@@ -262,6 +324,19 @@ export default function StagePhone({
   const wake = () => {
     setChrome(true);
     setTouched((n) => n + 1);
+  };
+
+  // When the faded chip was last touched.
+  const chipWoken = useRef(0);
+  const pressHand = () => {
+    if (performance.now() - chipWoken.current < CHIP_WAKE_MS) {
+      chipWoken.current = 0;
+      return wake();
+    }
+    // The server says the same (it is asked only while the picture is playing); a hand that is
+    // already up can still be lowered.
+    if (!hand.raised && !live) return sayHand("You can raise a hand once the live video is playing.");
+    hand.toggle();
   };
 
   useEffect(() => {
@@ -303,6 +378,44 @@ export default function StagePhone({
       </svg>
     </button>
   );
+  // #527: the hand button. Over the video it says what it does; on the strip above the chat it is
+  // the icon alone, filled while the hand is up.
+  const handControl = (place: "video" | "bar") =>
+    hand.connected && (
+      <button
+        type="button"
+        className={place === "bar" ? `${styles.iconButton} ${styles.handToggle}` : styles.handButton}
+        data-stage-hand={hand.raised ? "up" : "down"}
+        aria-pressed={hand.raised}
+        aria-busy={hand.busy || undefined}
+        aria-label={place === "bar" ? (hand.raised ? "Lower hand" : "Raise hand") : undefined}
+        onPointerDown={() => {
+          chipWoken.current = chrome ? 0 : performance.now();
+        }}
+        onClick={pressHand}
+      >
+        <svg {...icon} {...line}>
+          <path d="M18 11V6a2 2 0 0 0-4 0M14 10V4a2 2 0 0 0-4 0v2M10 10.5V6a2 2 0 0 0-4 0v8" />
+          <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />
+        </svg>
+        {place === "video" && (hand.raised ? (chrome ? "Lower hand" : "Hand up") : "Raise hand")}
+      </button>
+    );
+  const handsCount = (place: "video" | "bar") =>
+    hand.connected &&
+    hand.count > 0 && (
+      <button
+        type="button"
+        className={place === "bar" ? styles.handsCountBar : styles.handsCount}
+        data-stage-hands-toggle
+        data-stage-hand-count={hand.count}
+        aria-expanded={handsOpen}
+        aria-controls={handsOpen ? handsId : undefined}
+        onClick={handsOpen ? closeHands : openHands}
+      >
+        {stageHandCountLabel(hand.count)}
+      </button>
+    );
   const identity = (
     <>
       {live && (
@@ -328,6 +441,7 @@ export default function StagePhone({
       data-stage-phone
       data-stage-chat={chatOpen ? "open" : "closed"}
       data-stage-chrome={chrome ? "shown" : "hidden"}
+      data-stage-hands={handsOpen ? "open" : "closed"}
       data-stage-video={room}
       data-stage-video-state={view}
       onFocus={wake}
@@ -422,31 +536,45 @@ export default function StagePhone({
         </button>
       </div>
 
-      {!chatOpen && (
-        <button
-          ref={chatButton}
-          type="button"
-          className={styles.chatButton}
-          data-stage-phone-chat
-          aria-label={unread ? `Chat, ${unread} new ${unread === 1 ? "message" : "messages"}` : "Chat"}
-          aria-expanded={false}
-          onClick={openChat}
-        >
-          <svg {...icon} {...line}>
-            <path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-5 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" />
-          </svg>
-          Chat
-          {unread > 0 && (
-            <span className={styles.unread} data-stage-phone-unread aria-hidden="true">
-              {unread > 99 ? "99+" : unread}
-            </span>
-          )}
-        </button>
-      )}
+      {/* The corner of the screen: the hand button and the count of hands, and under them Chat. */}
+      <div className={styles.corner} data-stage-phone-corner>
+        {hand.connected && (
+          <div className={styles.handRow}>
+            {handsCount("video")}
+            {handControl("video")}
+          </div>
+        )}
+        {!chatOpen && (
+          <button
+            ref={chatButton}
+            type="button"
+            className={styles.chatButton}
+            data-stage-phone-chat
+            aria-label={unread ? `Chat, ${unread} new ${unread === 1 ? "message" : "messages"}` : "Chat"}
+            aria-expanded={false}
+            onClick={openChat}
+          >
+            <svg {...icon} {...line}>
+              <path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-5 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" />
+            </svg>
+            Chat
+            {unread > 0 && (
+              <span className={styles.unread} data-stage-phone-unread aria-hidden="true">
+                {unread > 99 ? "99+" : unread}
+              </span>
+            )}
+          </button>
+        )}
+      </div>
+      <p className={styles.handNote} role="status" aria-live="polite" data-stage-hand-error>
+        {handNote}
+      </p>
 
       {chatOpen && (
         <div className={styles.chatBar} data-stage-phone-chat-bar>
           <span className={styles.chatBarIdentity}>{identity}</span>
+          {handsCount("bar")}
+          {handControl("bar")}
           {soundButton}
           <button
             ref={closeButton}
@@ -460,6 +588,29 @@ export default function StagePhone({
               <path d="M6 6l12 12M18 6L6 18" />
             </svg>
           </button>
+        </div>
+      )}
+
+      {handsOpen && (
+        <div
+          id={handsId}
+          className={styles.sheet}
+          data-stage-hands-sheet
+          onKeyDown={(event) => {
+            if (event.key === "Escape") closeHands();
+          }}
+        >
+          <button ref={handsClose} type="button" className={styles.sheetClose} data-stage-hands-close onClick={closeHands}>
+            {chatOpen ? "Back to chat" : "Close"}
+          </button>
+          {/* What went wrong is said in the line near the hand button, for an admin's Lower too. */}
+          <StageHands
+            hands={hand.hands}
+            busy={admin && hand.busy}
+            error=""
+            onLower={admin ? hand.lower : undefined}
+            onLowerAll={admin ? hand.lowerAll : undefined}
+          />
         </div>
       )}
     </div>
