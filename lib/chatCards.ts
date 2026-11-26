@@ -119,7 +119,7 @@ export const CARD_DEFINITIONS: Record<CardType, CardDefinition> = {
   app: {
     type: "app",
     label: "Apps",
-    description: "The Reader: open a book and read it right in this card",
+    description: "The Reader, Gainer Balloons and other apps, right in this card",
     hasSource: true,
     sources: (options) => chatAppsIn(options.apps).map((app) => ({ source: app.id, label: app.label })),
   },

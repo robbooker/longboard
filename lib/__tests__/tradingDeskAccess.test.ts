@@ -46,13 +46,15 @@ describe("#468 Trading Desk in Apps and its route", () => {
   });
 
   it("lists the Trading Desk in Apps for the owner only", async () => {
-    expect(await chatAppsFor(rob)).toEqual(["reader", "trading-desk"]);
-    expect(await chatAppsFor({ ...rob, user: { id: JAMMIE } })).toEqual(["reader"]);
-    expect(await chatAppsFor({ user: { id: "acct-member" }, access: member })).toEqual(["reader"]);
-    expect(await chatAppsFor({ ...rob, apiToken: true })).toEqual(["reader"]);
+    // #528: Gainer Balloons is listed too, for everyone with the Gainers room; it is not what this test is about.
+    const apps = async (who: Parameters<typeof chatAppsFor>[0]) => (await chatAppsFor(who)).filter((app) => app !== "balloons");
+    expect(await apps(rob)).toEqual(["reader", "trading-desk"]);
+    expect(await apps({ ...rob, user: { id: JAMMIE } })).toEqual(["reader"]);
+    expect(await apps({ user: { id: "acct-member" }, access: member })).toEqual(["reader"]);
+    expect(await apps({ ...rob, apiToken: true })).toEqual(["reader"]);
     expect(await chatAppsFor({ ...rob, access: { ...admin, botRooms: ["social"] } })).toEqual([]);
     vi.stubEnv(CHAT_OWNER_ENV, "");
-    expect(await chatAppsFor(rob)).toEqual(["reader"]);
+    expect(await apps(rob)).toEqual(["reader"]);
   });
 
   it("serves the desk to the owner, read-only and not cached", async () => {

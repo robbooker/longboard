@@ -34,6 +34,8 @@ export const NEWS_FEED_PAGE = "news-feed";
 export const READER_PAGE = "reader";
 /** #468: the Trading Desk app (the owner only); its page id is its app id. */
 export const TRADING_DESK_PAGE = "trading-desk";
+/** #528: the Gainer Balloons app (members with the Gainers room); its page id is its app id. */
+export const BALLOONS_PAGE = "balloons";
 
 const REREAD_AFTER_MS = 60_000;
 /** #388: waits before each new try of a failed first read (after the last, a tab return re-reads). */
