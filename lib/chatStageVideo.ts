@@ -35,6 +35,12 @@ export const stageVideoApiUrl = (config: StageVideoConfig) => config.url.replace
 export const stageVideoRoom = (room: ChatRoom) => `chat-${room}`;
 export const chatRoomOfStageVideoRoom = (name: unknown): ChatRoom | null =>
   typeof name === "string" && name.startsWith("chat-") ? parseChatRoom(name.slice(5)) : null;
+/**
+ * #522: the room a stage API request names, read strictly. parseChatRoom() answers "main" for a
+ * missing room on purpose (page addresses); a stage request that names no room, or names it with
+ * anything but text, names none (the route answers 400 invalid_room) so it can never act on LB by default.
+ */
+export const parseStageRoom = (value: unknown): ChatRoom | null => (typeof value === "string" && value ? parseChatRoom(value) : null);
 /** Who the broadcast (StreamYard, through the ingress) is in the LiveKit room. */
 export const STAGE_BROADCAST_IDENTITY = "stage-broadcast";
 
@@ -59,7 +65,19 @@ export interface StageVideoApi {
   roomMetadata(videoRoom: string): Promise<string | null>;
   /** #507: sets the LiveKit room's metadata, making the room first when nobody has joined it yet. */
   setRoomMetadata(videoRoom: string, metadata: string): Promise<void>;
-  viewerToken(videoRoom: string, identity: string, name: string): Promise<string>;
+  /** #522 `tab`: which page's player this connection is for (kept on the participant, see pickStageSeat). */
+  viewerToken(videoRoom: string, identity: string, name: string, tab?: string): Promise<string>;
+  /** #522: one viewer connection as LiveKit has it now, or null when nobody with that identity is in the room. */
+  viewer(videoRoom: string, identity: string): Promise<StageSeatHolder | null>;
+  /**
+   * #522: disconnects one viewer (false: nobody with that identity was there). `revoke`: tokens for
+   * that identity issued before now stop working too, so a held token cannot be used to walk back in.
+   */
+  removeViewer(videoRoom: string, identity: string, revoke?: boolean): Promise<boolean>;
+  /** #522: closes the LiveKit room, disconnecting everyone still in it (nothing happens when there is none). */
+  closeRoom(videoRoom: string): Promise<void>;
+  /** #522: the names of the LiveKit rooms that exist right now. */
+  videoRooms(): Promise<string[]>;
 }
 
 /**
@@ -73,26 +91,44 @@ export function stageStateOf(ingresses: readonly Pick<StageIngress, "publishing"
 
 /** How long one answer from LiveKit is reused by this server (like the radio playout's few seconds). */
 export const STAGE_STATE_MEMORY_MS = 4_000;
+/**
+ * #523: how long "nothing is being broadcast" (waiting, or never set up) is reused for an ordinary
+ * room open or switch. A room with a permanent key rests at "waiting" between broadcasts, so without
+ * this every few seconds of ordinary chat traffic cost a LiveKit call. Whatever signals a change
+ * (LiveKit's webhook, an admin's action) forgets the answer on the server that handles it, and a
+ * page that asks BECAUSE of a signal (or to connect) is never answered from this long memory, only
+ * from the few-second one. So this is the longest a LIVE button can be late, and only for a page
+ * that opens the room, with no signal, on a server that has not heard yet.
+ */
+export const STAGE_SETTLED_MEMORY_MS = 30_000;
 
 /**
  * One answer per room, asked of LiveKit at most once per window by this server however many members
  * ask; requests that arrive during a read wait for that read. A failed read is remembered as
  * `failed` for the same window, so a LiveKit outage is not hammered either.
  */
-function roomMemory<T>(failed: T) {
-  const remembered = new Map<ChatRoom, { at: number; value: T }>();
+function roomMemory<T>(failed: T, settled: (value: T) => boolean = () => false) {
+  const remembered = new Map<ChatRoom, { at: number; value: T; failed: boolean }>();
   const reading = new Map<ChatRoom, Promise<T>>();
   return {
-    shared(room: ChatRoom, read: () => Promise<T>, now = Date.now()): Promise<T> {
+    /** `longMemory`: this caller accepts a settled answer (see STAGE_SETTLED_MEMORY_MS). A failed read never is one. */
+    shared(room: ChatRoom, read: () => Promise<T>, now = Date.now(), longMemory = false): Promise<T> {
       const known = remembered.get(room);
-      if (known && now >= known.at && now - known.at < STAGE_STATE_MEMORY_MS) return Promise.resolve(known.value);
+      if (known && now >= known.at) {
+        const kept = longMemory && !known.failed && settled(known.value) ? STAGE_SETTLED_MEMORY_MS : STAGE_STATE_MEMORY_MS;
+        if (now - known.at < kept) return Promise.resolve(known.value);
+      }
       const pending = reading.get(room);
       if (pending) return pending;
+      let ok = true;
       const current: Promise<T> = read()
-        .catch((): T => failed)
+        .catch((): T => {
+          ok = false;
+          return failed;
+        })
         .then((value) => {
           // Aged from when the read began. Skipped if the room was forgotten (started or ended) meanwhile.
-          if (reading.get(room) === current) remembered.set(room, { at: now, value });
+          if (reading.get(room) === current) remembered.set(room, { at: now, value, failed: !ok });
           return value;
         })
         .finally(() => {
@@ -112,22 +148,62 @@ function roomMemory<T>(failed: T) {
     },
   };
 }
-const stateMemory = roomMemory<StageState>("off");
-const onScreenMemory = roomMemory<StageOnScreen | null>(null);
+const stateMemory = roomMemory<StageState>("off", (state) => state !== "live");
+const onScreenMemory = roomMemory<StageOnScreen | null>(null, () => true);
 
-/** Whether a room is live (see roomMemory: one read per few seconds per room; a failed read is "off"). */
-export const sharedStageState = (room: ChatRoom, read: () => Promise<StageState>, now = Date.now()) =>
-  stateMemory.shared(room, read, now);
-/** #507: the stock on screen in a room, remembered the same way (a failed read: nothing known). */
-export const sharedStageOnScreen = (room: ChatRoom, read: () => Promise<StageOnScreen | null>, now = Date.now()) =>
-  onScreenMemory.shared(room, read, now);
+/**
+ * Whether a room is live (see roomMemory: one read per few seconds per room; a failed read is "off").
+ * #523 `longMemory`: only the status route's answer to an ordinary room open asks for it. Anything
+ * that decides who may connect (the token and hand routes) and any read caused by a signal does not.
+ */
+export const sharedStageState = (room: ChatRoom, read: () => Promise<StageState>, now = Date.now(), options?: { longMemory?: boolean }) =>
+  stateMemory.shared(room, read, now, options?.longMemory === true);
+/**
+ * #507: the stock on screen in a room, remembered the same way (a failed read: nothing known).
+ * #523 `longMemory`: only for an admin's ordinary room open while nothing is being broadcast.
+ */
+export const sharedStageOnScreen = (room: ChatRoom, read: () => Promise<StageOnScreen | null>, now = Date.now(), options?: { longMemory?: boolean }) =>
+  onScreenMemory.shared(room, read, now, options?.longMemory === true);
 
-/** Forget what is remembered (after a new or reset key, a new stock on screen, a LiveKit webhook, and in tests). */
+/** #523: forget only the stock on screen (the host changed it; the room's state did not change). */
+export const forgetStageOnScreen = (room: ChatRoom) => onScreenMemory.forget(room);
+
+/** Forget what is remembered (after a new or reset key, a LiveKit webhook, and in tests). */
 export function forgetStageState(room?: ChatRoom) {
   stateMemory.forget(room);
   onScreenMemory.forget(room);
   // (The once-a-minute look at a room's message keeps its own time; only "forget everything" resets it.)
   if (!room) noticeChecks.clear();
+  // #522/#523: likewise what this server last told the room and last read (for tests).
+  if (!room) {
+    toldStates.clear();
+    readStates.clear();
+  }
+}
+
+// #523: a broadcast starting or stopping reaches this server as several LiveKit events (and an
+// admin's player reports it too). The room is told, and its message looked at, once per change:
+// only when the state just read differs from the one this server last acted on.
+const toldStates = new Map<ChatRoom, StageState>();
+/**
+ * Null when `state` is what this server last acted on for the room. Otherwise it is remembered, and
+ * the answer says what it was before (`before` null: this server had not acted on the room yet).
+ */
+export function stageStateNews(room: ChatRoom, state: StageState): { before: StageState | null } | null {
+  const before = toldStates.get(room) ?? null;
+  if (before === state) return null;
+  toldStates.set(room, state);
+  return { before };
+}
+
+// #522: the status route's own fresh reads, so a broadcast whose end no webhook reported is still
+// seen to stop (live, then not) by the server that had seen it live.
+const readStates = new Map<ChatRoom, StageState>();
+/** Called with each fresh status read: true when this server had last read "live" and now reads otherwise. */
+export function stageStopSeen(room: ChatRoom, state: StageState): boolean {
+  const before = readStates.get(room);
+  readStates.set(room, state);
+  return before === "live" && state !== "live";
 }
 
 /** #512: how often one server looks again at a room's "live now" message with nothing having hinted. */
@@ -143,6 +219,9 @@ const noticeChecks = new Map<ChatRoom, { at: number; state: StageState }>();
  */
 export function stageNoticeCheckDue(room: ChatRoom, state: StageState, now = Date.now()): boolean {
   const last = noticeChecks.get(room);
+  // #523: a room that has simply been waiting all along (its resting state between broadcasts) is
+  // not looked at again every minute. The first sight of it by this server still is, once.
+  if (last && last.state === "waiting" && state === "waiting") return false;
   if (last && last.state === state && now >= last.at && now - last.at < STAGE_NOTICE_CHECK_MS) return false;
   noticeChecks.set(room, { at: now, state });
   return state !== "off" || (!!last && last.state !== "off");
@@ -201,8 +280,8 @@ export async function readStageKey(api: StageVideoApi, room: ChatRoom): Promise<
 
 /**
  * #512 "Reset key": every ingress LiveKit has for the room is deleted (the old key stops working at
- * once, and a broadcast using it is cut off), then a new one is made. The LiveKit room itself is
- * left alone: whoever is watching stays, and sees the broadcast stop.
+ * once, and a broadcast using it is cut off), then a new one is made. #522: the route then closes
+ * the LiveKit room (lib/chatStageChange.ts), so nobody stays connected to a room with no broadcast.
  */
 export async function resetStageKey(api: StageVideoApi, room: ChatRoom): Promise<StageKey> {
   const videoRoom = stageVideoRoom(room);
@@ -247,13 +326,63 @@ export async function setStageOnScreen(api: StageVideoApi, room: ChatRoom, symbo
 }
 
 /**
- * A viewer's identity in the LiveKit room: the member's id, plus a short per-connection suffix.
- * LiveKit disconnects an earlier connection with the same identity, so without the suffix a member
- * watching in two tabs (or on a computer and a phone) would keep knocking themselves off.
+ * A viewer's identity in the LiveKit room: the member's id, "#", and eight hex digits.
+ * #522: the digits are a SEAT number, not a random value. A member has STAGE_VIEWER_SEATS seats per
+ * video room and every token names one of them, so however many tokens are asked for, on however
+ * many servers, one member can hold at most that many connections: LiveKit itself disconnects an
+ * earlier connection when another joins with the same identity. Two seats, not three: a stage tab
+ * plus a video card, or a computer plus a phone, is two; a third screen is rare and is not refused,
+ * it takes over the oldest seat; and each seat is one more LiveKit lookup for every token.
  */
-export const stageViewerIdentity = (memberId: string, connection: string) => `${memberId}#${connection}`;
+export const STAGE_VIEWER_SEATS = 2;
+export const stageViewerIdentity = (memberId: string, seat: number) => `${memberId}#${seat.toString(16).padStart(8, "0")}`;
+/** Every identity a member can ever have in a video room. */
+export const stageViewerIdentities = (memberId: string) =>
+  Array.from({ length: STAGE_VIEWER_SEATS }, (_, index) => stageViewerIdentity(memberId, index + 1));
 /** The member behind a viewer identity (for counting people rather than tabs). */
 export const stageViewerMember = (identity: string) => identity.split("#")[0];
+
+/** Who holds a seat now: when they joined (ms) and which page's player it is, if it said. */
+export type StageSeatHolder = { joinedAt: number; tab?: string };
+/** A page's name for its own player: a short random value, so a seat can tell "this tab again" from "another tab". */
+export const parseStageTab = (value: unknown): string | null =>
+  typeof value === "string" && /^[a-z0-9]{6,24}$/.test(value) ? value : null;
+/** The participant attribute that carries it. */
+export const STAGE_TAB_ATTRIBUTE = "tab";
+
+/**
+ * #522: which seat (1-based) a new connection gets. `holders[i]` is who has seat i+1 now.
+ *  - the seat this same tab already holds (it is reconnecting: its old connection is replaced, no
+ *    other screen is touched);
+ *  - else a free seat, the one the player asked for first (a stage tab asks for 1, a video card and
+ *    a phone for 2, so the usual pairs never race for one seat);
+ *  - else, every seat taken by other screens: the one that joined longest ago, which that new
+ *    connection replaces.
+ */
+export function pickStageSeat(holders: readonly (StageSeatHolder | null)[], tab: string | null, preferred = 1): number {
+  const own = tab ? holders.findIndex((holder) => holder?.tab === tab) : -1;
+  if (own >= 0) return own + 1;
+  const wanted = Number.isInteger(preferred) && preferred >= 1 && preferred <= holders.length ? preferred : 1;
+  if (!holders[wanted - 1]) return wanted;
+  const free = holders.findIndex((holder) => !holder);
+  if (free >= 0) return free + 1;
+  let oldest = 0;
+  holders.forEach((holder, index) => {
+    if (holder!.joinedAt < holders[oldest]!.joinedAt) oldest = index;
+  });
+  return oldest + 1;
+}
+
+/**
+ * #522: the identity for a member's new connection to a video room. Asks LiveKit who holds the
+ * member's seats (one small lookup per seat, together). If LiveKit cannot say, the asked-for seat is
+ * used: the limit holds either way, because there are only ever STAGE_VIEWER_SEATS identities.
+ */
+export async function stageSeatFor(api: Pick<StageVideoApi, "viewer">, videoRoom: string, memberId: string, tab: string | null, preferred = 1): Promise<string> {
+  const identities = stageViewerIdentities(memberId);
+  const holders = await Promise.all(identities.map((identity) => api.viewer(videoRoom, identity))).catch(() => null);
+  return identities[pickStageSeat(holders ?? identities.map(() => null), holders ? tab : null, preferred) - 1];
+}
 
 /** The few fields of a LiveKit webhook this app reads (after its signature has been checked). */
 export type StageWebhookEvent = { id: string; event: string; room: string; participant: string };
@@ -288,7 +417,8 @@ export function stageWebhookChange(event: StageWebhookEvent): { room: ChatRoom; 
 const WEBHOOK_MEMORY = 500;
 const seenWebhooks = new Set<string>();
 export function stageWebhookIsNew(id: string) {
-  if (!id) return true;
+  // #522: an event with no id cannot be told from a repeat, so it is never acted on.
+  if (!id) return false;
   if (seenWebhooks.has(id)) return false;
   if (seenWebhooks.size >= WEBHOOK_MEMORY) seenWebhooks.delete(seenWebhooks.values().next().value!);
   seenWebhooks.add(id);

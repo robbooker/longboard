@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { requireAdmin } from "@/lib/auth";
 import { forgetChatUser } from "@/lib/chatSessionCache";
+import { removeStageMembersAfterResponse, stageMemberIdOf } from "@/lib/chatStageRemove";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,6 +34,8 @@ export async function DELETE(
     return NextResponse.json({ error: "server_misconfigured" }, { status: 500 });
   }
 
+  // #522: who they are in chat, read before the account goes (nothing is read unless live video is set up).
+  const stageMember = await stageMemberIdOf(id);
   const { error: deleteErr } = await admin.auth.admin.deleteUser(id);
   if (deleteErr) {
     return NextResponse.json({ error: "delete_failed", message: deleteErr.message }, { status: 500 });
@@ -44,5 +47,7 @@ export async function DELETE(
 
   // #489: drop this person's cached chat sign-in on this instance (others expire within 30 s).
   forgetChatUser(id);
+  // #522: and they stop watching any live video now (best effort, after the response).
+  removeStageMembersAfterResponse([stageMember]);
   return NextResponse.json({ id, deleted: true });
 }

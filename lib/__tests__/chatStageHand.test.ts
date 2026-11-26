@@ -22,7 +22,7 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 vi.mock("@/lib/chatAuth", () => ({ requireChatUser: mocks.auth }));
-vi.mock("@/lib/chatAdmin", () => ({ createChatAdminClient: () => ({}), requestOriginAllowed: (req: NextRequest) => req.headers.get("origin") !== "https://evil.test" }));
+vi.mock("@/lib/chatAdmin", () => ({ createChatAdminClient: () => ({}) }));
 vi.mock("@/lib/chatMembers", () => ({ findChatMember: mocks.member }));
 const twirp = (code: string, status: number) => Object.assign(new Error(code), { code, status });
 vi.mock("livekit-server-sdk", async (original) => ({
@@ -114,7 +114,7 @@ beforeEach(() => {
 
 describe("raised hands: the shared rules", () => {
   it("knows a viewer identity, and whose it is", () => {
-    expect(isStageViewerIdentity(stageViewerIdentity("7d0c", "0a1b2c3d"))).toBe(true);
+    expect(isStageViewerIdentity(stageViewerIdentity("7d0c", 2))).toBe(true);
     for (const bad of ["stage-broadcast", "member-bob", "member-bob#", "member-bob#XYZ", "member-bob#0000000a#0000000b", "a b#0000000a", "", null, 7])
       expect(isStageViewerIdentity(bad)).toBe(false);
     expect(stageHandIsOwn("member-bob", BOB)).toBe(true);
@@ -218,6 +218,32 @@ describe("POST /api/chat/stage/hand", () => {
     ])
       expect((await post(body)).status, JSON.stringify(body)).toBe(400);
     expect(mocks.lk.calls).toEqual([]);
+  });
+  it("#522: the room must be named, as text, in a JSON object; and the request must say where it came from", async () => {
+    const raw = (body: string, headers: Record<string, string> = { origin: "https://example.test" }) =>
+      handPost(new NextRequest("https://example.test/api/chat/stage/hand", { method: "POST", headers: { "Content-Type": "application/json", host: "example.test", ...headers }, body }));
+    for (const body of [
+      JSON.stringify({ identity: BOB, raised: true }),
+      JSON.stringify({ room: null, identity: BOB, raised: true }),
+      JSON.stringify({ room: 7, identity: BOB, raised: true }),
+      JSON.stringify({ room: "", all: true, raised: false }),
+      "null",
+      "[]",
+      '"main"',
+      "not json",
+      "",
+    ]) {
+      const response = await raw(body);
+      expect([response.status, await response.json()], body).toEqual([400, { error: "invalid_room" }]);
+    }
+    // No Origin, no Sec-Fetch-Site, no Referer: refused. The browser's own word, or a Referer on this site, is accepted.
+    const good = JSON.stringify({ room: "main", identity: BOB, raised: true });
+    expect((await raw(good, {})).status).toBe(403);
+    expect((await raw(good, { "sec-fetch-site": "cross-site" })).status).toBe(403);
+    expect(mocks.lk.calls).toEqual([]);
+    expect(handOf(BOB)).toBeUndefined();
+    expect((await raw(good, { "sec-fetch-site": "same-origin" })).status).toBe(200);
+    expect((await raw(JSON.stringify({ room: "main", identity: BOB, raised: false }), { referer: "https://example.test/chat?room=main&stage=1" })).status).toBe(200);
   });
   it("refuses a hand while the room is not live, but a hand can always come down", async () => {
     join(BOB, "Bob Test", 1000);
@@ -381,6 +407,40 @@ describe("the page's store of raised hands", () => {
       expect(stageHandsSnapshot("chat-main").identity).toBe("member-bob#0000000b");
       expect(stageHands(stageHandsSnapshot("chat-main").participants).some((hand) => hand.member === "member-bob")).toBe(false);
       again.close();
+    }
+  });
+  it("#523: is told nothing new when a viewer joins or leaves with no hand changed, and is told when one does", async () => {
+    const { made, connect } = fake();
+    const feed = await withStageHands(connect)(options(tokenFor(BOB)));
+    let told = 0;
+    const stop = subscribeStageHands(() => told++);
+    const before = stageHandsSnapshot("chat-main");
+    // LiveKit reports the hands again each time anyone joins or leaves: 300 viewers arriving change nothing.
+    for (let i = 0; i < 300; i++) made[0].events.hands?.([{ identity: CARA, name: "Cara Test", hand: "2000" }]);
+    expect(told).toBe(0);
+    expect(stageHandsSnapshot("chat-main")).toBe(before);
+    // With no hands up at all, the same.
+    made[0].events.hands?.([]);
+    expect(told).toBe(1);
+    for (let i = 0; i < 300; i++) made[0].events.hands?.([]);
+    expect(told).toBe(1);
+    // A real change is always told: a hand up, its time, a name, the order.
+    made[0].events.hands?.([{ identity: BOB, name: "Bob Test", hand: "3000" }]);
+    made[0].events.hands?.([{ identity: BOB, name: "Bob Test", hand: "3001" }]);
+    made[0].events.hands?.([{ identity: BOB, name: "Bobby Test", hand: "3001" }]);
+    made[0].events.hands?.([{ identity: BOB, name: "Bobby Test", hand: "3001" }, { identity: CARA, name: "Cara Test", hand: "2000" }]);
+    made[0].events.hands?.([{ identity: CARA, name: "Cara Test", hand: "2000" }, { identity: BOB, name: "Bobby Test", hand: "3001" }]);
+    expect(told).toBe(6);
+    stop();
+    feed.close();
+  });
+  it("#522: a server removing the viewer, or another of their screens taking the seat, ends that connection's hands too", async () => {
+    for (const state of ["removed", "replaced"] as const) {
+      const { made, connect } = fake();
+      await withStageHands(connect)(options(tokenFor(BOB)));
+      made[0].events.hands?.([{ identity: BOB, name: "Bob Test", hand: "1000" }]);
+      made[0].events.connection(state);
+      expect(stageHandsSnapshot("chat-main")).toBe(noStageHands());
     }
   });
   it("an older connection closing late does not wipe the newer one's hands, and a failed connect leaves nothing", async () => {
