@@ -2,6 +2,7 @@
 // was on (their room, Dual, Quad or Six view) stays exactly as it was. One tab per room: pressing
 // Watch live again brings that tab forward instead of opening another.
 import type { MouseEvent } from "react";
+import { STAGE_PHONE_QUERY } from "./chatStageLive";
 import { stageWatchPath } from "./chatStageNotice";
 
 /** The stage tab's window name: one per room. */
@@ -48,8 +49,19 @@ export function openStageWindow(room: string): boolean {
   return true;
 }
 
-/** onClick for a Watch live link: a plain click opens the stage tab; ctrl/shift/middle clicks are the browser's. */
+/** #509: a phone (held either way up) watches in the tab it is in: its viewing room, never a second tab. */
+export const stageOpensInPlace = () => window.matchMedia(STAGE_PHONE_QUERY).matches;
+
+/**
+ * onClick for a Watch live link: a plain click opens the stage tab; ctrl/shift/middle clicks are the browser's.
+ * #509: on a phone the link is followed in this tab instead (the stage link opens the viewing room).
+ */
 export function stageWatchClick(event: MouseEvent<HTMLAnchorElement>, room: string) {
   if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  if (stageOpensInPlace()) {
+    event.preventDefault();
+    window.location.assign(stageWatchPath(room));
+    return;
+  }
   if (openStageWindow(room)) event.preventDefault();
 }

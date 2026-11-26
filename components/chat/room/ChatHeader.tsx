@@ -70,6 +70,8 @@ export type ChatHeaderProps = {
   onGoLive?: () => void;
   /** #502/#505: the room to watch live (its stage opens in a tab of its own); given only while its live video is live. */
   watchLive?: ChatRoom;
+  /** #509: on a phone, opens the viewing room in place; given only while the room's live video is live (then `watchLive` is not). */
+  onWatchLive?: () => void;
   adminOpen: boolean;
   setAdminOpen: Setter<boolean>;
   hasSeparateShortScoutProfile: boolean;
@@ -133,6 +135,7 @@ function ChatHeader({
   isOwner,
   onGoLive,
   watchLive,
+  onWatchLive,
   adminOpen,
   setAdminOpen,
   hasSeparateShortScoutProfile,
@@ -565,6 +568,22 @@ function ChatHeader({
           {/* Tapping the title opens the info sheet too; the info button is the labelled control. */}
           <div className={styles.phoneTitle} onClick={openInfo}>
             <h1 title={title}>{title}</h1>
+            {/* #509: this room's live video is on: the subtitle is the button that opens the viewing room. */}
+            {onWatchLive && !inlineDm && !page && !searchOpen ? (
+              <button
+                type="button"
+                className={styles.stageLivePhone}
+                data-stage-watch-live
+                aria-label="Live now. Watch live"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onWatchLive();
+                }}
+              >
+                <i aria-hidden="true" />
+                LIVE · Watch
+              </button>
+            ) : (
             <small
               className={styles.onlineCount}
               data-live={!inlineDm && !page && !searchOpen && presenceReady && !roomPaused}
@@ -574,6 +593,7 @@ function ChatHeader({
               {!inlineDm && !page && !searchOpen && <i aria-hidden="true" />}
               {subtitle}
             </small>
+            )}
           </div>
           <ChatPushPromptButton state={pushPrompt} className={styles.phoneIconButton} />
           <button
@@ -746,8 +766,17 @@ function ChatHeader({
       <ChatRadio room={gainers && !inlineDm && pageTitle === null} shape="header" />
       <div className={styles.headerActions}>
         {/* #502: this room's live video is on: one button to watch it (#505: in a tab of its own). */}
-        {watchLive && !inlineDm && pageTitle === null && (
-          <StageWatchLive room={watchLive} />
+        {/* #509: a phone on its side has this wide header: the same button, opening the viewing room in place. */}
+        {onWatchLive && !inlineDm && pageTitle === null ? (
+          <button type="button" className={styles.stageLive} data-stage-watch-live onClick={onWatchLive}>
+            <b>
+              <i aria-hidden="true" />
+              LIVE
+            </b>
+            <span>Watch live</span>
+          </button>
+        ) : (
+          watchLive && !inlineDm && pageTitle === null && <StageWatchLive room={watchLive} />
         )}
         {unreadDms}
         {gainers && !inlineDm && !popout && (

@@ -13,9 +13,9 @@ const answer = (status: number) => new NextResponse(null, { status, headers: { "
 
 /**
  * The one place a room's live video is known to have come on or gone off, as LiveKit reports it:
- * forget the remembered status and tell everyone showing the room to ask again (the same signal an
- * admin's start or end sends; it carries no address or key), so the LIVE button appears the moment
- * StreamYard starts sending and goes when it stops.
+ * forget the remembered status and tell everyone showing the room to ask again (the signal carries
+ * no address or key), so the LIVE button appears the moment StreamYard starts sending and goes when
+ * it stops. #512: with no Start or End button, this is how a broadcast begins and ends for everyone.
  * #503: then, after the answer is sent, the room's "live now" message, bell entries and phone
  * notifications (lib/chatStageNotify.ts). The webhook is only a hint: whether the room is live is
  * read from LiveKit there, and a broadcast is announced once however many webhooks, retries or

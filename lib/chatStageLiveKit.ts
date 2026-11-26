@@ -9,6 +9,7 @@ import {
   type IngressInfo,
   type VideoGrant,
 } from "livekit-server-sdk";
+import { STAGE_HAND_ATTRIBUTE, stageHandAttributes, type StageHandApi } from "./chatStageHand";
 import {
   STAGE_BROADCAST_IDENTITY,
   stageVideoApiUrl,
@@ -33,14 +34,20 @@ export const stageViewerGrant = (videoRoom: string): VideoGrant => ({
   canUpdateOwnMetadata: false,
 });
 
-const ingressOf = (info: IngressInfo): StageIngress => ({
-  id: info.ingressId,
-  url: info.url,
-  streamKey: info.streamKey,
-  publishing: info.state?.status === ENDPOINT_PUBLISHING,
-  // LiveKit counts in nanoseconds.
-  ...(info.state?.startedAt ? { startedAt: Math.floor(Number(info.state.startedAt) / 1e6) } : {}),
-});
+// LiveKit counts in nanoseconds.
+const ms = (nanoseconds: bigint | undefined) => (nanoseconds ? Math.floor(Number(nanoseconds) / 1e6) : 0);
+const ingressOf = (info: IngressInfo): StageIngress => {
+  // When it was last broadcast to (LiveKit keeps no "created at" for an ingress).
+  const activeAt = Math.max(ms(info.state?.startedAt), ms(info.state?.endedAt));
+  return {
+    id: info.ingressId,
+    url: info.url,
+    streamKey: info.streamKey,
+    publishing: info.state?.status === ENDPOINT_PUBLISHING,
+    ...(info.state?.startedAt ? { startedAt: ms(info.state.startedAt) } : {}),
+    ...(activeAt ? { activeAt } : {}),
+  };
+};
 
 export function stageVideoApi(config: StageVideoConfig): StageVideoApi {
   const host = stageVideoApiUrl(config);
@@ -64,9 +71,6 @@ export function stageVideoApi(config: StageVideoConfig): StageVideoApi {
     deleteIngress: async (id) => {
       await ingress.deleteIngress(id);
     },
-    deleteRoom: async (videoRoom) => {
-      await rooms().deleteRoom(videoRoom);
-    },
     roomMetadata: async (videoRoom) => {
       const [found] = (await rooms().listRooms([videoRoom])).filter((info) => info.name === videoRoom);
       return found ? found.metadata : null;
@@ -88,6 +92,43 @@ export function stageVideoApi(config: StageVideoConfig): StageVideoApi {
       });
       token.addGrant(stageViewerGrant(videoRoom));
       return token.toJwt();
+    },
+  };
+}
+
+/** LiveKit's answer when the room or the participant is not there (a Twirp "not_found", HTTP 404). */
+const notFound = (error: unknown) => {
+  const { code, status } = (error ?? {}) as { code?: unknown; status?: unknown };
+  return code === "not_found" || status === 404;
+};
+
+/**
+ * #508: raised hands. The hand is an attribute on the viewer's participant, set here by the server
+ * (a viewer's own token cannot change it); LiveKit pushes the change to everyone connected.
+ */
+export function stageHandApi(config: StageVideoConfig): StageHandApi {
+  const rooms = () => new RoomServiceClient(stageVideoApiUrl(config), config.apiKey, config.apiSecret);
+  return {
+    participants: async (videoRoom) => {
+      try {
+        return (await rooms().listParticipants(videoRoom)).map((info) => ({
+          identity: info.identity,
+          name: info.name,
+          hand: info.attributes?.[STAGE_HAND_ATTRIBUTE],
+        }));
+      } catch (error) {
+        if (notFound(error)) return [];
+        throw error;
+      }
+    },
+    setHand: async (videoRoom, identity, at) => {
+      try {
+        await rooms().updateParticipant(videoRoom, identity, { attributes: stageHandAttributes(at) });
+        return true;
+      } catch (error) {
+        if (notFound(error)) return false;
+        throw error;
+      }
     },
   };
 }

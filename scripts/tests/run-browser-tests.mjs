@@ -165,7 +165,8 @@ function failureLine(base, r) {
 const tail = (file, n = 40) => existsSync(file) ? readFileSync(file, 'utf8').split('\n').slice(-n).join('\n') : '';
 async function fetchOk(url, ms) { try { await fetch(url, { signal: AbortSignal.timeout(ms) }); return true; } catch { return false; } }
 
-function appEnv(t, dbPort, appPort, preload) {
+// `off`: a preset value that names a port on this machine (the stand-in LiveKit) moves with --offset too.
+function appEnv(t, dbPort, appPort, preload, off = 0) {
   const env = { NEXT_PUBLIC_SITE_URL: `http://localhost:${appPort}`, NEXT_PUBLIC_SUPABASE_URL: `http://127.0.0.1:${dbPort}`,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: 'test-anon', SUPABASE_SERVICE_ROLE_KEY: 'test-service-role', NEXT_TELEMETRY_DISABLED: '1',
     // #489: these tests change roles, tags and ShortScout levels straight in the fixture database
@@ -182,7 +183,8 @@ function appEnv(t, dbPort, appPort, preload) {
   }
   for (const name of presets) {
     const { require, ...vars } = PRESETS[name] ?? (() => { throw Error(`${t.name}: unknown preset ${name}`); })();
-    Object.assign(env, vars); if (require && !node.includes(`--require ${require}`)) node.push(`--require ${require}`);
+    for (const [key, value] of Object.entries(vars)) env[key] = off && typeof value === 'string' ? value.replace(/\b(127\.0\.0\.1|localhost):(\d{4,5})\b/g, (_, host, port) => `${host}:${Number(port) + off}`) : value;
+    if (require && !node.includes(`--require ${require}`)) node.push(`--require ${require}`);
   }
   if (preload) node.push(`--import ./scripts/tests/${preload}`);
   if (node.length) env.NODE_OPTIONS = node.join(' ');
@@ -241,7 +243,7 @@ async function runOnce(t, base) {
       if (tries < (inUse ? 2 : 1)) { await sleep(inUse ? 10000 : 2000); continue; }
       return { code: 1, error: `fixture did not listen on ${db}` };
     }
-    dev = start(process.execPath, ['node_modules/next/dist/bin/next', 'dev', '--port', String(app)], withClock(appEnv(t, db, app, t.preload && names[t.preload])), logs.dev);
+    dev = start(process.execPath, ['node_modules/next/dist/bin/next', 'dev', '--port', String(app)], withClock(appEnv(t, db, app, t.preload && names[t.preload], off)), logs.dev);
     if (!await until(() => fetchOk(`http://localhost:${app}/login`, 120000), 240, alive(dev))) return { code: 1, error: 'Next dev server did not start' };
     // Compile the chat pages and the read routes before the test's clock starts: a dev server
     // compiles each route on its first request, which on CI can outlast a test's short waits.

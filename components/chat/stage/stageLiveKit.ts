@@ -9,6 +9,7 @@ import {
   type RemoteAudioTrack,
   type RemoteTrack,
 } from "livekit-client";
+import { STAGE_HAND_ATTRIBUTE } from "@/lib/chatStageHand";
 import { STAGE_BROADCAST_IDENTITY, stageViewerMember } from "@/lib/chatStageVideo";
 import type { StageFeedConnect } from "./stageFeed";
 
@@ -25,6 +26,24 @@ export const connectStageFeed: StageFeedConnect = async ({ url, token, video, au
       if (identity !== STAGE_BROADCAST_IDENTITY) members.add(stageViewerMember(identity));
     events.viewers(members.size);
   };
+  // #508: who has a hand up. The hand is an attribute the server sets on a viewer's participant;
+  // LiveKit tells every connected player when one changes, and it goes with the participant.
+  const hands = () =>
+    events.hands?.(
+      [room.localParticipant, ...room.remoteParticipants.values()]
+        .filter((participant) => participant.attributes?.[STAGE_HAND_ATTRIBUTE])
+        .map((participant) => ({
+          identity: participant.identity,
+          name: participant.name ?? "",
+          hand: participant.attributes[STAGE_HAND_ATTRIBUTE],
+        })),
+    );
+  room
+    .on(RoomEvent.ParticipantAttributesChanged, hands)
+    .on(RoomEvent.ParticipantConnected, hands)
+    .on(RoomEvent.ParticipantDisconnected, hands)
+    .on(RoomEvent.Reconnected, hands)
+    .on(RoomEvent.Disconnected, () => events.hands?.([]));
   room
     .on(RoomEvent.TrackSubscribed, (track) => {
       if (track.kind === Track.Kind.Video) {
@@ -88,6 +107,7 @@ export const connectStageFeed: StageFeedConnect = async ({ url, token, video, au
   events.connection("connected");
   events.audioBlocked(!room.canPlaybackAudio);
   count();
+  hands();
   return {
     startAudio: () => room.startAudio(),
     setVolume: (next) => {

@@ -1,18 +1,23 @@
-// #502 Stage mode's live video: settings, names, the "is it live" memory, start/end, who may open
+// #502 Stage mode's live video: settings, names, the "is it live" memory, the room's permanent
+// stream key (#512: made once, reused for good, reset on request), who may open
 // the stage, the viewer token's grants and the realtime signal. No LiveKit is reached: the token is
 // signed locally with made-up keys and everything else runs against a fake StageVideoApi.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   STAGE_STATE_MEMORY_MS,
   chatRoomOfStageVideoRoom,
-  endStageVideo,
   forgetStageState,
   readStageOnScreen,
+  readStageKey,
   readStageState,
+  resetStageKey,
   setStageOnScreen,
   sharedStageOnScreen,
   sharedStageState,
-  startStageVideo,
+  STAGE_NOTICE_CHECK_MS,
+  stageIngressOf,
+  stageKeyFor,
+  stageNoticeCheckDue,
   stageOnScreenMetadata,
   stageOnScreenOfMetadata,
   stageStateOf,
@@ -26,7 +31,7 @@ import {
   type StageVideoApi,
 } from "@/lib/chatStageVideo";
 import { STAGE_VIEWER_TOKEN_TTL_SECONDS, stageVideoApi, stageViewerGrant } from "@/lib/chatStageLiveKit";
-import { newerStageOnScreen, parseStageOnScreen, parseStageState, parseStageTicker, stageLiveBadge, stageReachable } from "@/lib/chatStageLive";
+import { STAGE_PHONE_QUERY, newerStageOnScreen, parseStageOnScreen, parseStageState, parseStageTicker, stageLiveBadge, stagePhoneReachable, stageReachable } from "@/lib/chatStageLive";
 import { stageModeAllowed } from "@/lib/chatStageMode";
 import { ablyRoomEventActions } from "@/lib/chatRealtimeChannels";
 
@@ -50,9 +55,6 @@ function fakeApi(initial: StageIngress[] = []) {
     deleteIngress: async (id) => {
       api.calls.push(`delete:${id}`);
       state.ingresses = state.ingresses.filter((ingress) => ingress.id !== id);
-    },
-    deleteRoom: async (room) => {
-      api.calls.push(`deleteRoom:${room}`);
     },
     roomMetadata: async (room) => {
       api.calls.push(`metadata:${room}`);
@@ -158,7 +160,7 @@ describe("the shared memory of a room's state", () => {
     expect(await sharedStageState("main", read, 11)).toBe("off");
     expect(read).toHaveBeenCalledTimes(1);
   });
-  it("forgets a room after a start or an end", async () => {
+  it("forgets a room after its key is made or reset", async () => {
     const read = vi.fn(async () => "off" as "off" | "waiting");
     await sharedStageState("main", read, 100);
     forgetStageState("main");
@@ -166,7 +168,7 @@ describe("the shared memory of a room's state", () => {
     expect(await sharedStageState("main", read, 101)).toBe("waiting");
     expect(read).toHaveBeenCalledTimes(2);
   });
-  it("does not let a read that began before a start overwrite what came after", async () => {
+  it("does not let a read that began before a change overwrite what came after", async () => {
     let finish!: (state: "off") => void;
     const slow = sharedStageState("main", () => new Promise<"off">((resolve) => (finish = resolve)), 200);
     forgetStageState("main");
@@ -178,30 +180,107 @@ describe("the shared memory of a room's state", () => {
   });
 });
 
-describe("start and end", () => {
-  it("creates the ingress once and reuses it after that", async () => {
+describe("#512: one permanent stream address and key per room", () => {
+  const existing = (over: Partial<StageIngress> = {}): StageIngress => ({ id: "IN_old", url: "rtmps://fake.livekit.test/x", streamKey: "FAKE-KEY-ALREADY-IN-STREAMYARD", publishing: false, ...over });
+  it("makes the room's ingress the first time and gives the same one back ever after", async () => {
     const api = fakeApi();
-    const first = await startStageVideo(api, "main");
-    expect(first).toMatchObject({ id: "IN_1", streamKey: "FAKE-KEY-1" });
-    const again = await startStageVideo(api, "main");
-    expect(again).toMatchObject({ id: "IN_1", streamKey: "FAKE-KEY-1" });
-    expect(api.calls).toEqual(["list:chat-main", "create:chat-main", "list:chat-main"]);
+    expect(await readStageKey(api, "main")).toBeNull();
+    const first = await stageKeyFor(api, "main");
+    expect(first).toMatchObject({ created: true, extra: 0, ingress: { id: "IN_1", streamKey: "FAKE-KEY-1" } });
+    for (let i = 0; i < 5; i++) expect(await stageKeyFor(api, "main")).toMatchObject({ created: false, extra: 0, ingress: { id: "IN_1", streamKey: "FAKE-KEY-1" } });
+    expect(await readStageKey(api, "main")).toMatchObject({ created: false, ingress: { streamKey: "FAKE-KEY-1" } });
+    expect(api.calls.filter((call) => call.startsWith("create"))).toEqual(["create:chat-main"]);
+    expect(api.calls.some((call) => call.startsWith("delete"))).toBe(false);
   });
-  it("ends by deleting every ingress of the room, then the LiveKit room", async () => {
-    const api = fakeApi([
-      { id: "IN_a", url: "u", streamKey: "k", publishing: true },
-      { id: "IN_b", url: "u", streamKey: "k", publishing: false },
-    ]);
-    await endStageVideo(api, "main");
-    expect(api.calls).toEqual(["list:chat-main", "delete:IN_a", "delete:IN_b", "deleteRoom:chat-main"]);
-    expect(await readStageState(api, "main")).toBe("off");
+  it("reuses an ingress the room already has (a key already pasted into StreamYard), broadcasting or not, and never makes or deletes one", async () => {
+    for (const publishing of [false, true]) {
+      const api = fakeApi([existing({ publishing })]);
+      expect(await stageKeyFor(api, "main")).toEqual({ ingress: existing({ publishing }), created: false, extra: 0 });
+      expect(await stageKeyFor(api, "main")).toMatchObject({ ingress: { streamKey: "FAKE-KEY-ALREADY-IN-STREAMYARD" } });
+      expect(api.calls).toEqual(["list:chat-main", "list:chat-main"]);
+      expect(api.state.ingresses).toEqual([existing({ publishing })]);
+    }
   });
-  it("ending a room nobody joined is not a failure", async () => {
-    const api = fakeApi([{ id: "IN_a", url: "u", streamKey: "k", publishing: false }]);
-    api.deleteRoom = async () => {
-      throw new Error("room not found");
+  it("two requests at once for a room with none make one ingress", async () => {
+    const api = fakeApi();
+    const [a, b] = await Promise.all([stageKeyFor(api, "main"), stageKeyFor(api, "main")]);
+    expect(a.ingress.streamKey).toBe(b.ingress.streamKey);
+    expect(api.state.ingresses).toHaveLength(1);
+    // A failed attempt is not remembered: the next one tries again.
+    const down = fakeApi();
+    const create = down.createIngress;
+    down.createIngress = async () => {
+      throw new Error("LiveKit is down");
     };
-    await expect(endStageVideo(api, "main")).resolves.toBeUndefined();
+    await expect(stageKeyFor(down, "social")).rejects.toThrow();
+    down.createIngress = create;
+    expect((await stageKeyFor(down, "social")).created).toBe(true);
+  });
+  it("with more than one ingress: the one broadcasting, else the most recently used, else LiveKit's first; the others are counted and left alone", async () => {
+    const a = existing({ id: "IN_a", streamKey: "KEY-a" });
+    const b = existing({ id: "IN_b", streamKey: "KEY-b" });
+    const c = existing({ id: "IN_c", streamKey: "KEY-c" });
+    expect(stageIngressOf([])).toBeUndefined();
+    expect(stageIngressOf([a, b, c])?.id).toBe("IN_a");
+    expect(stageIngressOf([a, { ...b, activeAt: 2_000 }, { ...c, activeAt: 1_000 }])?.id).toBe("IN_b");
+    expect(stageIngressOf([{ ...a, activeAt: 9_000 }, b, { ...c, publishing: true, activeAt: 1 }])?.id).toBe("IN_c");
+    expect(stageIngressOf([{ ...a, activeAt: 5 }, { ...b, activeAt: 5 }])?.id).toBe("IN_a");
+    const api = fakeApi([a, { ...b, activeAt: 2_000 }, c]);
+    expect(await stageKeyFor(api, "main")).toMatchObject({ created: false, extra: 2, ingress: { id: "IN_b", streamKey: "KEY-b" } });
+    expect(await readStageKey(api, "main")).toMatchObject({ extra: 2, ingress: { id: "IN_b" } });
+    expect(api.calls).toEqual(["list:chat-main", "list:chat-main"]);
+    expect(api.state.ingresses).toHaveLength(3);
+  });
+  it("reset deletes the room's ingress and makes a new one with a different key; the LiveKit room is not touched", async () => {
+    const api = fakeApi([existing({ publishing: true })]);
+    const reset = await resetStageKey(api, "main");
+    expect(reset).toMatchObject({ created: true, extra: 0, ingress: { id: "IN_1", streamKey: "FAKE-KEY-1", publishing: false } });
+    expect(api.calls).toEqual(["list:chat-main", "delete:IN_old", "create:chat-main"]);
+    expect(api.state.ingresses.map((ingress) => ingress.streamKey)).toEqual(["FAKE-KEY-1"]);
+    // The new key is now the room's permanent one.
+    expect(await stageKeyFor(api, "main")).toMatchObject({ created: false, ingress: { streamKey: "FAKE-KEY-1" } });
+    expect(await readStageState(api, "main")).toBe("waiting");
+    // Reset is the one thing that clears out strays too.
+    const many = fakeApi([existing({ id: "IN_a" }), existing({ id: "IN_b" })]);
+    await resetStageKey(many, "main");
+    expect(many.calls).toEqual(["list:chat-main", "delete:IN_a", "delete:IN_b", "create:chat-main"]);
+    expect(many.state.ingresses).toHaveLength(1);
+  });
+  it("a set-up room rests at waiting, is live only while publishing, and is never off again", async () => {
+    const api = fakeApi();
+    expect(await readStageState(api, "main")).toBe("off");
+    await stageKeyFor(api, "main");
+    expect(await readStageState(api, "main")).toBe("waiting");
+    api.state.ingresses[0].publishing = true;
+    expect(await readStageState(api, "main")).toBe("live");
+    api.state.ingresses[0].publishing = false;
+    expect(await readStageState(api, "main")).toBe("waiting");
+  });
+});
+
+describe("#512: the status noticing a change nobody signalled", () => {
+  it("asks for the room's message to be checked when this server sees the state change, and otherwise once a minute", () => {
+    // A room that was never set up has no message to keep right.
+    expect(stageNoticeCheckDue("main", "off", 1_000)).toBe(false);
+    expect(stageNoticeCheckDue("main", "off", 1_000 + STAGE_NOTICE_CHECK_MS)).toBe(false);
+    expect(stageNoticeCheckDue("main", "waiting", 2_000_000)).toBe(true);
+    expect(stageNoticeCheckDue("main", "waiting", 2_000_001)).toBe(false);
+    // The broadcast arrives, and stops, with no webhook: each is seen at the next fresh read.
+    expect(stageNoticeCheckDue("main", "live", 2_000_002)).toBe(true);
+    expect(stageNoticeCheckDue("main", "live", 2_004_000)).toBe(false);
+    expect(stageNoticeCheckDue("main", "waiting", 2_008_000)).toBe(true);
+    expect(stageNoticeCheckDue("main", "waiting", 2_008_000 + STAGE_NOTICE_CHECK_MS - 1)).toBe(false);
+    // Nothing changed for a minute: looked at once more (another server may have seen it live).
+    expect(stageNoticeCheckDue("main", "waiting", 2_008_000 + STAGE_NOTICE_CHECK_MS)).toBe(true);
+    // Its ingress deleted by hand at LiveKit: checked that once.
+    expect(stageNoticeCheckDue("main", "off", 3_000_000)).toBe(true);
+    expect(stageNoticeCheckDue("main", "off", 3_000_000 + STAGE_NOTICE_CHECK_MS)).toBe(false);
+    // Per room, and forgotten only with everything (a signal for one room does not reset its minute).
+    expect(stageNoticeCheckDue("social", "live", 3_000_000)).toBe(true);
+    forgetStageState("social");
+    expect(stageNoticeCheckDue("social", "live", 3_000_001)).toBe(false);
+    forgetStageState();
+    expect(stageNoticeCheckDue("social", "live", 3_000_002)).toBe(true);
   });
 });
 
@@ -215,6 +294,21 @@ describe("who may open the stage", () => {
     expect(stageReachable({ admin: false, video: true }, "live")).toBe(true);
     expect(stageReachable({ admin: false, video: true }, "waiting")).toBe(false);
     expect(stageReachable({ admin: false, video: true }, "off")).toBe(false);
+  });
+  it("#509 a phone's viewing room: members while live, admins once started, nobody without video or before a start", () => {
+    for (const admin of [true, false]) {
+      expect(stagePhoneReachable({ admin, video: true }, "live")).toBe(true);
+      expect(stagePhoneReachable({ admin, video: true }, "off")).toBe(false);
+      for (const state of ["off", "waiting", "live"] as const) expect(stagePhoneReachable({ admin, video: false }, state)).toBe(false);
+    }
+    expect(stagePhoneReachable({ admin: true, video: true }, "waiting")).toBe(true);
+    expect(stagePhoneReachable({ admin: false, video: true }, "waiting")).toBe(false);
+  });
+  it("#509 a phone is a touch screen, upright or on its side", () => {
+    expect(STAGE_PHONE_QUERY.split(", ")).toEqual([
+      "(pointer: coarse) and (max-width: 40rem)",
+      "(pointer: coarse) and (orientation: landscape) and (max-height: 31.25rem)",
+    ]);
   });
   it("shows the LIVE button only while live, and never without video", () => {
     expect(stageLiveBadge(true, "live")).toBe(true);
@@ -289,7 +383,7 @@ describe("#507: the stock on screen", () => {
     for (const other of [null, undefined, "", "not json", "[]", '"APUS"', '{"at":9}', '{"onScreen":"apus!","at":9}', '{"onScreen":"APUS"}'])
       expect(stageOnScreenOfMetadata(other)).toBeNull();
   });
-  it("is set and cleared in the room chat-<slug>, only while the live video is started", async () => {
+  it("is set and cleared in the room chat-<slug>, only for a room that has its stream key (broadcasting or not)", async () => {
     const api = fakeApi(started);
     expect(await setStageOnScreen(api, "main", "APUS", 111)).toEqual({ symbol: "APUS", at: 111 });
     expect(api.calls).toEqual(["list:chat-main", "setMetadata:chat-main"]);
