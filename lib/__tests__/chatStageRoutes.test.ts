@@ -75,7 +75,7 @@ import { GET as liveGet, POST as livePost } from "@/app/api/chat/stage/live/rout
 import { POST as webhook } from "@/app/api/chat/stage/livekit-webhook/route";
 import { POST as onScreenPost } from "@/app/api/chat/stage/on-screen/route";
 import { GET as stockGet } from "@/app/api/chat/stage/stock/route";
-import { forgetStageState, forgetStageWebhooks } from "@/lib/chatStageVideo";
+import { forgetStageState, forgetStageWebhooks, stageNoticeLookDone, stageNoticeLookStarted, STAGE_NOTICE_FOLLOW_UP_GAP_MS } from "@/lib/chatStageVideo";
 
 const access = { longboard: true, boardroom: true, shortscout: false, admin: false };
 const member = (over: Record<string, unknown> = {}) => ({ ok: true, user: { id: "acct-bob", email: "bob@example.test", role: "user" }, access, serverSession: false, ...over });
@@ -180,6 +180,55 @@ describe("GET /api/chat/stage/status", () => {
     mocks.lk.fail = true;
     expect(await ask()).toBe("off");
     expect(mocks.notice).toHaveBeenCalledTimes(3);
+  });
+  it("#521: a look that never reported back is run again by the next status answer, remembered or fresh, and by nothing else", async () => {
+    const ask = async (path = "/api/chat/stage/status?room=main") => (await status(get(path))).json();
+    mocks.lk.ingresses = live(true);
+    expect((await ask()).state).toBe("live");
+    expect(mocks.notice).toHaveBeenCalledTimes(1);
+    // (The real look remembers itself; here it is a stand-in, so the test does that part.) The
+    // broadcast stops, the look is started and never reports back: its page had gone.
+    const began = Date.now();
+    vi.useFakeTimers({ now: began, toFake: ["Date"] });
+    try {
+      stageNoticeLookStarted("main", 25_000, began);
+      // In time: nothing more is run, and no LiveKit read is made to decide (the answer is remembered).
+      vi.setSystemTime(began + 2_000);
+      const calls = mocks.lk.calls.length;
+      expect((await ask()).state).toBe("live");
+      expect(mocks.notice).toHaveBeenCalledTimes(1);
+      expect(mocks.lk.calls.length).toBe(calls);
+      // Time is up: the next answer runs it again, once, however many ask in the same moments.
+      mocks.lk.ingresses = live(false);
+      vi.setSystemTime(began + 26_000);
+      forgetStageState("main");
+      expect((await ask()).state).toBe("waiting"); // a fresh read that saw the change: its own look, counted once
+      expect(mocks.notice).toHaveBeenCalledTimes(2);
+      stageNoticeLookStarted("main", 25_000, began + 26_000);
+      vi.setSystemTime(began + 27_000);
+      await Promise.all(Array.from({ length: 8 }, () => ask()));
+      expect(mocks.notice).toHaveBeenCalledTimes(2);
+      vi.setSystemTime(began + 26_000 + 25_000);
+      const before = mocks.lk.calls.filter((call) => call.startsWith("list:")).length;
+      forgetStageState("main");
+      await ask(); // fresh, same state, inside the minute: only the look that is owed
+      expect(mocks.notice).toHaveBeenCalledTimes(3);
+      expect(mocks.notice).toHaveBeenLastCalledWith("main", expect.anything(), null, { tellRoom: true });
+      expect(mocks.lk.calls.filter((call) => call.startsWith("list:")).length).toBe(before + 1);
+      await Promise.all(Array.from({ length: 8 }, () => ask())); // remembered answers, inside the gap
+      expect(mocks.notice).toHaveBeenCalledTimes(3);
+      // The cards' several-rooms read runs it too, within its one look per request.
+      vi.setSystemTime(began + 26_000 + 25_000 + STAGE_NOTICE_FOLLOW_UP_GAP_MS);
+      await ask("/api/chat/stage/status?rooms=main,gainers");
+      expect(mocks.notice).toHaveBeenCalledTimes(4);
+      // It reports back: nothing is owed.
+      stageNoticeLookDone("main");
+      vi.setSystemTime(began + 26_000 + 25_000 + 3 * STAGE_NOTICE_FOLLOW_UP_GAP_MS);
+      await ask();
+      expect(mocks.notice).toHaveBeenCalledTimes(4);
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it("#507: carries the stock on screen for a set-up room, and asks LiveKit nothing more for a room that is off", async () => {
     mocks.lk.metadata.set("chat-main", '{"onScreen":"APUS","at":1700000000000}');

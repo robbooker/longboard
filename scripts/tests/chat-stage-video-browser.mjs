@@ -678,6 +678,7 @@ try{
  await a.click('[data-stage-exit]');await a.waitForFunction(()=>!document.querySelector('[data-stage-root]'));
  assert.deepEqual(await feedOf(a),{connects:2,closed:2},'leaving the stage closes the admin\'s connection');
  const bobFeed=await feedOf(b);
+ const statusReads=()=>bob.stageAnswers.filter(x=>x.includes('/api/chat/stage/status?room=main')).length,readsBefore=statusReads();
  lk.publishing=false;
  await waitPlayer(b,'waiting');
  assert.match(await b.$eval('[data-stage-video-message]',e=>e.textContent),/The broadcast has stopped/);
@@ -690,7 +691,15 @@ try{
  await b.waitForFunction(()=>!document.querySelector('[data-stage-live]'),{timeout:20000*scale});
  assert.equal((await feedOf(b)).connects,bobFeed.connects,'and nothing connects again while the room is only waiting');
  // The room's message says it ended, with no End, no webhook and no admin: the status noticed.
- await until(async()=>(await notices())[0].body===ENDED_TEXT,'the message says it ended once the broadcast has stopped',90000);
+ // #521: the only status reads this depends on are Bob's own, from the page he is still on: one as
+ // his player lets go (above) and one more 30 seconds later. The look at the message that a status
+ // answer starts runs after the response and can be lost (on CI it was: the admin's stage tab,
+ // closed a moment earlier, still had a status request on its way when the broadcast stopped, so
+ // that look never ran and nothing ever asked again). A lost look is run again by the next status
+ // answer, so the longest this takes from here is Bob's second read (30 s) and, when the server
+ // did not see the stop itself, the 20 s the broadcast is given to come back; plus a margin.
+ await until(async()=>(await notices())[0].body===ENDED_TEXT,'the message says it ended once the broadcast has stopped',30000+20000+10000);
+ await until(async()=>statusReads()>=readsBefore+3,'three status reads from Bob\'s page since the stop: as the picture went, as his player let go, and once more 30 seconds later',45000);
  await b.click('[data-stage-exit]');
  await b.waitForFunction(()=>!document.querySelector('[data-stage-root]'));
  await b.waitForFunction(()=>!document.querySelector('[data-stage-watch-live]'),{timeout:20000*scale});
