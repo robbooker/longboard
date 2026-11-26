@@ -1679,26 +1679,35 @@ function PublicChatContent({
   async function refreshSentWindow(force = false) {
     if (!force && !scrollOwner.following()) return;
     const request = ++skipRequest.current;
-    const version = messageVersion.current;
+    // #520: this takes over from a Latest still loading, whose own ending no longer clears its flag.
+    setSkippingLatest(false);
     if (force) scrollOwner.dispatch({ type: "follow" });
+    const failed = "Message sent. The latest history could not load. Use Show sent message to retry.";
     try {
-      const response = await fetch(`/api/chat/history?room=${room}&${knownMessageIds.current}`, {
-        cache: "no-store",
-      });
-      const page = await response.json();
-      if (request !== skipRequest.current || !scrollOwner.following()) return;
-      if (!response.ok || version !== messageVersion.current)
-        throw Error("Message sent. The latest history could not load. Use Show sent message to retry.");
-      historyWindow.current = null;
-      openingAnchor.current = null;
-      scrollIntent.current = null;
-      resumeLive.current = false;
-      setUnreadStart(null);
-      setHistoryPage({ hasMore: !!page.hasMore, hasNewer: false });
-      setSentWindowRetry(false);
-      setListError("");
-      setMessages((current) => reconcileRoomMessages(current, page.messages));
-      setReactions(page.reactions ?? []);
+      // #520: as Latest does, ask again (three tries in all) when a message or reaction landed
+      // while this was loading, rather than asking the reader to press Show sent message.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const version = messageVersion.current;
+        const response = await fetch(`/api/chat/history?room=${room}&${knownMessageIds.current}`, {
+          cache: "no-store",
+        });
+        const page = await response.json();
+        if (request !== skipRequest.current || !scrollOwner.following()) return;
+        if (!response.ok) throw Error(failed);
+        if (version !== messageVersion.current) continue;
+        historyWindow.current = null;
+        openingAnchor.current = null;
+        scrollIntent.current = null;
+        resumeLive.current = false;
+        setUnreadStart(null);
+        setHistoryPage({ hasMore: !!page.hasMore, hasNewer: false });
+        setSentWindowRetry(false);
+        setListError("");
+        setMessages((current) => reconcileRoomMessages(current, page.messages));
+        setReactions(page.reactions ?? []);
+        return;
+      }
+      throw Error(failed);
     } catch (error) {
       if (request === skipRequest.current) {
         setSentWindowRetry(true);
@@ -1733,6 +1742,10 @@ function PublicChatContent({
     if (!cursor) return;
     const request = ++skipRequest.current,
       busy = ++pageBusy.current;
+    // #520: this page takes over from a Latest still loading. Latest clears its own flag only
+    // while it is the current request, so without this the Latest button and "Jump to latest"
+    // stayed disabled (and the list busy) until the reader left the room.
+    setSkippingLatest(false);
     setPaging(true);
     try {
       const response = await fetch(

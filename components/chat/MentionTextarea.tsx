@@ -37,10 +37,12 @@ export default function MentionTextarea({
   ...props
 }: Props) {
   const [nameVersion, setNameVersion] = useState(0);
+  // Not for the first identity of a fresh page (#520): that emptied the list just shown and looked
+  // the same name up a second time.
   useChatNameRefresh(() => {
     setResults(null);
     setNameVersion((v) => v + 1);
-  });
+  }, true);
   const localRef = useRef<HTMLTextAreaElement>(null);
   const ref = inputRef ?? localRef;
   const listId = useId();
