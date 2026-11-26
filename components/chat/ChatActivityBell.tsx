@@ -3,8 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { isAnnouncementRoom, isRecordingRoom } from "@/lib/publicChat";
 import { STAGE_NOTICE_AUTHOR, STAGE_NOTICE_STORED_AUTHOR, stageLiveLine, stageLiveNotice } from "@/lib/chatStageNotice";
-import { stageWatchClick, stageWatchLink } from "@/lib/chatStageWindow";
-import { CHAT_PHONE_QUERY } from "@/lib/chatPhoneNav";
+import { stageOpensInPlace, stageWatchClick, stageWatchLink } from "@/lib/chatStageWindow";
 import type { ChatActivity, ChatReactionNotification } from "@/lib/chatActivity";
 import {
   holdUnreadNotifications,
@@ -294,13 +293,13 @@ function Bell({ data, error, read, inbox }: BellProps & { inbox?: FeatureInbox }
                 <article key={item.key} data-unread={!n.read} data-stage-notice-alert={live ? n.room : undefined}>
                   {live ? (
                     // #505: a real link that opens the stage in a tab of its own; this page stays as it is.
-                    // On a phone (no stage there yet) it opens the room at the message, in place, as before.
+                    // #509: on a phone (held either way up) it opens the viewing room in this tab instead.
                     <a
                       {...stageWatchLink(n.room)}
                       className={styles.open}
                       onClick={(event) => {
                         const mark = { kind: "mention", id: n.id, mentionThrough: n.seq };
-                        if (window.matchMedia(CHAT_PHONE_QUERY).matches) {
+                        if (stageOpensInPlace()) {
                           event.preventDefault();
                           if (!busy)
                             revisit(n.read === true, mark, () => {

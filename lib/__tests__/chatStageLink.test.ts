@@ -1,20 +1,19 @@
 // #511 Stage mode: when a viewer's player holds its LiveKit connection and when it lets go (the
-// grace after the broadcast stops, an admin's waiting cap, the hidden-tab rule), and that a
-// connection attempt can be let go of at any point. No LiveKit and no browser: plain values.
+// grace after the broadcast stops, the hidden-tab rule), and that a connection attempt can be let
+// go of at any point. #512: the rule is the same for an admin as for a member (a room keeps its
+// stream key for good, so nobody waits connected). No LiveKit and no browser: plain values.
 import { describe, expect, it, vi } from "vitest";
 import {
   STAGE_GRACE_MS,
   STAGE_HIDDEN_MS,
   STAGE_LINK_IDLE,
-  STAGE_WAITING_CAP_MS,
   holdStageConnection,
   stageLinkStep,
   type StageLinkInput,
   type StageLinkMemory,
 } from "@/lib/chatStageLink";
 
-const member: StageLinkInput = { video: true, admin: false, state: "live", picture: false, dead: false, hidden: false, watching: false };
-const admin: StageLinkInput = { ...member, admin: true };
+const member: StageLinkInput = { video: true, state: "live", picture: false, dead: false, hidden: false, watching: false };
 
 /** Feeds steps in order, carrying the memory along; returns the last answer. */
 function run(steps: [number, StageLinkInput][], from: StageLinkMemory = STAGE_LINK_IDLE) {
@@ -27,17 +26,16 @@ function run(steps: [number, StageLinkInput][], from: StageLinkMemory = STAGE_LI
 describe("the timings", () => {
   it("are the ones the ticket asks for", () => {
     expect(STAGE_GRACE_MS).toBe(25_000);
-    expect(STAGE_WAITING_CAP_MS).toBe(600_000);
     expect(STAGE_HIDDEN_MS).toBe(300_000);
   });
 });
 
 describe("who connects", () => {
   it("nobody while live video is off or not set up", () => {
-    expect(run([[0, { ...admin, state: "off" }]]).memory).toEqual(STAGE_LINK_IDLE);
-    expect(run([[0, { ...admin, video: false }]]).memory).toEqual(STAGE_LINK_IDLE);
+    expect(run([[0, { ...member, state: "off" }]]).memory).toEqual(STAGE_LINK_IDLE);
+    expect(run([[0, { ...member, video: false }]]).memory).toEqual(STAGE_LINK_IDLE);
   });
-  it("a member never connects while the room is only waiting", () => {
+  it("nobody (member or admin: #512, the rule no longer knows which) connects while the room is only waiting", () => {
     const { memory, wake } = run([
       [0, { ...member, state: "waiting" }],
       [60_000, { ...member, state: "waiting", signal: true }],
@@ -46,9 +44,24 @@ describe("who connects", () => {
     expect(memory.closed).toBe(null);
     expect(wake).toBe(null);
   });
-  it("a member connects when the room is live; an admin also while it waits", () => {
+  it("a viewer connects when the room is live", () => {
     expect(run([[0, member]]).memory.open).toBe(true);
-    expect(run([[0, { ...admin, state: "waiting" }]]).memory.open).toBe(true);
+  });
+  it("#512: a room resting at waiting for hours, then going live: connected then, and let go 25 seconds after it stops", () => {
+    const waiting = { ...member, state: "waiting" as const };
+    const rested = run([[0, waiting], [3 * 3_600_000, { ...waiting, signal: true }]]);
+    expect(rested).toEqual({ memory: STAGE_LINK_IDLE, wake: null });
+    const at = 3 * 3_600_000 + 1;
+    const live = run([[at, member], [at + 500, { ...member, picture: true }]], rested.memory);
+    expect(live.memory.open).toBe(true);
+    const stopped = stageLinkStep(live.memory, waiting, at + 60_000);
+    expect(stopped.memory.open).toBe(true);
+    expect(stopped.wake).toBe(at + 60_000 + STAGE_GRACE_MS);
+    const gone = stageLinkStep(stopped.memory, waiting, at + 60_000 + STAGE_GRACE_MS);
+    expect(gone.memory).toMatchObject({ open: false, closed: "gone" });
+    // Back at rest: nothing connects, however long, until the room is live again.
+    expect(stageLinkStep(gone.memory, { ...waiting, signal: true }, at + 600_000).memory.open).toBe(false);
+    expect(stageLinkStep(gone.memory, member, at + 600_001).memory.open).toBe(true);
   });
 });
 
@@ -98,26 +111,6 @@ describe("the broadcast stops", () => {
     const { memory, wake } = run([[0, member], [5_000, { ...member, dead: true }], [900_000, { ...member, dead: true }]]);
     expect(memory).toMatchObject({ open: true, closed: null });
     expect(wake).toBe(null);
-  });
-});
-
-describe("an admin waiting for the broadcast", () => {
-  const waiting = { ...admin, state: "waiting" as const };
-  it("holds one connection up to the cap, then lets go", () => {
-    const held = run([[0, waiting], [STAGE_WAITING_CAP_MS - 1, waiting]]);
-    expect(held.memory.open).toBe(true);
-    expect(held.wake).toBe(STAGE_WAITING_CAP_MS);
-    const gone = stageLinkStep(held.memory, waiting, STAGE_WAITING_CAP_MS);
-    expect(gone.memory).toMatchObject({ open: false, closed: "gone" });
-    // More signals while it is still only waiting do not reconnect it.
-    expect(stageLinkStep(gone.memory, { ...waiting, signal: true }, STAGE_WAITING_CAP_MS + 1).memory.open).toBe(false);
-    // The broadcast arrives (the status says live): connected again.
-    expect(stageLinkStep(gone.memory, admin, STAGE_WAITING_CAP_MS + 2).memory.open).toBe(true);
-  });
-  it("the cap counts from when the picture stopped", () => {
-    const { memory, wake } = run([[0, waiting], [300_000, { ...admin, picture: true }], [400_000, waiting]]);
-    expect(memory.open).toBe(true);
-    expect(wake).toBe(400_000 + STAGE_WAITING_CAP_MS);
   });
 });
 

@@ -121,7 +121,9 @@ try{
   await checkLayout('1440px');
   // The top bar.
   const bar=await page.$eval('[data-stage-root] > header',h=>h.textContent);
-  for(const text of ['# LB','LIVE','Raise hand','Back to rooms'])assert(bar.includes(text),`the top bar has "${text}": ${bar}`);
+  for(const text of ['# LB','LIVE','Back to rooms'])assert(bar.includes(text),`the top bar has "${text}": ${bar}`);
+  // #508: Raise hand is real now, for people watching live video; the preview has no sample of it.
+  assert(!/hand/i.test(bar),`no sample Raise hand button in the preview: ${bar}`);
   assert.match(await page.$eval('[data-stage-elapsed]',e=>e.textContent),/^00:00:\d\d$/);
   // The video: one component with the room's id, a placeholder and the overlay as its own layer.
   assert.equal(await page.$eval('[data-stage-video]',e=>e.dataset.stageVideo),'main');
@@ -133,7 +135,7 @@ try{
   for(const label of ['Pause','Mute','Picture in picture','Full screen'])assert.equal(await page.$eval(`[data-stage-video] button[aria-label="${label}"]`,b=>b.disabled),true,label);
   assert.equal(await page.$eval('[data-stage-video] input[aria-label="Volume"]',i=>i.disabled),true);
   assert.equal(await page.$eval('[data-stage-video]',e=>e.dataset.stageVideoState),'preview');
-  assert.equal(await page.$('[data-stage-broadcast]'),null,'no "Start live video" card without LiveKit settings');
+  assert.equal(await page.$('[data-stage-broadcast]'),null,'no "Live video" card without LiveKit settings');
   assert(!(await page.evaluate(()=>performance.getEntriesByType('resource').some(e=>/livekit|\/api\/chat\/stage\//i.test(e.name)))),'no LiveKit code and no stage requests without LiveKit settings');
   // Bob's message is in the right column: it is the real room.
   assert(await page.evaluate(()=>[...document.querySelectorAll('[data-stage-root] ~ section article[id^="chat-message-"]')].some(a=>a.textContent.includes('Alert set at the stop.'))),'the room\'s messages are in the right column');

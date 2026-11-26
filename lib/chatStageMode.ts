@@ -28,7 +28,7 @@ export const STAGE_PARAM = "stage";
 
 /**
  * The admin gate, decided on the server (app/chat/page.tsx) from the signed-in account: chat admins
- * may open the stage at any time ("Go live (preview)") and start or end the live video.
+ * may open the stage at any time ("Go live (preview)") and see the room's stream address and key (#512).
  * CHAT_STAGE_MODE=off turns the stage off for everyone, without a deploy of new code.
  * There is no flag table in this app, so nothing is stored (no migration).
  */

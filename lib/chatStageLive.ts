@@ -3,8 +3,10 @@
 // carry the stage's stock panel code. No imports on purpose.
 
 /**
- * #502: a room's live video, as LiveKit has it. "off": not started. "waiting": an admin started it
- * and the broadcast has not arrived (or has dropped). "live": the broadcast is playing.
+ * #502: a room's live video, as LiveKit has it. "live": the broadcast is playing. "waiting": the
+ * room has its stream address and key and nothing is being broadcast (#512: where a room rests
+ * between broadcasts, for good once an admin has opened its "Live video" card). "off": the room has
+ * never been set up. A member is shown the same for "waiting" and "off": nothing.
  */
 export type StageState = "off" | "waiting" | "live";
 export const parseStageState = (value: unknown): StageState => (value === "live" || value === "waiting" ? value : "off");
@@ -23,7 +25,23 @@ export function stageLiveBadge(video: boolean, state: StageState) {
   return video && state === "live";
 }
 
-/** #502: window event after an admin starts or ends a room's live video, or the broadcast starts or stops. */
+/**
+ * #509: a phone, held either way up (a touch screen that is narrow, or short and on its side). The
+ * stage there is the viewing room: only the video, with the room's chat on a button.
+ */
+export const STAGE_PHONE_QUERY =
+  "(pointer: coarse) and (max-width: 40rem), (pointer: coarse) and (orientation: landscape) and (max-height: 31.25rem)";
+
+/**
+ * #509: who may open the phone's viewing room. It only ever shows the real video, so there is no
+ * admin preview: a member while the room is live (as on a computer), an admin once the room has
+ * its stream key (#512: there the admin waits with no connection until the broadcast is live).
+ */
+export function stagePhoneReachable(viewer: { admin: boolean; video: boolean }, state: StageState) {
+  return viewer.video && (state === "live" || (viewer.admin && state === "waiting"));
+}
+
+/** #502: window event after the broadcast starts or stops, or an admin sets up or resets a room's stream key. */
 export const CHAT_STAGE_EVENT = "chat-stage-event";
 /** #507: `onScreen` rides along when the signal is the host setting or clearing the stock on screen. */
 export type ChatStageEventDetail = { room: string; onScreen?: StageOnScreen };

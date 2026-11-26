@@ -18,9 +18,10 @@ const json = (body: unknown, status = 200) =>
  * #507: the host puts a stock on screen for everyone watching a room's stage, or clears it.
  * Body: { room, symbol } with `symbol` a ticker ("APUS", "BRK.B") or null to clear.
  * Chat admins only, signed in through the browser (never an API token or an agent), same-origin.
- * Only while the room's live video has been started (409 "not_started" otherwise): the ticker is
- * kept in that LiveKit room's metadata (no database), where /api/chat/stage/status reads it for
- * anyone who opens the stage later. Open stages are told at once over the room's "stage" signal,
+ * Only for a room that has its stream key (409 "not_started" otherwise; #512: a room has it from the
+ * first time an admin opens its stage, so in practice always): the ticker is kept in that LiveKit
+ * room's metadata (no database), where /api/chat/stage/status reads it for anyone who opens the
+ * stage later. Open stages are told at once over the room's "stage" signal,
  * which carries the ticker itself.
  */
 export async function POST(req: NextRequest) {

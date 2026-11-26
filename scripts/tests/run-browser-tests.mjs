@@ -17,7 +17,7 @@
 // Tests use /usr/bin/chromium; CI links the runner's Chrome there.
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync, rmSync, appendFileSync, openSync, closeSync } from 'node:fs';
-import { connect } from 'node:net';
+import { connect, createServer } from 'node:net';
 import { join, resolve } from 'node:path';
 import { PRESETS, TESTS } from './browser-manifest.mjs';
 import { offsetToEastern } from './test-clock.mjs';
@@ -138,6 +138,11 @@ async function stop(child) {
   await child.exited;
 }
 const listening = port => new Promise(r => { const s = connect(port, '127.0.0.1'); s.once('connect', () => { s.destroy(); r(true); }); s.once('error', () => r(false)); });
+// #516: a port can be taken while nothing listens on it. When the kernel hands a fixture's port out
+// as the local end of some outgoing connection, the port stays taken for a minute after that
+// connection closes (TIME-WAIT); connecting to it is refused, so `listening` calls it free, and the
+// fixture then fails with EADDRINUSE. Binding it is the real question, so ask that.
+const bindable = port => new Promise(r => { const s = createServer(); s.once('error', () => r(false)); s.listen(port, '127.0.0.1', () => s.close(() => r(true))); });
 async function until(check, seconds, alive) {
   for (let i = 0; i < seconds * 2; i++) { if (await check()) return true; if (alive && !alive()) return false; await sleep(500); }
   return false;
@@ -160,7 +165,8 @@ function failureLine(base, r) {
 const tail = (file, n = 40) => existsSync(file) ? readFileSync(file, 'utf8').split('\n').slice(-n).join('\n') : '';
 async function fetchOk(url, ms) { try { await fetch(url, { signal: AbortSignal.timeout(ms) }); return true; } catch { return false; } }
 
-function appEnv(t, dbPort, appPort, preload) {
+// `off`: a preset value that names a port on this machine (the stand-in LiveKit) moves with --offset too.
+function appEnv(t, dbPort, appPort, preload, off = 0) {
   const env = { NEXT_PUBLIC_SITE_URL: `http://localhost:${appPort}`, NEXT_PUBLIC_SUPABASE_URL: `http://127.0.0.1:${dbPort}`,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: 'test-anon', SUPABASE_SERVICE_ROLE_KEY: 'test-service-role', NEXT_TELEMETRY_DISABLED: '1',
     // #489: these tests change roles, tags and ShortScout levels straight in the fixture database
@@ -177,7 +183,8 @@ function appEnv(t, dbPort, appPort, preload) {
   }
   for (const name of presets) {
     const { require, ...vars } = PRESETS[name] ?? (() => { throw Error(`${t.name}: unknown preset ${name}`); })();
-    Object.assign(env, vars); if (require && !node.includes(`--require ${require}`)) node.push(`--require ${require}`);
+    for (const [key, value] of Object.entries(vars)) env[key] = off && typeof value === 'string' ? value.replace(/\b(127\.0\.0\.1|localhost):(\d{4,5})\b/g, (_, host, port) => `${host}:${Number(port) + off}`) : value;
+    if (require && !node.includes(`--require ${require}`)) node.push(`--require ${require}`);
   }
   if (preload) node.push(`--import ./scripts/tests/${preload}`);
   if (node.length) env.NODE_OPTIONS = node.join(' ');
@@ -213,9 +220,18 @@ async function runOnce(t, base) {
   const app = t.app + off, db = t.db + off;
   let fixture, dev;
   try {
-    // Another run on this machine may hold a port for a moment; wait for it rather than fail.
+    // Another run on this machine may hold a port for a moment; wait for it rather than fail. #516:
+    // "free" means the fixture can bind its port, waited for longer than a closed connection keeps
+    // one (60 s on Linux). Two rounds of fixture starts used to give up after about 55 s.
+    let noted = false;
+    const free = async () => {
+      if (await listening(app) || await listening(db)) return false;
+      if (await bindable(db)) return true;
+      if (!noted) { noted = true; appendFileSync(logs.fixture, `[runner] nothing listens on ${db} but it cannot be bound yet; waiting for it:\n${await holders(db)}\n`); }
+      return false;
+    };
     for (let tries = 0; ; tries++) {
-      if (!await until(async () => !(await listening(app)) && !(await listening(db)), 60)) return { code: 1, error: `port ${app} or ${db} is already in use` };
+      if (!await until(free, 90)) return { code: 1, error: `port ${app} or ${db} is already in use` };
       fixture = start(process.execPath, [`scripts/tests/${names[fixtureFile]}`], withClock({ ...(t.portEnv ? { CHAT_FIXTURE_PORT: String(db), CHAT_APP_PORT: String(app) } : {}), ...(t.sharedEnv ?? {}) }), logs.fixture);
       if (await until(() => listening(db), 180, alive(fixture))) break;
       await stop(fixture);
@@ -227,7 +243,7 @@ async function runOnce(t, base) {
       if (tries < (inUse ? 2 : 1)) { await sleep(inUse ? 10000 : 2000); continue; }
       return { code: 1, error: `fixture did not listen on ${db}` };
     }
-    dev = start(process.execPath, ['node_modules/next/dist/bin/next', 'dev', '--port', String(app)], withClock(appEnv(t, db, app, t.preload && names[t.preload])), logs.dev);
+    dev = start(process.execPath, ['node_modules/next/dist/bin/next', 'dev', '--port', String(app)], withClock(appEnv(t, db, app, t.preload && names[t.preload], off)), logs.dev);
     if (!await until(() => fetchOk(`http://localhost:${app}/login`, 120000), 240, alive(dev))) return { code: 1, error: 'Next dev server did not start' };
     // Compile the chat pages and the read routes before the test's clock starts: a dev server
     // compiles each route on its first request, which on CI can outlast a test's short waits.

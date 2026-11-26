@@ -7,7 +7,7 @@ import { ChatGif } from "./ChatGif";
 import MessageFold from "./MessageFold";
 import { runnerWatchPostLink } from "@/lib/chatRunnerWatchText";
 import { AI_INSIGHTS_BOT, aiInsightsNoteLink, aiInsightsSpans } from "@/lib/chatAiInsightsText";
-import { CHAT_STAGE_OPEN_EVENT, STAGE_NOTICE_BOT, STAGE_PHONE_HINT, stageLiveNotice } from "@/lib/chatStageNotice";
+import { CHAT_STAGE_OPEN_EVENT, STAGE_NOTICE_BOT, stageLiveNotice } from "@/lib/chatStageNotice";
 import { stageWatchClick, stageWatchLink } from "@/lib/chatStageWindow";
 import styles from "./PublicChat.module.css";
 
@@ -181,10 +181,10 @@ export default function ChatMessageBody({
       </div>
     );
   // #503: the room's "live now" notice. "Watch live" opens the stage: in place when the room on
-  // screen can (it cancels the event), otherwise by the stage link. On a phone, where there is no
-  // stage yet, the styles show a short line in its place.
+  // screen can (it cancels the event), otherwise by the stage link.
   // #505: on a computer the room never opens it in place: the link opens the stage in a tab of its
   // own, so the room (or Dual, Quad or Six view) it was read in stays as it is.
+  // #509: a phone has the same button: the room opens the phone's viewing room in place.
   const live = botSlug === STAGE_NOTICE_BOT ? stageLiveNotice(body) : null;
   if (live)
     return (
@@ -199,13 +199,12 @@ export default function ChatMessageBody({
             onClick={(event) => {
               const ask = new CustomEvent(CHAT_STAGE_OPEN_EVENT, { cancelable: true, detail: { room: live.room } });
               if (!window.dispatchEvent(ask)) event.preventDefault();
-              // #505: not opened in place (a computer): the stage tab of its own.
+              // #505: not opened in place: on a computer, the stage tab of its own (a phone follows the link in this tab).
               else stageWatchClick(event, live.room);
             }}
           >
             {live.label}
           </a>
-          <span className={styles.stagePhoneHint}>{STAGE_PHONE_HINT}</span>
         </p>
       </div>
     );

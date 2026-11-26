@@ -3,6 +3,8 @@
 //  - once only: a repeated webhook, two servers at the same moment, two servers either side of a
 //    ten-minute line, a reconnect within 10 minutes; a later broadcast is announced again;
 //  - the end: the message is rewritten and its alerts are taken back; a short drop changes nothing;
+//    #512: with no End button and an ingress that is never deleted, the end is the ingress no
+//    longer publishing, however it is noticed (a webhook, an admin's player, the status);
 //  - who is told: the room's member list, without bots, "Mentions only"/"Muted" and the acting admin;
 //  - the words: the room message, the bell's reading of it and the phone notification.
 import { describe, expect, it } from "vitest";
@@ -105,7 +107,7 @@ describe("the words", () => {
     expect(isReservedChatName(" live  video ")).toBe(true);
   });
   it("the phone notification says the room is live and opens the stage link", () => {
-    expect(stageLivePush("LB", "main")).toEqual({ title: "LB is live now", body: "Live video has started. Watch on a computer for now.", url: "/chat?room=main&stage=1" });
+    expect(stageLivePush("LB", "main")).toEqual({ title: "LB is live now", body: "Live video has started. Tap to watch.", url: "/chat?room=main&stage=1" });
   });
 });
 
@@ -175,7 +177,7 @@ describe("the broadcast ends, drops and comes back", () => {
     expect(await db.end("main", T0 + 50 * MIN)).toBe(true);
     expect(db.bodies()).toEqual([ENDED]);
     expect(db.state.withdrawn).toEqual([id]);
-    // A second end signal (ingress_ended, room_finished, the admin's End) finds nothing live.
+    // A second end signal (ingress_ended, room_finished, a status read) finds nothing live.
     expect(await db.end("main", T0 + 50 * MIN + 500)).toBe(false);
     expect(await Promise.all([db.end("main", T0 + 51 * MIN), db.end("main", T0 + 51 * MIN)])).toEqual([false, false]);
     expect(db.state.withdrawn).toEqual([id]);
@@ -263,7 +265,7 @@ describe("following LiveKit (syncStageNotice)", () => {
       );
     return { db, lk, sync };
   }
-  it("pressing Start announces nothing: only video arriving does", async () => {
+  it("a room having its stream key announces nothing: only video arriving does", async () => {
     const { db, lk, sync } = setup([{ publishing: false }]);
     expect(await sync()).toBe("none");
     expect(lk.waits).toEqual([]);
@@ -292,7 +294,7 @@ describe("following LiveKit (syncStageNotice)", () => {
     expect(db.state.withdrawn).toEqual([]);
     expect(db.state.notified).toHaveLength(1);
   });
-  it("a drop that lasts: the message says it ended; the admin's End marks it at once", async () => {
+  it("a drop that lasts: the message says it ended; an ingress deleted at LiveKit marks it at once", async () => {
     const dropped = setup([{ publishing: true, startedAt: T0 }]);
     await dropped.sync();
     dropped.lk.ingresses = [{ publishing: false }];
@@ -305,6 +307,65 @@ describe("following LiveKit (syncStageNotice)", () => {
     expect(await ended.sync()).toBe("ended");
     expect(ended.lk.waits).toEqual([]);
     expect(await ended.sync()).toBe("none");
+  });
+  it("#512: one permanent ingress, no End button: each broadcast is announced, and ended when it stops publishing", async () => {
+    // The room's ingress exists before, between and after broadcasts: the state is never "off".
+    const { db, lk, sync } = setup([{ publishing: false }]);
+    expect(await sync()).toBe("none");
+    // StreamYard goes live.
+    lk.ingresses = [{ publishing: true, startedAt: T0 }];
+    expect(await sync()).toBe("announced");
+    expect(db.state.notified).toHaveLength(1);
+    const first = db.state.notified[0].id;
+    // StreamYard stops. The ingress stays; nothing else says "end". Three hints at once (LiveKit's
+    // webhook, an admin's player, a member's status read): one rewrite, the alerts taken back once.
+    lk.ingresses = [{ publishing: false, startedAt: T0 }];
+    lk.now = T0 + 40 * MIN;
+    expect((await Promise.all([sync(), sync(), sync()])).sort()).toEqual(["ended", "none", "none"]);
+    expect(lk.waits).toEqual([STAGE_DROP_GRACE_MS, STAGE_DROP_GRACE_MS, STAGE_DROP_GRACE_MS]);
+    expect(db.bodies()).toEqual([ENDED]);
+    expect(db.state.withdrawn).toEqual([first]);
+    // Later hints while it rests at "waiting" (the once-a-minute look) do nothing and wait for nothing.
+    lk.waits.length = 0;
+    lk.now = T0 + 45 * MIN;
+    expect(await sync()).toBe("none");
+    expect(lk.waits).toEqual([]);
+    // Back five minutes after the end: the same broadcast, the same message, nobody told again.
+    lk.ingresses = [{ publishing: true, startedAt: T0 + 45 * MIN }];
+    expect(await sync()).toBe("resumed");
+    expect(db.bodies()).toEqual([LIVE]);
+    expect(db.state.notified).toHaveLength(1);
+    lk.ingresses = [{ publishing: false }];
+    lk.now = T0 + 60 * MIN;
+    expect(await sync()).toBe("ended");
+    // The next broadcast on the same ingress, the same afternoon: its own message, everyone told.
+    lk.ingresses = [{ publishing: true, startedAt: T0 + 120 * MIN }];
+    lk.now = T0 + 120 * MIN + 2_000;
+    expect(await sync()).toBe("announced");
+    expect(db.bodies()).toEqual([ENDED, LIVE]);
+    expect(db.state.notified).toHaveLength(2);
+    expect(db.state.notified[1].id).not.toBe(first);
+    // And it ends the same way, with the ingress still there.
+    lk.ingresses = [{ publishing: false }];
+    lk.now = T0 + 150 * MIN;
+    expect(await sync()).toBe("ended");
+    expect(db.bodies()).toEqual([ENDED, ENDED]);
+    expect(db.state.withdrawn).toHaveLength(3);
+    expect(await sync()).toBe("none");
+  });
+  it("#512: an end nobody signalled is still marked by the next look, however late, and the next broadcast is announced", async () => {
+    const { db, lk, sync } = setup([{ publishing: true, startedAt: T0 }]);
+    expect(await sync()).toBe("announced");
+    // It stopped; LiveKit's webhook was lost and no admin was watching. Two hours pass.
+    lk.ingresses = [{ publishing: false }];
+    lk.now = T0 + 120 * MIN;
+    // Someone opens the room: the status asks for a look.
+    expect(await sync()).toBe("ended");
+    expect(db.bodies()).toEqual([ENDED]);
+    lk.ingresses = [{ publishing: true, startedAt: T0 + 180 * MIN }];
+    lk.now = T0 + 180 * MIN;
+    expect(await sync()).toBe("announced");
+    expect(db.state.notified).toHaveLength(2);
   });
   it("a LiveKit outage changes nothing", async () => {
     const { db, sync } = setup([{ publishing: true, startedAt: T0 }]);
@@ -368,7 +429,7 @@ describe("who is told (stageNoticeRecipients)", () => {
 describe("the phone notification (stageNoticePush)", () => {
   const id = stageNoticeId("main", Math.floor(T0 / STAGE_NOTICE_SLOT_MS));
   it("a live notice's alert says the room is live and opens the stage link", () => {
-    expect(stageNoticePush(`/chat?room=main&thread=${id}`, T0 + 2 * MIN)).toEqual({ title: "LB is live now", body: "Live video has started. Watch on a computer for now.", url: "/chat?room=main&stage=1" });
+    expect(stageNoticePush(`/chat?room=main&thread=${id}`, T0 + 2 * MIN)).toEqual({ title: "LB is live now", body: "Live video has started. Tap to watch.", url: "/chat?room=main&stage=1" });
     expect(stageNoticePush(`/chat?room=shortscout&thread=${stageNoticeId("shortscout", Math.floor(T0 / STAGE_NOTICE_SLOT_MS))}`, T0)).toMatchObject({ title: "SS is live now", url: "/chat?room=shortscout&stage=1" });
   });
   it("every other alert is left as it is", () => {
