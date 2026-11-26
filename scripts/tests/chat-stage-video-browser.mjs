@@ -33,6 +33,15 @@
 //  - #512, it stops again, and this time LiveKit's webhook is lost and no admin is watching: Bob's
 //    player still lets go, the LIVE button goes, the stage link is just the room again, and the
 //    room's message says it ended, all from the status noticing; the ingress and its key are untouched.
+// #522/#523 (same stand-ins; the stand-in LiveKit also keeps who is connected, by identity, as LiveKit does):
+//  - an ordinary room open while the room is only waiting makes one status request, and on a server
+//    that already knows, no LiveKit call at all;
+//  - when a broadcast has been stopped for the server's grace, the server closes the LiveKit room:
+//    everyone still connected is disconnected by the server (a connection with no page behind it
+//    too), and the players say the broadcast has ended; "Reset key" closes the room at once;
+//  - a member has two seats in a room: a second screen takes the second seat, a third screen takes
+//    over the oldest one (which says so, with "Watch here instead"), and there are never more than
+//    two connections for one member.
 // #503, telling the room it is live (same stand-ins; no phone notification is really sent):
 //  - a room having its key posts nothing; when the broadcast arrives the room gets one "LB is live
 //    now" message with a "Watch live" link, Bob and Alice get one bell entry each ("LB – Live
@@ -81,7 +90,10 @@ const alert=(sym,secondsAgo,vol)=>sql(`select public.ingest_chat_gainers_alert('
 
 // The stand-in LiveKit: Twirp over JSON, as livekit-server-sdk speaks it. One ingress per room; each
 // one made has its own (made-up) key: FAKE_KEY, then FAKE_KEY_2, FAKE_KEY_3.
-const lk={ingresses:new Map(),made:0,publishing:false,calls:[],deletedRooms:[],startedAt:Date.now()-20*60000};
+// #522: `people`: who is connected to chat-main, by identity ({conn, joinedAt, tab}); `kicked`: why a
+// connection was ended by the server ("replaced", "removed", "ended"), for the page's stand-in player.
+const lk={ingresses:new Map(),made:0,publishing:false,calls:[],deletedRooms:[],startedAt:Date.now()-20*60000,people:new Map(),kicked:new Map()};
+const claimsOf=token=>JSON.parse(Buffer.from(token.split('.')[1],'base64url').toString('utf8'));
 const count=call=>lk.calls.filter(c=>c===call).length;
 // `started_at`: when this broadcast began, in nanoseconds, as LiveKit reports it (#503 names the notice by it).
 const info=(room,i)=>({ingress_id:i.id,name:room,stream_key:i.key,url:FAKE_ADDRESS,input_type:'RTMP_INPUT',room_name:room,participant_identity:'stage-broadcast',reusable:true,state:{status:lk.publishing?'ENDPOINT_PUBLISHING':'ENDPOINT_INACTIVE',room_id:'RM_fake',...(lk.publishing?{started_at:String(BigInt(lk.startedAt)*1000000n)}:{})}});
@@ -124,15 +136,27 @@ const playerSize=async(page,who,[width,height])=>{
 const stub=http.createServer(async(req,res)=>{
  const chunks=[];for await(const c of req)chunks.push(c);const body=chunks.length?JSON.parse(Buffer.concat(chunks).toString('utf8')||'{}'):{};
  const send=(value,status=200)=>{res.writeHead(status,{'content-type':'application/json','access-control-allow-origin':'*'});res.end(JSON.stringify(value));};
- // The page's stand-in player asks whether the broadcast is on.
- if(req.url==='/test/state')return send({publishing:lk.ingresses.size>0&&lk.publishing});
+ // The page's stand-in player: join (as LiveKit does it: one connection per identity, a later one
+ // replaces an earlier one), leave, and "is the broadcast on, and am I still connected".
+ const at=new URL(req.url,STUB);
+ if(at.pathname==='/test/join'){const claims=claimsOf(at.searchParams.get('token')),conn=at.searchParams.get('conn'),before=lk.people.get(claims.sub);
+  if(before)lk.kicked.set(before.conn,'replaced');
+  lk.people.set(claims.sub,{conn,joinedAt:Date.now(),tab:claims.attributes?.tab});return send({});}
+ if(at.pathname==='/test/leave'){for(const [identity,p] of lk.people)if(p.conn===at.searchParams.get('conn'))lk.people.delete(identity);return send({});}
+ if(at.pathname==='/test/state')return send({publishing:lk.ingresses.size>0&&lk.publishing,kicked:lk.kicked.get(at.searchParams.get('conn'))??null});
  const call=req.url.replace('/twirp/livekit.','');lk.calls.push(call);
  assert.match(req.headers.authorization??'',/^Bearer [\w-]+\.[\w-]+\.[\w-]+$/,'the server signs its LiveKit calls');
  const room=body.room_name??body.roomName??body.room;
  if(call==='Ingress/ListIngress')return send({items:[...lk.ingresses].filter(([name])=>!room||name===room).map(([name,i])=>info(name,i))});
  if(call==='Ingress/CreateIngress'){assert.equal(body.participant_identity??body.participantIdentity,'stage-broadcast');const n=++lk.made,i={id:`IN_fake${n}`,key:n===1?FAKE_KEY:`${FAKE_KEY}-${n}`};lk.ingresses.set(room,i);return send(info(room,i));}
  if(call==='Ingress/DeleteIngress'){const id=body.ingress_id??body.ingressId;for(const [name,i] of lk.ingresses)if(i.id===id){lk.ingresses.delete(name);lk.publishing=false;/* its broadcast is cut off */return send(info(name,i));}return send({code:'not_found',msg:'no such ingress'},404);}
- if(call==='RoomService/DeleteRoom'){lk.deletedRooms.push(room);return send({});}
+ // #522: closing the room disconnects everyone in it.
+ if(call==='RoomService/DeleteRoom'){lk.deletedRooms.push(room);for(const p of lk.people.values())lk.kicked.set(p.conn,'ended');lk.people.clear();return send({});}
+ // #522: one viewer, for the seat lookup (as LiveKit answers: not_found when nobody has that identity).
+ if(call==='RoomService/GetParticipant'){const p=room==='chat-main'?lk.people.get(body.identity):null;
+  return p?send({sid:'PA_fake',identity:body.identity,joined_at:String(Math.floor(p.joinedAt/1000)),joined_at_ms:String(p.joinedAt),attributes:p.tab?{tab:p.tab}:{}}):send({code:'not_found',msg:'participant does not exist'},404);}
+ if(call==='RoomService/RemoveParticipant'){const p=room==='chat-main'?lk.people.get(body.identity):null;if(!p)return send({code:'not_found',msg:'participant does not exist'},404);
+  lk.kicked.set(p.conn,'removed');lk.people.delete(body.identity);return send({});}
  // #507: the status also reads the room's metadata (the stock on screen); this test sets none.
  if(call==='RoomService/ListRooms')return send({rooms:[]});
  return send({code:'unimplemented',msg:call},501);
@@ -141,7 +165,7 @@ await new Promise(r=>stub.listen(54633,'127.0.0.1',r));
 
 // The page's stand-in for the LiveKit connection (see components/chat/stage/stageFeed.ts).
 const fakeFeed=stubUrl=>{
- window.__stageFeed={connects:[],closed:0};
+ window.__stageFeed={connects:[],closed:0,kicked:[]};
  window.__chatStageFeedForTests=async({url,token,video,events})=>{
   window.__stageFeed.connects.push({url,token});
   const canvas=document.createElement('canvas');canvas.width=1280;canvas.height=720;const ctx=canvas.getContext('2d');let tick=0;
@@ -150,13 +174,17 @@ const fakeFeed=stubUrl=>{
    ctx.font='400 30px sans-serif';ctx.fillText('A drawn picture standing in for the broadcast',640,400);};
   draw();const drawing=setInterval(draw,100),stream=canvas.captureStream(10);
   let on=false,closed=false;
+  // #522: joins the stand-in room under the token's identity, and is told if the server ends the connection.
+  const conn=Math.random().toString(36).slice(2);
+  await fetch(`${stubUrl}/test/join?conn=${conn}&token=${encodeURIComponent(token)}`).catch(()=>{});
   events.connection('connected');events.audioBlocked(true);events.viewers(3);
   const poll=setInterval(async()=>{
-   const state=await fetch(stubUrl+'/test/state').then(r=>r.json()).catch(()=>null);if(closed||!state)return;
+   const state=await fetch(`${stubUrl}/test/state?conn=${conn}`).then(r=>r.json()).catch(()=>null);if(closed||!state)return;
+   if(state.kicked){clearInterval(poll);on=false;video.srcObject=null;window.__stageFeed.kicked.push(state.kicked);events.video(false);events.connection(state.kicked);return;}
    if(state.publishing&&!on){on=true;video.srcObject=stream;void video.play().catch(()=>{});events.video(true);}
    else if(!state.publishing&&on){on=false;video.srcObject=null;events.video(false);}
   },250);
-  return {startAudio:async()=>{window.__stageFeed.audioStarted=true;},setVolume:v=>{window.__stageFeed.volume=v;},close:()=>{closed=true;window.__stageFeed.closed++;clearInterval(poll);clearInterval(drawing);}};
+  return {startAudio:async()=>{window.__stageFeed.audioStarted=true;},setVolume:v=>{window.__stageFeed.volume=v;},close:()=>{closed=true;window.__stageFeed.closed++;clearInterval(poll);clearInterval(drawing);void fetch(`${stubUrl}/test/leave?conn=${conn}`,{keepalive:true}).catch(()=>{});}};
  };
 };
 
@@ -178,7 +206,7 @@ const saved=(page,text)=>page.evaluate(async t=>{const r=await fetch('/api/chat/
 const openRoom=async(who,path='/chat?room=main')=>{
  const page=who.page;await page.goto('about:blank');await sleep(100);who.stageAnswers.length=0;
  await page.goto(base+path);await page.waitForSelector(LB,{visible:true,timeout:60000*scale});
- for(let waited=0;;waited+=100){const answer=who.stageAnswers.find(x=>/^200 \/api\/chat\/stage\/status\?room=main \{/.test(x));
+ for(let waited=0;;waited+=100){const answer=who.stageAnswers.find(x=>/^200 \/api\/chat\/stage\/status\?room=main(&fresh=1)? \{/.test(x));
   if(answer){
    // The room is ready, or (a stage link while it is live) the stage has already taken the room header's place.
    await Promise.any([ready(page),page.waitForSelector('[data-stage-root]',{timeout:60000*scale})]);await sleep(300);return JSON.parse(answer.slice(answer.indexOf('{'))).state;}
@@ -213,6 +241,8 @@ const mark=page=>page.evaluate(()=>{window.__samePage=true;});
 const where=page=>page.evaluate(()=>{const list=[...document.querySelectorAll('article[id^="chat-message-"]')].find(a=>a.checkVisibility());let scroller=list?.parentElement;
  while(scroller&&!(scroller.scrollHeight>scroller.clientHeight+4&&/auto|scroll/.test(getComputedStyle(scroller).overflowY)))scroller=scroller.parentElement;
  return {url:location.href,room:[...document.querySelectorAll('main[data-chat-view]')].find(e=>e.checkVisibility())?.dataset.room??null,samePage:window.__samePage===true,stage:!!document.querySelector('[data-stage-root]'),scroll:scroller?Math.round(scroller.scrollTop):null,composer:!!document.querySelector('textarea[aria-label="Message LB"]')};});
+// Waits until the room on screen has stopped moving: its place the same for a second and a half.
+const settled=async page=>{let last,same=0;for(const began=Date.now();same<3;){const now=(await where(page)).scroll;same=now===last?same+1:0;last=now;assert(Date.now()-began<30000*scale,'the room never settled');await sleep(500);}};
 try{
  const bob=await newPage(),alice=await newPage();
  // Not started: nothing at all for a member.
@@ -236,6 +266,10 @@ try{
  assert((await openMenu(a)).includes('Go live (preview)'));
  assert.deepEqual(lk.calls.filter(c=>c!=='Ingress/ListIngress'&&c!=='RoomService/ListRooms'),[],'nothing is made for a room nobody has opened the stage of');
  await a.click('[data-stage-go-live]');
+ // On a machine with no time to spare the press can land while the menu is still opening and do
+ // nothing (once in 20 soak runs, under heavy load): if the stage has not appeared, it is pressed again.
+ for(let tries=0;!(await a.waitForSelector('[data-stage-root]',{timeout:15000*scale}).catch(()=>null));tries++){assert(tries<3,'Go live never opened the stage');
+  if(!(await visible(a,'[data-stage-go-live]')))await openMenu(a);await (await shown(a,'[data-stage-go-live]')).click();}
  await a.waitForSelector('[data-stage-broadcast]',{timeout:60000*scale});
  await a.waitForSelector('[data-stage-key]',{timeout:30000*scale});
  for(const gone of ['[data-stage-start]','[data-stage-end]','[data-stage-end-confirm]'])assert.equal(await a.$(gone),null,`no ${gone}`);
@@ -275,6 +309,15 @@ try{
  // Set up but not broadcasting: still nothing for a member.
  assert.equal(await openRoom(bob),'waiting');
  assert.equal(await bob.page.$('[data-stage-watch-live]'),null,'no LIVE button until the broadcast is on');
+ // #523: an ordinary room open while the room rests at "waiting": one status request, and on a
+ // server that already knows the room is waiting, nothing at all is asked of LiveKit for it.
+ {const asked=lk.calls.length;
+  assert.equal(await openRoom(bob),'waiting');
+  await sleep(1500);
+  const statuses=bob.stageAnswers.filter(x=>x.includes('/api/chat/stage/'));
+  assert.deepEqual(statuses.map(x=>x.split(' ').slice(0,2).join(' ')),['200 /api/chat/stage/status?room=main'],`an ordinary room open makes one status request and nothing else of the stage: ${statuses.join(' | ')}`);
+  assert.match(statuses[0],/"state":"waiting".*"onScreen":null/,'and a member is told only that nothing is live');
+  assert.deepEqual(lk.calls.slice(asked),[],'with the server\'s answer remembered, an ordinary room open asks LiveKit nothing');}
  {const refused=await bob.page.evaluate(async()=>{const r=await fetch('/api/chat/stage/token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({room:'main'})});return [r.status,await r.text()];});
   assert.equal(refused[0],409,'no watch token for a member before it is live');
   assert.equal(await bob.page.evaluate(()=>window.__stageFeed.connects.length),0,'and a member opens no connection while the room is only waiting');assert(!/token"/.test(refused[1]));}
@@ -307,7 +350,9 @@ try{
  assert.deepEqual(await a.$eval('[data-stage-key]',i=>[i.type,i.value]),['password',FAKE_KEY_2],'a different key, masked again');
  assert.match(await a.$eval('[data-stage-key-reset-done]',e=>e.textContent),/new stream key.*Paste it into StreamYard/s);
  assert.deepEqual([count('Ingress/DeleteIngress'),count('Ingress/CreateIngress'),[...lk.ingresses.values()].map(i=>i.key)],[1,2,[FAKE_KEY_2]],'the old ingress is deleted and a new one made');
- assert.deepEqual(lk.deletedRooms,[],'the LiveKit room is left alone');
+ // #522: and the LiveKit room is closed, so nobody can stay connected to a room whose key was replaced.
+ await until(()=>lk.deletedRooms.length===1,'the LiveKit room is closed after a reset');
+ assert.deepEqual(lk.deletedRooms,['chat-main']);
  assert.equal(await openRoom(alice,'/chat?room=main&stage=1'),'waiting');
  await a.waitForSelector('[data-stage-key]',{timeout:60000*scale});
  assert.equal(await keyShown(a),FAKE_KEY_2,'the new key is the room\'s from now on');
@@ -378,7 +423,7 @@ try{
  if(shots)await b.screenshot({path:`${shots}/bell.png`});
  // #505: the bell entry is a link that opens the stage in a tab of its own; Bob's room is untouched.
  assert.deepEqual(await b.$eval(`${bellPanel} [data-stage-notice-alert] a`,a=>[a.getAttribute('href'),a.target]),['/chat?room=main&stage=1','stage-main']);
- await mark(b);
+ await settled(b);await mark(b);
  const bellBefore=await where(b);
  const stage=await opensStageTab(bob,()=>b.click(`${bellPanel} [data-stage-notice-alert] a`)),s=stage.tab;
  await waitPlayer(s,'live');
@@ -524,7 +569,7 @@ try{
  await b.bringToFront();
  assert.deepEqual(await (await shown(b,'[data-stage-notice-watch]')).evaluate(a=>[a.getAttribute('href'),a.target]),['/chat?room=main&stage=1','stage-main']);
  await (await shown(b,'[data-stage-notice-watch]')).evaluate(a=>a.scrollIntoView({block:'center'}));await sleep(600);
- await mark(b);
+ await settled(b);await mark(b);
  const noticeBefore=await where(b),tabsNow=(await bob.context.pages()).length;
  await (await shown(b,'[data-stage-notice-watch]')).click();
  await s.waitForSelector('[data-stage-root="main"]',{timeout:60000*scale});
@@ -566,6 +611,9 @@ try{
  {const feed=()=>b.evaluate(()=>({connects:window.__stageFeed.connects.length,closed:window.__stageFeed.closed,token:window.__stageFeed.connects.at(-1)?.token}));
   const was=await feed();assert.deepEqual([was.connects,was.closed],[1,0]);
   assert.deepEqual(await feedOf(a),{connects:1,closed:0});
+  // #522: a connection that will not say goodbye by itself (no page behind it), to show the server ends it.
+  lk.people.set('rogue-member#00000001',{conn:'rogue',joinedAt:Date.now()});
+  const closedBefore=lk.deletedRooms.length;
   lk.publishing=false;const stopped=Date.now();
   await webhook('participant_left','stage-broadcast');await signal(b);await signal(a);
   await waitPlayer(b,'waiting');
@@ -575,6 +623,14 @@ try{
   await b.waitForFunction(()=>window.__stageFeed.closed===1,{timeout:60000*scale});
   const held=Date.now()-stopped;assert(held>=20000&&held<45000*scale,`let go after the grace (about 25 seconds), not ${held}ms`);
   await waitPlayer(b,'ended');
+  // #522: the players said goodbye by themselves. A connection that never does is ended by the
+  // server: half a minute after the broadcast stopped it closes the LiveKit room, once, which
+  // disconnects whoever is still in it.
+  assert.deepEqual(await b.evaluate(()=>window.__stageFeed.kicked),[],'a well-behaved player leaves by itself, before the server has to');
+  await until(()=>lk.deletedRooms.length>closedBefore,'the server closes the LiveKit room once the broadcast has ended',60000);
+  assert(Date.now()-stopped>=29000,`not before its half minute: ${Date.now()-stopped}ms`);
+  assert.deepEqual(lk.deletedRooms.slice(closedBefore),['chat-main'],'closed once');
+  assert.deepEqual([...lk.people.keys()],[],'nobody is left connected, including a connection that never said goodbye');
   assert.match(await b.$eval('[data-stage-video-message]',e=>e.textContent),/The broadcast has ended/);
   assert.equal(await b.$('[data-stage-video-feed]'),null,'no video element once disconnected');
   await a.waitForFunction(()=>window.__stageFeed.closed===1,{timeout:60000*scale});
@@ -677,6 +733,11 @@ try{
  // #505: an admin's Watch live opens a tab of its own as well (the admin's stage: three columns).
  {const a2=await alice.context.newPage();await a2.setViewport({width:1440,height:900});
   await a2.goto(base+'/chat?room=main');await a2.waitForSelector('[data-stage-watch-live="main"]',{visible:true,timeout:60000*scale});await ready(a2);
+  // A room that has just opened is still settling (it keeps itself at the newest message while
+  // late rows and pictures arrive), so "as it was" is measured once it has stopped moving: its
+  // place has been the same for a second and a half. (Taken too early, the place it settled at a
+  // moment later read as the tab having moved: 59px, twice in ten runs.)
+  await settled(a2);
   await mark(a2);const before=await where(a2),had=new Set(await alice.context.pages());
   await a2.click('[data-stage-watch-live="main"]');
   const tab=await until(async()=>(await alice.context.pages()).find(p=>!had.has(p)&&/[?&]room=main&stage=1/.test(p.url())),'the admin\'s stage tab');
@@ -690,6 +751,7 @@ try{
  await a.click('[data-stage-exit]');await a.waitForFunction(()=>!document.querySelector('[data-stage-root]'));
  assert.deepEqual(await feedOf(a),{connects:2,closed:2},'leaving the stage closes the admin\'s connection');
  const bobFeed=await feedOf(b);
+ const statusReads=()=>bob.stageAnswers.filter(x=>x.includes('/api/chat/stage/status?room=main')).length,readsBefore=statusReads();
  lk.publishing=false;
  await waitPlayer(b,'waiting');
  assert.match(await b.$eval('[data-stage-video-message]',e=>e.textContent),/The broadcast has stopped/);
@@ -702,7 +764,15 @@ try{
  await b.waitForFunction(()=>!document.querySelector('[data-stage-live]'),{timeout:20000*scale});
  assert.equal((await feedOf(b)).connects,bobFeed.connects,'and nothing connects again while the room is only waiting');
  // The room's message says it ended, with no End, no webhook and no admin: the status noticed.
- await until(async()=>(await notices())[0].body===ENDED_TEXT,'the message says it ended once the broadcast has stopped',90000);
+ // #521: the only status reads this depends on are Bob's own, from the page he is still on: one as
+ // his player lets go (above) and one more 30 seconds later. The look at the message that a status
+ // answer starts runs after the response and can be lost (on CI it was: the admin's stage tab,
+ // closed a moment earlier, still had a status request on its way when the broadcast stopped, so
+ // that look never ran and nothing ever asked again). A lost look is run again by the next status
+ // answer, so the longest this takes from here is Bob's second read (30 s) and, when the server
+ // did not see the stop itself, the 20 s the broadcast is given to come back; plus a margin.
+ await until(async()=>(await notices())[0].body===ENDED_TEXT,'the message says it ended once the broadcast has stopped',30000+20000+10000);
+ await until(async()=>statusReads()>=readsBefore+3,'three status reads from Bob\'s page since the stop: as the picture went, as his player let go, and once more 30 seconds later',45000);
  await b.click('[data-stage-exit]');
  await b.waitForFunction(()=>!document.querySelector('[data-stage-root]'));
  await b.waitForFunction(()=>!document.querySelector('[data-stage-watch-live]'),{timeout:20000*scale});
@@ -711,7 +781,7 @@ try{
  assert.equal(await b.$('[data-stage-root]'),null,'after it stops, the stage link is just the room again');
  assert.equal(await b.$('[data-stage-watch-live]'),null);
  // Nothing was tidied away that the next broadcast needs: the same ingress, the same key.
- assert.deepEqual([[...lk.ingresses.values()].map(i=>i.key),count('Ingress/DeleteIngress'),count('Ingress/CreateIngress'),lk.deletedRooms],[[FAKE_KEY_2],1,2,[]],'the room keeps its ingress and key when a broadcast stops');
+ assert.deepEqual([[...lk.ingresses.values()].map(i=>i.key),count('Ingress/DeleteIngress'),count('Ingress/CreateIngress')],[[FAKE_KEY_2],1,2],'the room keeps its ingress and key when a broadcast stops');
  // #503: the same message now says it ended, and the bell entry is gone with it.
  assert.deepEqual((await notices()).map(n=>n.body),[ENDED_TEXT]);
  assert.deepEqual(await alerted(notice.id),[],'the alerts are taken back when the broadcast ends');
@@ -778,10 +848,57 @@ try{
  await a.click('[data-stage-key-reset-confirm]');
  await a.waitForFunction(old=>document.querySelector('[data-stage-key]')?.value!==old,{timeout:30000*scale},FAKE_KEY_2);
  assert.equal(await keyShown(a),FAKE_KEY_3);
- assert.deepEqual([lk.publishing,[...lk.ingresses.values()].map(i=>i.key),lk.deletedRooms],[false,[FAKE_KEY_3],[]],'the old ingress is gone, and its broadcast with it');
- await waitPlayer(a,'waiting');
+ assert.deepEqual([lk.publishing,[...lk.ingresses.values()].map(i=>i.key)],[false,[FAKE_KEY_3]],'the old ingress is gone, and its broadcast with it');
+ // #522: the reset closes the LiveKit room at once, so the admin's player (and anyone else's) is
+ // disconnected by the server and says the broadcast has ended.
+ await waitPlayer(a,'ended');
+ assert.equal(lk.deletedRooms.at(-1),'chat-main');assert.deepEqual([...lk.people.keys()],[],'nobody is left connected after a reset');
  await a.waitForFunction(()=>document.querySelector('[data-stage-broadcast]').dataset.stageBroadcast==='ready',{timeout:20000*scale});
  await until(async()=>(await notices())[1].body===ENDED_TEXT,'the message says it ended after a reset',60000);
  assert.deepEqual(alice.errors,[]);
  console.log('PASS later broadcast: announced again on the same key, not to a muted member or a bot; a drop and return inside 10 minutes tells nobody again; the admin connects only while it is live; a reset cuts it off');
+
+ // #522: a member has two seats in a room. Bob watches on one screen, then a second, then a third.
+ {lk.publishing=true;lk.startedAt=Date.now();await webhook('ingress_started');
+  const bobMember=(await sql('select id from longboard_chat_members where user_id=$1',[BOB]))[0].id,seats=[1,2].map(n=>`${bobMember}#0000000${n}`);
+  const bobSeats=()=>[...lk.people.keys()].filter(identity=>identity.startsWith(bobMember+'#')).sort();
+  const screen=async()=>{const who=await newPage();await signIn(who.page,base,'bob@example.test',{composer:LB,next:'/chat?room=main&stage=1'});
+   await who.page.waitForSelector('[data-stage-root]',{timeout:60000*scale});await waitPlayer(who.page,'live');return who;};
+  const identities=who=>who.page.evaluate(()=>window.__stageFeed.connects.map(c=>JSON.parse(atob(c.token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))).sub));
+  const message=who=>who.page.$eval('[data-stage-video-message]',e=>e.innerText.replace(/\s+/g,' ').trim());
+  const one=await screen();
+  assert.deepEqual(bobSeats(),[seats[0]],'the first screen takes the member\'s first seat');
+  const two=await screen();
+  assert.deepEqual(bobSeats(),seats,'a second screen takes the second seat');
+  assert.deepEqual([await playerState(one.page),await playerState(two.page)],['live','live'],'two screens of one member do not knock each other off');
+  // (A connection replaced within ten seconds of being made asks once more by itself: that is two
+  // screens racing for one seat. These two have been watching for longer than that.)
+  await until(()=>Date.now()-lk.people.get(seats[1]).joinedAt>10500,'both screens have been watching a while',40000);
+  const three=await screen();
+  assert.deepEqual(await identities(three),[seats[0]],'a third screen is given the seat that joined longest ago');
+  await waitPlayer(one.page,'error');
+  assert.match(await message(one),/^The live video is playing on two of your other screens Watch here instead$/);
+  assert.deepEqual(await one.page.evaluate(()=>window.__stageFeed.kicked),['replaced'],'the oldest screen was replaced by the third');
+  assert.deepEqual(bobSeats(),seats,'never more than two connections for one member');
+  assert.deepEqual([await playerState(two.page),await playerState(three.page)],['live','live']);
+  // The replaced screen does not fight back by itself (that would only knock another screen off)...
+  await sleep(4000);
+  assert.deepEqual([await playerState(one.page),(await feedOf(one.page)).connects,await playerState(two.page),await playerState(three.page)],['error',1,'live','live'],'a replaced screen waits to be asked');
+  // ...the viewer chooses: "Watch here instead" takes over the screen that has now been on longest.
+  await one.page.click('[data-stage-video-retry]');
+  await waitPlayer(one.page,'live');await waitPlayer(two.page,'error');
+  assert.deepEqual(await identities(one),[seats[0],seats[1]]);
+  assert.deepEqual(bobSeats(),seats,'still two connections');
+  for(const who of [one,two,three])for(const identity of await identities(who))assert(seats.includes(identity),`every token was for one of the member's two seats: ${identity}`);
+  // Alice's seats are her own: Bob's screens never touched hers.
+  assert.equal([...lk.people.keys()].filter(identity=>!identity.startsWith(bobMember+'#')).length,lk.people.size-2);
+  // #522: the broadcast ends. The screens say goodbye by themselves, and half a minute after the
+  // stop the server closes the room, so nothing can stay connected to it.
+  const closedBefore=lk.deletedRooms.length;
+  lk.publishing=false;await webhook('ingress_ended');
+  await until(()=>lk.deletedRooms.length>closedBefore&&lk.people.size===0,'the server closes the room after the broadcast ends',60000);
+  await waitPlayer(one.page,'ended');await waitPlayer(three.page,'ended');
+  assert.equal(lk.deletedRooms.length,closedBefore+1,'closed once');
+  for(const who of [one,two,three]){assert.deepEqual(who.errors,[]);await who.context.close();}
+  console.log('PASS two seats: a second screen takes the second seat, a third replaces the oldest, never more than two connections; the server closes the room when the broadcast ends');}
 }finally{await browser.close();stub.close();}

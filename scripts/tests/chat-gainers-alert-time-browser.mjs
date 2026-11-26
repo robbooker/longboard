@@ -20,7 +20,8 @@ const pause=ms=>new Promise(r=>setTimeout(r,ms));
 const {people:[alice,bob]}=await control('identity');
 
 // The alerts below are up to 90 seconds old and must all be today on this machine's clock, or the
-// day line would split them: in the first two minutes after midnight, wait.
+// day line would split them. #525: run-browser-tests.mjs pins this test to 9:00 AM New York (clock in
+// browser-manifest.mjs); run by hand in the first two minutes after midnight, it waits.
 const sinceMidnight=Date.now()-new Date().setHours(0,0,0,0);
 if(sinceMidnight<120000)await pause(120000-sinceMidnight);
 const ago=seconds=>new Date(Date.now()-seconds*1000).toISOString();

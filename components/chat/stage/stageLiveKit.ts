@@ -80,11 +80,13 @@ export const connectStageFeed: StageFeedConnect = async ({ url, token, video, au
       events.video(false);
       if (reason === DisconnectReason.CLIENT_INITIATED) return;
       events.connection(
-        reason === DisconnectReason.ROOM_DELETED ||
-          reason === DisconnectReason.ROOM_CLOSED ||
-          reason === DisconnectReason.PARTICIPANT_REMOVED
+        reason === DisconnectReason.ROOM_DELETED || reason === DisconnectReason.ROOM_CLOSED
           ? "ended"
-          : "failed",
+          : reason === DisconnectReason.PARTICIPANT_REMOVED
+            ? "removed"
+            : reason === DisconnectReason.DUPLICATE_IDENTITY
+              ? "replaced"
+              : "failed",
       );
     });
   // #511: let go of while still connecting: the attempt is abandoned at once, not after it succeeds.

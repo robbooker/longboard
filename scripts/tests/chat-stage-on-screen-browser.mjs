@@ -18,6 +18,11 @@
 //    market cap and "—" for everything else; a ticker Polygon does not know is all "—";
 //  - nothing in the panel says where its numbers come from (no source link, label or note);
 //  - something that is not a ticker is refused in the box; Clear returns everyone to the default.
+// #523:
+//  - the host changing (or clearing) the stock on screen costs no status request at all: not from a
+//    member watching the stage, and not from a member who only has the room open (both hear the
+//    room's signal, which carries the stock itself);
+//  - the lookup for a stock that is not on the table answers only for the stock on screen in that room.
 // CHAT_SHOT_DIR saves admin-set-ticker.png, member-on-screen.png, member-not-on-table.png.
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
@@ -56,6 +61,8 @@ const stub=http.createServer(async(req,res)=>{
  if(call==='Ingress/CreateIngress'){const i={id:`IN_fake${lk.ingresses.size+1}`};lk.ingresses.set(room,i);return send(info(room,i));}
  if(call==='Ingress/DeleteIngress'){const id=body.ingress_id??body.ingressId;for(const [name,i] of lk.ingresses)if(i.id===id){lk.ingresses.delete(name);return send(info(name,i));}return send({code:'not_found',msg:'no such ingress'},404);}
  if(call==='RoomService/DeleteRoom'){lk.rooms.delete(room);return send({});}
+ // #522: the seat lookup for a viewer token. This stand-in keeps no viewers: every seat is free.
+ if(call==='RoomService/GetParticipant')return send({code:'not_found',msg:'participant does not exist'},404);
  // #507: the room's metadata. A room nobody joined does not exist until it is made.
  if(call==='RoomService/ListRooms'){const names=body.names??[];return send({rooms:[...lk.rooms.keys()].filter(name=>!names.length||names.includes(name)).map(roomInfo)});}
  if(call==='RoomService/UpdateRoomMetadata'){if(!lk.rooms.has(room))return send({code:'not_found',msg:'requested room does not exist'},404);lk.rooms.set(room,body.metadata??'');return send(roomInfo(room));}
@@ -156,11 +163,13 @@ const shown=(page,selector)=>page.evaluateHandle(s=>[...document.querySelectorAl
 const ready=page=>page.waitForFunction(()=>{const b=[...document.querySelectorAll('button[aria-label="Chat settings"]')].find(e=>e.checkVisibility());return b&&Object.keys(b).some(k=>k.startsWith('__reactProps$'));},{timeout:60000*scale});
 const waitPlayer=(page,state)=>page.waitForFunction(s=>document.querySelector('[data-stage-video]')?.dataset.stageVideoState===s,{timeout:30000*scale},state);
 const attached=who=>{const end=Date.now()+30000*scale;return (async()=>{while(Date.now()<end){if([...conns.values()].some(c=>c.who===who&&c.channels.has('private:chat:room:main')))return;await sleep(50);}assert.fail(`${who} never joined the room's Ably channel`);})();};
-const newPage=async who=>{const context=await browser.createBrowserContext(),page=await context.newPage(),errors=[],posts=[];
+const newPage=async who=>{const context=await browser.createBrowserContext(),page=await context.newPage(),errors=[],posts=[],statuses=[];
  page.on('pageerror',e=>errors.push(e.message));
  page.on('response',r=>{if(r.url().includes('/api/chat/stage/on-screen'))posts.push(r.status());});
+ // #523: every status request this page makes.
+ page.on('request',r=>{if(r.url().includes('/api/chat/stage/status'))statuses.push(`${Date.now()} ${r.url().replace(base,'')}`);});
  await fakeAbly(page,who);
- await page.setViewport({width:1440,height:900});await page.evaluateOnNewDocument(fakeFeed,STUB);return {who,context,page,errors,posts};};
+ await page.setViewport({width:1440,height:900});await page.evaluateOnNewDocument(fakeFeed,STUB);return {who,context,page,errors,posts,statuses};};
 // The member's (or admin's) stage for LB, opened by its link while the room is live.
 const openStage=async person=>{const page=person.page;
  if(page.url()==='about:blank')await signIn(page,base,`${person.who}@example.test`,{composer:LB,next:'/chat?room=main&stage=1'});
@@ -220,6 +229,18 @@ try{
  {const refused=await b.evaluate(async()=>{const out=[];for(const symbol of ['NEWT',null]){const r=await fetch('/api/chat/stage/on-screen',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({room:'main',symbol})});out.push([r.status,await r.text()]);}return out;});
   assert.deepEqual(refused,[[403,'{"error":"admin_only"}'],[403,'{"error":"admin_only"}']]);assert.equal(lk.rooms.size,0);assert.deepEqual(signals(),[]);}
  console.log('PASS before: nothing set is as before; a member has no box, and the server refuses a member');
+
+ // #523: someone who is in the room but not watching (Bob again, in another browser, with LB open and
+ // no stage). He hears the room's signals like everyone else.
+ const roomOnly=await newPage('bob-room'),r=roomOnly.page;
+ await signIn(r,base,'bob@example.test',{composer:LB,next:'/chat?room=main'});
+ await r.waitForSelector('[data-stage-watch-live]',{visible:true,timeout:60000*scale});await attached('bob-room');
+ assert.equal(await r.$('[data-stage-root]'),null);
+ // Each page's own reads for opening are done (one for a room, and a stage's settle read): from here
+ // on, any status request would have been caused by what the host does below.
+ const quiet=async(pages,ms)=>{for(;;){const last=Math.max(0,...pages.flatMap(page=>page.statuses.map(x=>Number(x.split(' ')[0]))));if(Date.now()-last>=ms)return;await sleep(100);}};
+ await quiet([bob,roomOnly],6500);
+ const statusesBefore={bob:bob.statuses.length,room:roomOnly.statuses.length};
 
  // Not a ticker: refused in the box, nothing sent.
  await a.type('[data-stage-on-screen-input]','12$');await a.keyboard.press('Enter');
@@ -308,7 +329,10 @@ try{
   assert.deepEqual([q.shown,q.source],['ZZZT','lookup']);assert.deepEqual([...new Set(Object.values(q.stats))],[DASH],`no invented values: ${JSON.stringify(q.stats)}`);
   assert.equal(q.heading,'On screen now');assert(!/Gainers Table|Not on/.test(q.words),q.words);assert.equal(p.host,'ZZZT');}
  // A member cannot read the lookup for anything that is not a clean ticker.
- assert.deepEqual(await b.evaluate(async()=>Promise.all(['frsh','FRSH,AEHL','A1'].map(async t=>(await fetch('/api/chat/stage/stock?ticker='+encodeURIComponent(t))).status))),[400,400,400]);
+ assert.deepEqual(await b.evaluate(async()=>Promise.all(['frsh','FRSH,AEHL','A1'].map(async t=>(await fetch('/api/chat/stage/stock?room=main&ticker='+encodeURIComponent(t))).status))),[400,400,400]);
+ // #523: nor for any stock but the one on screen in that room (ZZZT now), nor without naming the room.
+ assert.deepEqual(await b.evaluate(async()=>Promise.all(['/api/chat/stage/stock?room=main&ticker=FRSH','/api/chat/stage/stock?room=main&ticker=AEHL','/api/chat/stage/stock?ticker=ZZZT','/api/chat/stage/stock?room=main&ticker=ZZZT'].map(async url=>{const r=await fetch(url);return [r.status,(await r.json()).error??'ok'];}))),
+  [[409,'not_on_screen'],[409,'not_on_screen'],[400,'invalid_room'],[200,'ok']],'the lookup answers only for the stock on screen in the room');
  console.log('PASS not on the table: price, % today, volume and market cap, dashes for the rest and no words about sources; an unknown ticker is all dashes');
 
  // Clear: everyone is back to the default.
@@ -317,6 +341,16 @@ try{
   assert.deepEqual([p.shown,p.source,p.following,p.heading,p.now],['NEWT','table',true,'On screen now',null],JSON.stringify(p));assert.deepEqual(p.chips,['NEWT!','AEHL']);}
  assert.deepEqual(saved().onScreen,null);assert.deepEqual(signals(),['AEHL','NEWT','FRSH','ZZZT',null]);
  assert.equal(await a.$eval('[data-stage-on-screen-clear]',x=>x.disabled),true,'nothing left to clear');
+ // #523: the host changed the stock five times. Every page in the room heard each signal (the
+ // member who is only in the room included), and none of them asked the status because of one:
+ // not at once, and not in the few seconds after (when a signal about the broadcast is followed up).
+ {const heard=[...conns.values()].filter(c=>c.who==='bob-room'&&c.channels.has('private:chat:room:main')).length;assert(heard>=1,'the member who is only in the room is on the room\'s channel');
+  const lastSignal=Math.max(...published.filter(x=>x.channel==='private:chat:room:main'&&x.data?.onScreen).map(x=>x.at));
+  while(Date.now()-lastSignal<6500)await sleep(100);
+  assert.deepEqual(bob.statuses.slice(statusesBefore.bob),[],'a member watching the stage asks the status nothing when the host changes the stock');
+  assert.deepEqual(roomOnly.statuses.slice(statusesBefore.room),[],'and neither does a member who only has the room open');
+  assert.deepEqual(roomOnly.errors,[]);await roomOnly.context.close();
+  console.log('PASS no herd: five stock changes by the host caused no status request from a watching member or from a member who only has the room open');}
  // And for someone who opens the stage after the clear.
  await openStage(bob);
  {const p=await panel(b);assert.deepEqual([p.shown,p.host,p.heading,p.onVideo],['NEWT','','On screen now',0]);}

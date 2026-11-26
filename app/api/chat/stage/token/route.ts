@@ -1,21 +1,22 @@
-import { randomBytes } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { canAccessChatRoom } from "@/lib/chatAccess";
-import { createChatAdminClient, requestOriginAllowed } from "@/lib/chatAdmin";
+import { createChatAdminClient } from "@/lib/chatAdmin";
 import { requireChatUser } from "@/lib/chatAuth";
 import { findChatMember } from "@/lib/chatMembers";
 import { stageVideoApi } from "@/lib/chatStageLiveKit";
 import { stageReachable } from "@/lib/chatStageLive";
+import { stageBody, stageOriginAllowed } from "@/lib/chatStageRequest";
 import {
+  parseStageRoom,
+  parseStageTab,
   readStageState,
   sharedStageState,
+  stageSeatFor,
   stageVideoConfig,
   stageVideoRoom,
   stageVideoSocketUrl,
-  stageViewerIdentity,
 } from "@/lib/chatStageVideo";
 import { ChatTimingRateLimit } from "@/lib/chatTimings";
-import { parseChatRoom } from "@/lib/publicChat";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,16 +33,26 @@ const limiter = new ChatTimingRateLimit(20, 5 * 60_000);
  * #512: an admin too: a room keeps its stream key for good, so "set up" is no reason to connect;
  * an admin's stage waits for the broadcast without a connection. The token can subscribe and
  * nothing else. It is never logged.
+ * #522:
+ *  - the member's access is read fresh from the database for this (never the 30-second sign-in
+ *    memory): a token is asked for once per watch, and a member who was just suspended or lost the
+ *    room must not get one from a server that has not heard;
+ *  - the token is for one of the member's two seats in the room (lib/chatStageVideo.ts
+ *    stageSeatFor), so one member can never hold more than two connections to a room, whatever
+ *    they ask and whichever servers answer. `tab` (the page's own name for its player) and `seat`
+ *    (which seat it would like) only choose between the member's own seats;
+ *  - it lasts one minute (lib/chatStageLiveKit.ts);
+ *  - the body must be a JSON object that names its room (400 otherwise).
  */
 export async function POST(req: NextRequest) {
-  if (!requestOriginAllowed(req)) return json({ error: "origin_not_allowed" }, 403);
-  const auth = await requireChatUser(req);
+  if (!stageOriginAllowed(req)) return json({ error: "origin_not_allowed" }, 403);
+  const auth = await requireChatUser(req, undefined, { fresh: true });
   if (!auth.ok) return json({ error: auth.error }, auth.status);
   // People watch in a browser; a personal API token or an agent has no use for video.
   if (auth.apiToken || auth.agent || auth.access.botRooms) return json({ error: "browser_only" }, 403);
-  const body = await req.json().catch(() => null);
-  const room = parseChatRoom(body?.room);
-  if (!room) return json({ error: "invalid_room" }, 400);
+  const body = await stageBody(req);
+  const room = parseStageRoom(body?.room);
+  if (!room || !body) return json({ error: "invalid_room" }, 400);
   if (!canAccessChatRoom(auth.access, room)) return json({ error: "room_forbidden" }, 403);
   const config = stageVideoConfig();
   if (!config) return json({ error: "video_off" }, 404);
@@ -59,11 +70,10 @@ export async function POST(req: NextRequest) {
   }
   if (!member) return json({ error: "member_required" }, 403);
   try {
-    const token = await api.viewerToken(
-      stageVideoRoom(room),
-      stageViewerIdentity(member.id, randomBytes(4).toString("hex")),
-      member.display_name,
-    );
+    const videoRoom = stageVideoRoom(room);
+    const tab = parseStageTab(body.tab);
+    const identity = await stageSeatFor(api, videoRoom, member.id, tab, typeof body.seat === "number" ? body.seat : 1);
+    const token = await api.viewerToken(videoRoom, identity, member.display_name, tab ?? undefined);
     return json({ url: stageVideoSocketUrl(config), token, state });
   } catch {
     return json({ error: "unavailable" }, 503);

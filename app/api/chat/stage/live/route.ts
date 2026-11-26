@@ -1,22 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { canAccessChatRoom } from "@/lib/chatAccess";
-import { requestOriginAllowed } from "@/lib/chatAdmin";
 import { requireChatUser } from "@/lib/chatAuth";
 import { publishRoomEventAfterResponse } from "@/lib/chatRealtimePublish";
 import { isChatAdmin } from "@/lib/chatRole";
+import { stageKeyWasReset, stageMayHaveChanged } from "@/lib/chatStageChange";
 import { stageVideoApi } from "@/lib/chatStageLiveKit";
-import { stageNoticeAfterResponse } from "@/lib/chatStageNotifyServer";
+import { stageBody, stageOriginAllowed } from "@/lib/chatStageRequest";
 import {
   forgetStageState,
+  parseStageRoom,
   readStageKey,
   resetStageKey,
   stageKeyFor,
   stageStateOf,
   stageVideoConfig,
   type StageKey,
-  type StageVideoApi,
 } from "@/lib/chatStageVideo";
-import { parseChatRoom, type ChatRoom } from "@/lib/publicChat";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,24 +40,13 @@ async function adminFor(req: NextRequest, roomParam: unknown) {
   const auth = await requireChatUser(req);
   if (!auth.ok) return { response: json({ error: auth.error }, auth.status) };
   if (!isChatAdmin(auth) || auth.apiToken || auth.agent) return { response: json({ error: "admin_only" }, 403) };
-  const room = parseChatRoom(roomParam);
+  // #522: strictly: a request that names no room is refused, never taken to mean LB.
+  const room = parseStageRoom(roomParam);
   if (!room) return { response: json({ error: "invalid_room" }, 400) };
   if (!canAccessChatRoom(auth.access, room)) return { response: json({ error: "room_forbidden" }, 403) };
   const config = stageVideoConfig();
   if (!config) return { response: json({ error: "video_off" }, 404) };
   return { room, api: stageVideoApi(config), admin: auth.user.id };
-}
-
-/**
- * Everyone showing the room asks its status again. The signal carries no address or key.
- * #503: then, after the answer, the room's "live now" message and its notifications are brought in
- * line with LiveKit (lib/chatStageNotify.ts): the broadcast arriving is announced once, and its
- * stopping (a reset key cuts it off) marks the message as ended.
- */
-function changed(room: ChatRoom, api: StageVideoApi, admin: string) {
-  forgetStageState(room);
-  publishRoomEventAfterResponse(room, { kind: "changed", topics: ["stage"] });
-  stageNoticeAfterResponse(room, api, admin);
 }
 
 /**
@@ -82,15 +70,19 @@ export async function GET(req: NextRequest) {
  *    when the room has none. Nothing is ever deleted or replaced by it.
  *  - "reset": the admin's "Reset key", after confirming. The room's ingress is deleted and a new one
  *    made: the old key stops working at once and a broadcast using it is cut off.
- *  - "refresh": nothing changes at LiveKit; everyone in the room is told to ask the status again
- *    (an admin's player sends it when the broadcast arrives or drops).
+ *    #522: the LiveKit room is then closed, so nobody stays connected to a room with no broadcast.
+ *  - "refresh": nothing changes at LiveKit (an admin's player sends it when the broadcast arrives
+ *    or drops). #523: the room's state is read, and only if it is new to this server is everyone
+ *    told to ask the status again and the room's message checked (lib/chatStageChange.ts).
  * There is no start and no end: the room is live while StreamYard is broadcasting to it.
+ * #522: the body must be a JSON object that names its room (400 otherwise, before anything is read from it).
  */
 export async function POST(req: NextRequest) {
-  if (!requestOriginAllowed(req)) return json({ error: "origin_not_allowed" }, 403);
-  const body = await req.json().catch(() => null);
+  if (!stageOriginAllowed(req)) return json({ error: "origin_not_allowed" }, 403);
+  const body = await stageBody(req);
   const gate = await adminFor(req, body?.room);
   if (gate.response) return gate.response;
+  if (!body) return json({ error: "invalid_body" }, 400);
   const { room, api, admin } = gate;
   try {
     if (body.action === "open") {
@@ -104,11 +96,11 @@ export async function POST(req: NextRequest) {
     }
     if (body.action === "reset") {
       const key = await resetStageKey(api, room);
-      changed(room, api, admin);
+      stageKeyWasReset(room, api, admin);
       return json(broadcast(key));
     }
     if (body.action === "refresh") {
-      changed(room, api, admin);
+      await stageMayHaveChanged(room, api, { actor: admin });
       return json({ ok: true });
     }
   } catch {

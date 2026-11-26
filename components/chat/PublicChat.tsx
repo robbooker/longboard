@@ -2732,6 +2732,7 @@ function PublicChatContent({
             admin={stageAdmin}
             video={stageVideoHere}
             stageState={stage.state}
+            gainers={allowedRooms.includes("gainers")}
             hostOnScreen={stage.onScreen}
             onStageRefresh={stage.refresh}
             onExit={leaveStage}

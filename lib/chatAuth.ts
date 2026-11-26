@@ -66,11 +66,17 @@ async function longboardSignIn() {
   }
 }
 
-/** Chat identity does not confer access to any Longboard product API. */
+/**
+ * Chat identity does not confer access to any Longboard product API.
+ * `fresh` (#522, the live video token): who is asking is read from the database for this request,
+ * never taken from the 30-second sign-in memory (lib/chatSessionCache.ts).
+ */
 export async function requireChatUser(
   _req?: NextRequest,
   timing?: ChatServerTiming,
+  options?: { fresh?: boolean },
 ): Promise<ChatAuthResult> {
+  const fresh = options?.fresh === true;
   const step = <T>(name: string, run: () => PromiseLike<T>): PromiseLike<T> =>
     timing ? timing.time(name, run) : run();
   // CHAT-API: a Bearer token never falls back to the browser's sign-in.
@@ -82,7 +88,7 @@ export async function requireChatUser(
   if (lb) {
     // Profile, chat account (created on a first visit), Boardroom tag and ShortScout copy in one call.
     const context = await step("auth_context", () =>
-      readRequestContext.longboard(admin, lb.user, lb.session),
+      readRequestContext.longboard(admin, lb.user, lb.session, fresh),
     );
     if (context.mode === "unavailable") return { ok: false, status: 503, error: "chat_unavailable" };
     if (context.mode === "ok") {
@@ -110,7 +116,7 @@ export async function requireChatUser(
   const token = (await cookies()).get(CHAT_SESSION_COOKIE)?.value;
   if (!validChatLoginSecret(token)) return { ok: false, status: 401, error: "unauthenticated" };
   const tokenHash = chatSecretHash(token);
-  const context = await step("auth_session", () => readRequestContext.session(admin, tokenHash));
+  const context = await step("auth_session", () => readRequestContext.session(admin, tokenHash, fresh));
   if (context.mode === "unavailable") return { ok: false, status: 503, error: "chat_unavailable" };
   if (context.mode !== "ok") return { ok: false, status: 401, error: "unauthenticated" };
   const renewal = context.shortscout;

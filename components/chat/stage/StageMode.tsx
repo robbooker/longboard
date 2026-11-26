@@ -58,6 +58,7 @@ export default function StageMode({
   video,
   stageState,
   hostOnScreen,
+  gainers,
   onStageRefresh,
   onExit,
 }: {
@@ -73,6 +74,8 @@ export default function StageMode({
   stageState: StageState;
   /** #507: the stock the host put on screen for everyone watching this room (null: none). */
   hostOnScreen: string | null;
+  /** #523: this member can read the Gainers data (the stock panel asks for nothing otherwise). */
+  gainers: boolean;
   onStageRefresh: () => void;
   onExit: () => void;
 }) {
@@ -274,6 +277,8 @@ export default function StageMode({
           </div>
         )}
         <StageStockPanel
+          room={room}
+          gainers={gainers}
           host={hostOnScreen}
           picked={picked}
           onPick={setPicked}

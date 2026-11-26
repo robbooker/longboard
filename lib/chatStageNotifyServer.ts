@@ -10,13 +10,21 @@ import { PUSH_JOBS_PER_RUN, processChatPushJobs } from "./chatPush";
 import { publishRoomEvent } from "./chatRealtimePublish";
 import { STAGE_NOTICE_BOT } from "./chatStageNotice";
 import {
+  STAGE_DROP_GRACE_MS,
   stageNoticeRecipients,
   syncStageNotice,
   type StageNotice,
   type StageNoticeStore,
   type StageRecipientReads,
 } from "./chatStageNotify";
-import { forgetStageState, stageVideoRoom, type StageVideoApi } from "./chatStageVideo";
+import {
+  forgetStageState,
+  stageNoticeLookDone,
+  stageNoticeLookStarted,
+  stageStoppedFor,
+  stageVideoRoom,
+  type StageVideoApi,
+} from "./chatStageVideo";
 import type { ChatRoom } from "./publicChat";
 
 const chunks = <T>(items: T[], size: number) =>
@@ -132,6 +140,9 @@ export function stageNoticeStore(db: SupabaseClient, actor?: string | null): Sta
   };
 }
 
+/** #521: a look is owed again when it has not reported back this long after the grace it may have to wait out. */
+const STAGE_NOTICE_LOOK_SLACK_MS = 2_000;
+
 /** Sends what the announcement queued, a few rounds at most; the push cron sends whatever is left. */
 async function sendQueuedPushes() {
   for (let round = 0; round < 4; round++) if ((await processChatPushJobs()).processed < PUSH_JOBS_PER_RUN) return;
@@ -147,6 +158,9 @@ async function sendQueuedPushes() {
  * changes once however many servers look, so the room is told once.
  */
 export function stageNoticeAfterResponse(room: ChatRoom, api: StageVideoApi, actor?: string | null, options?: { tellRoom?: boolean }): void {
+  // #521: remembered until it reports back. A look that never does (see lib/chatStageVideo.ts) is
+  // run again by the room's next status answer once the grace and a little more have passed.
+  stageNoticeLookStarted(room, STAGE_DROP_GRACE_MS + STAGE_NOTICE_LOOK_SLACK_MS);
   const run = async () => {
     try {
       const db = createChatAdminClient();
@@ -158,9 +172,11 @@ export function stageNoticeAfterResponse(room: ChatRoom, api: StageVideoApi, act
           wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
           now: Date.now,
           origin: aiInsightsOrigin(),
+          stoppedFor: () => stageStoppedFor(room),
         },
         room,
       );
+      stageNoticeLookDone(room);
       if (options?.tellRoom && (result === "announced" || result === "resumed" || result === "ended")) {
         forgetStageState(room);
         await publishRoomEvent(room, { kind: "changed", topics: ["stage"] });

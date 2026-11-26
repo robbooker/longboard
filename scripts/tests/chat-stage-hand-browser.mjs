@@ -42,7 +42,8 @@ const stub=http.createServer(async(req,res)=>{
  const send=(value,status=200)=>{res.writeHead(status,{'content-type':'application/json','access-control-allow-origin':'*'});res.end(JSON.stringify(value));};
  const url=new URL(req.url,STUB);
  // The page's stand-in player: join, leave, and "what is the room like now".
- if(url.pathname==='/test/join'){lk.people.set(url.searchParams.get('identity'),{name:url.searchParams.get('name'),attributes:{}});return send({});}
+ // (#522: a member's two tabs sit in the member's two seats; the server asks who holds each one.)
+ if(url.pathname==='/test/join'){const tab=url.searchParams.get('tab');lk.people.set(url.searchParams.get('identity'),{name:url.searchParams.get('name'),joinedAt:Date.now(),attributes:tab?{tab}:{}});return send({});}
  if(url.pathname==='/test/leave'){lk.people.delete(url.searchParams.get('identity'));return send({});}
  if(url.pathname==='/test/state')return send({started:lk.ingresses.size>0,publishing:lk.ingresses.size>0&&lk.publishing,
   hands:[...lk.people].filter(([,p])=>p.attributes.hand).map(([identity,p])=>({identity,name:p.name,hand:p.attributes.hand}))});
@@ -52,6 +53,8 @@ const stub=http.createServer(async(req,res)=>{
  const room=body.room_name??body.roomName??body.room;
  if(call==='Ingress/ListIngress')return send({items:[...lk.ingresses].filter(([name])=>!room||name===room).map(([name,i])=>info(name,i))});
  if(call==='RoomService/ListRooms')return send({rooms:[]});
+ if(call==='RoomService/GetParticipant'){const found=room==='chat-main'?lk.people.get(body.identity):null;
+  return found?send({...person([body.identity,found]),joined_at_ms:String(found.joinedAt)}):send({code:'not_found',msg:'participant does not exist'},404);}
  if(call==='RoomService/ListParticipants')return room==='chat-main'&&lk.ingresses.size?send({participants:[...lk.people].map(person)}):send({code:'not_found',msg:'requested room does not exist'},404);
  if(call==='RoomService/UpdateParticipant'){
   const found=room==='chat-main'?lk.people.get(body.identity):null;
@@ -74,7 +77,7 @@ const fakeFeed=stubUrl=>{
  window.__chatStageFeedForTests=async({token,video,events})=>{
   const claims=JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))),identity=claims.sub;
   window.__stageFeed.identities.push(identity);window.__stageFeed.grant=claims.video;
-  const tell=path=>fetch(`${stubUrl}/test/${path}?identity=${encodeURIComponent(identity)}&name=${encodeURIComponent(claims.name??'')}`,{keepalive:true}).catch(()=>{});
+  const tell=path=>fetch(`${stubUrl}/test/${path}?identity=${encodeURIComponent(identity)}&name=${encodeURIComponent(claims.name??'')}&tab=${encodeURIComponent(claims.attributes?.tab??'')}`,{keepalive:true}).catch(()=>{});
   await tell('join');
   const canvas=document.createElement('canvas');canvas.width=1280;canvas.height=720;const ctx=canvas.getContext('2d');let tick=0;
   const draw=()=>{tick++;const g=ctx.createLinearGradient(0,0,1280,720);g.addColorStop(0,'#16324f');g.addColorStop(1,'#3b1f4a');ctx.fillStyle=g;ctx.fillRect(0,0,1280,720);
@@ -245,10 +248,14 @@ try{
  await b.waitForFunction(()=>!document.querySelector('[data-stage-root]'),{timeout:20000*scale});
  {const h=await until(a,h=>h.list.names.length===0&&h.count==='','Bob left, and his hand with him');assert.match(h.list.words,/Nobody has a hand up/);}
  assert.equal((await until(m,h=>h.count==='','Mallory\'s count is empty too')).button,'Raise hand');
+ assert.equal(lk.people.has(bobId),false,'his participant left the LiveKit room with him');
+ const leftAt=Date.now();
  await openStage(bob);
- const bobAgain=await identityOf(b);assert.notEqual(bobAgain,bobId,'a new connection is a new participant');
+ // #522: he is back in one of his own two seats (so possibly under the same identity), as a NEW
+ // participant: it joined after he left, and it has no hand.
+ const bobAgain=await identityOf(b);assert.match(bobAgain,new RegExp(`^${bobId.split('#')[0]}#0000000[12]$`),'a member\'s connection is always in one of their two seats');
+ assert(lk.people.get(bobAgain).joinedAt>=leftAt&&!lk.people.get(bobAgain).attributes.hand,'a new connection is a new participant, hand down');
  {const h=await hands(b);assert.deepEqual([h.button,h.pressed,h.count],['Raise hand','false',''],'back with the hand down');}
- assert.equal(lk.people.has(bobId),false);
  console.log('PASS a hand goes when its owner disconnects, and a fresh connection starts with it down');
 
  // The broadcast ends: every hand is gone, and the next one starts with none.

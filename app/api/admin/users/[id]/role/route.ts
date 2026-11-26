@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { requireAdmin } from "@/lib/auth";
 import { forgetChatUser } from "@/lib/chatSessionCache";
+import { removeStageViewerAfterResponse } from "@/lib/chatStageRemove";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -57,5 +58,8 @@ export async function POST(
 
   // #489: the cached chat sign-in carries the role (admin), so drop it on this instance.
   forgetChatUser(id);
+  // #522: an admin made a member again leaves any live video; their player asks for a new token,
+  // which is given only for rooms they may still watch (best effort, after the response).
+  if (nextRole === "user") removeStageViewerAfterResponse(id);
   return NextResponse.json(data);
 }

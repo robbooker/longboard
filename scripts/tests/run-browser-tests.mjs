@@ -52,8 +52,6 @@ function plan(t) {
   const namedDb = Number(text.match(/127\.0\.0\.1:(5\d{4})(?!\d)/)?.[1]) || null;
   const db = t.db ?? namedDb ?? app + 51200;
   const preload = t.preload === false ? null : t.preload ?? (existsSync(join(dir, `${base}-preload.mjs`)) ? `${base}-preload.mjs` : null);
-  // Next re-reads NODE_OPTIONS and keeps one value per flag, so two --import files would break it.
-  if (t.clock && preload) throw Error(`${t.name}: clock and a Next preload can't both be loaded with --import`);
   return { ...t, file, fixture, app, db, preload, portEnv: t.portEnv ?? Boolean(namedDb && fixture !== 'shared') };
 }
 
@@ -186,9 +184,20 @@ function appEnv(t, dbPort, appPort, preload, off = 0) {
     for (const [key, value] of Object.entries(vars)) env[key] = off && typeof value === 'string' ? value.replace(/\b(127\.0\.0\.1|localhost):(\d{4,5})\b/g, (_, host, port) => `${host}:${Number(port) + off}`) : value;
     if (require && !node.includes(`--require ${require}`)) node.push(`--require ${require}`);
   }
-  if (preload) node.push(`--import ./scripts/tests/${preload}`);
+  const imported = nextImport(t, preload);
+  if (imported) node.push(`--import ./scripts/tests/${imported}`);
   if (node.length) env.NODE_OPTIONS = node.join(' ');
   return env;
+}
+// The one file the Next server loads with --import. Next re-reads NODE_OPTIONS and keeps one value
+// per flag, so two --import files would break it: a test with both a pinned clock and a preload
+// (#525) gets one small file that loads the clock first, then the preload.
+function nextImport(t, preload) {
+  if (!t.clock || !preload) return t.clock ? 'test-clock.mjs' : preload;
+  const name = `.gen-clock-${preload.replace(/^\./, '')}`;
+  writeFileSync(join(dir, name), `import './test-clock.mjs';\nimport './${preload}';\n`);
+  temp.add(join(dir, name));
+  return name;
 }
 
 async function runOnce(t, base) {
@@ -199,8 +208,9 @@ async function runOnce(t, base) {
   const clockImport = t.clock ? '--import ./scripts/tests/test-clock.mjs' : '';
   const clockEnv = t.clock ? { CHAT_TEST_CLOCK_OFFSET_MS: String(offsetToEastern(t.clock)) } : {};
   const withClock = env => t.clock ? { ...env, ...clockEnv, NODE_OPTIONS: [env.NODE_OPTIONS, clockImport].filter(Boolean).join(' ') } : env;
-  // The debug preload saves a screenshot and the page text when a wait fails (see the file).
-  const testEnv = withClock({ NODE_OPTIONS: ['--import ./scripts/tests/browser-debug-preload.mjs', t.testNodeOptions].filter(Boolean).join(' '), CHAT_BROWSER_DEBUG_DIR: `${base}.debug`, ...(t.sharedEnv ?? {}) });
+  // The debug preload saves a screenshot and the page text when a wait fails (see the file). #525: a
+  // pinned test also loads test-clock-pages.mjs, which moves the clock of every page it opens.
+  const testEnv = withClock({ NODE_OPTIONS: ['--import ./scripts/tests/browser-debug-preload.mjs', t.clock && '--import ./scripts/tests/test-clock-pages.mjs', t.testNodeOptions].filter(Boolean).join(' '), CHAT_BROWSER_DEBUG_DIR: `${base}.debug`, ...(t.sharedEnv ?? {}) });
   rmSync(`${base}.debug`, { recursive: true, force: true });
   const timeout = (t.timeout ?? 240) * 1000;
   const runTest = async file => {
@@ -243,7 +253,7 @@ async function runOnce(t, base) {
       if (tries < (inUse ? 2 : 1)) { await sleep(inUse ? 10000 : 2000); continue; }
       return { code: 1, error: `fixture did not listen on ${db}` };
     }
-    dev = start(process.execPath, ['node_modules/next/dist/bin/next', 'dev', '--port', String(app)], withClock(appEnv(t, db, app, t.preload && names[t.preload], off)), logs.dev);
+    dev = start(process.execPath, ['node_modules/next/dist/bin/next', 'dev', '--port', String(app)], { ...appEnv(t, db, app, t.preload && names[t.preload], off), ...clockEnv }, logs.dev);
     if (!await until(() => fetchOk(`http://localhost:${app}/login`, 120000), 240, alive(dev))) return { code: 1, error: 'Next dev server did not start' };
     // Compile the chat pages and the read routes before the test's clock starts: a dev server
     // compiles each route on its first request, which on CI can outlast a test's short waits.
