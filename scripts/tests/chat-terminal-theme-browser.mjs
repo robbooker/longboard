@@ -32,6 +32,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const STACK=/^"JetBrainsMono Nerd Font", "JetBrainsMono NF", "JetBrains Mono"/;
 
 // Three of today's gainers for the table (the fake snapshot knows AEHL, NEWT and FRSH).
+// #525: up to ten minutes old and all today in New York, which run-browser-tests.mjs sees to by pinning this test to 9:00 AM there (clock in browser-manifest.mjs).
 let source=Date.now()%1e9; // unique message ids, so the test can run twice against one fixture
 const ago=s=>new Date(Date.now()-s*1000).toISOString();
 for(const [sym,secondsAgo,vol] of [['AEHL',600,300000],['NEWT',300,450000],['FRSH',120,2000000]])

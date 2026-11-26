@@ -116,7 +116,7 @@ const newPage=async viewport=>{const context=await browser.createBrowserContext(
 const openRoom=async(who,path='/chat?room=main')=>{
  const page=who.page;await page.goto('about:blank');await sleep(100);who.stageAnswers.length=0;
  await page.goto(base+path);
- for(let waited=0;;waited+=100){const answer=who.stageAnswers.find(x=>/^200 \/api\/chat\/stage\/status\?room=main \{/.test(x));
+ for(let waited=0;;waited+=100){const answer=who.stageAnswers.find(x=>/^200 \/api\/chat\/stage\/status\?room=main(&fresh=1)? \{/.test(x));
   if(answer){await sleep(400);return JSON.parse(answer.slice(answer.indexOf('{'))).state;}
   assert(waited<90000*scale,`no status answer: ${who.stageAnswers.join(' | ')}`);await sleep(100);}};
 const shot=async(page,name)=>{if(shots)await page.screenshot({path:`${shots}/${name}.png`});};

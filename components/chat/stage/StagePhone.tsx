@@ -33,7 +33,7 @@ export function stagePhoneView(input: {
 }): StagePhoneView {
   if (input.picture) return "live";
   if (input.state === "off" || input.link === "ended" || input.gone) return "ended";
-  if (input.link === "failed") return "error";
+  if (input.link === "failed" || input.link === "replaced") return "error";
   if (input.link === "connecting" && input.state === "live") return "connecting";
   return input.seen ? "stopped" : "waiting";
 }
@@ -123,6 +123,8 @@ export default function StagePhone({
     listening: !muted,
     pip,
     resume: true,
+    // #522: a phone asks for the member's second seat, so it and a computer's stage never pick the same one.
+    seat: 2,
   });
   const [seen, setSeen] = useState(false);
   useEffect(() => {
@@ -344,7 +346,9 @@ export default function StagePhone({
               {view === "ended"
                 ? "The broadcast has ended"
                 : view === "error"
-                  ? "Couldn’t connect to the live video"
+                  ? link === "replaced"
+                    ? "The live video is playing on two of your other screens"
+                    : "Couldn’t connect to the live video"
                   : view === "connecting"
                     ? "Connecting to the live video…"
                     : view === "stopped"
@@ -357,7 +361,7 @@ export default function StagePhone({
               </button>
             ) : view === "error" ? (
               <button type="button" className={styles.action} data-stage-video-retry onClick={retry}>
-                Try again
+                {link === "replaced" ? "Watch here instead" : "Try again"}
               </button>
             ) : view === "connecting" ? null : (
               <span>{view === "stopped" ? "If it comes back, it plays here by itself." : "The video starts here by itself."}</span>

@@ -33,7 +33,7 @@ export function stagePlayerView(input: {
   if (!input.video) return "preview";
   if (input.picture) return "live";
   if (input.state === "off" || input.link === "ended" || input.gone) return input.started ? "ended" : "preview";
-  if (input.link === "failed") return "error";
+  if (input.link === "failed" || input.link === "replaced") return "error";
   if (input.link === "connecting" && input.state === "live") return "connecting";
   return "waiting";
 }
@@ -105,6 +105,10 @@ export default function StageVideo({
     volume: muted || paused ? 0 : volume,
     listening: !paused && !muted && volume > 0,
     pip,
+    // #523: back at the page, or back online (a laptop waking from sleep): a lost connection is made again.
+    resume: true,
+    // #522: a stage tab asks for the member's first seat, a video card for the second.
+    seat: fill ? 2 : 1,
   });
   // The picture has played here: a later "waiting" is the broadcast having stopped, not yet to start.
   const [seen, setSeen] = useState(false);
@@ -247,7 +251,9 @@ export default function StageVideo({
               {view === "ended"
                 ? "The broadcast has ended"
                 : view === "error"
-                  ? "Couldn’t connect to the live video"
+                  ? link === "replaced"
+                    ? "The live video is playing on two of your other screens"
+                    : "Couldn’t connect to the live video"
                   : view === "connecting"
                     ? "Connecting to the live video…"
                     : seen
@@ -256,7 +262,7 @@ export default function StageVideo({
             </span>
             {view === "error" ? (
               <button type="button" className={styles.videoAction} data-stage-video-retry onClick={retry}>
-                Try again
+                {link === "replaced" ? "Watch here instead" : "Try again"}
               </button>
             ) : view === "waiting" ? (
               <span className={styles.secondary}>

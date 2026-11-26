@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { requireAdmin } from "@/lib/auth";
 import { forgetChatUser } from "@/lib/chatSessionCache";
+import { removeStageViewerAfterResponse } from "@/lib/chatStageRemove";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -59,6 +60,8 @@ export async function POST(
 
   // #489: drop this person's cached chat sign-in on this instance (others expire within 30 s).
   forgetChatUser(id);
+  // #522: and they stop watching any live video now (best effort, after the response).
+  if (body.suspended) removeStageViewerAfterResponse(id);
   return NextResponse.json({
     id,
     suspended: body.suspended,

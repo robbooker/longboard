@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { canAccessChatRoom } from "@/lib/chatAccess";
-import { createChatAdminClient, requestOriginAllowed } from "@/lib/chatAdmin";
+import { createChatAdminClient } from "@/lib/chatAdmin";
 import { requireChatUser } from "@/lib/chatAuth";
 import { isStageRoom } from "@/lib/chatStageLive";
 import { findChatMember } from "@/lib/chatMembers";
@@ -14,9 +14,9 @@ import {
 } from "@/lib/chatStageHand";
 import { stageReachable } from "@/lib/chatStageLive";
 import { stageHandApi, stageVideoApi } from "@/lib/chatStageLiveKit";
-import { readStageState, sharedStageState, stageVideoConfig, stageVideoRoom } from "@/lib/chatStageVideo";
+import { stageBody, stageOriginAllowed } from "@/lib/chatStageRequest";
+import { parseStageRoom, readStageState, sharedStageState, stageVideoConfig, stageVideoRoom } from "@/lib/chatStageVideo";
 import { ChatTimingRateLimit } from "@/lib/chatTimings";
-import { parseChatRoom } from "@/lib/publicChat";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,12 +43,13 @@ const adminLimiter = new ChatTimingRateLimit(120, 60_000);
  * saved in the database, and viewers' tokens stay watch-only. Nobody is ever put on camera.
  */
 export async function POST(req: NextRequest) {
-  if (!requestOriginAllowed(req)) return json({ error: "origin_not_allowed" }, 403);
+  if (!stageOriginAllowed(req)) return json({ error: "origin_not_allowed" }, 403);
   const auth = await requireChatUser(req);
   if (!auth.ok) return json({ error: auth.error }, auth.status);
   if (auth.apiToken || auth.agent || auth.access.botRooms) return json({ error: "browser_only" }, 403);
-  const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-  const room = parseChatRoom(body?.room);
+  // #522: a JSON object that names its room, read strictly (a missing room is never taken to mean LB).
+  const body = await stageBody(req);
+  const room = parseStageRoom(body?.room);
   if (!room || !body) return json({ error: "invalid_room" }, 400);
   // #524: only the rooms that offer live video (lib/chatStageLive.ts).
   if (!isStageRoom(room)) return json({ error: "stage_not_offered" }, 404);

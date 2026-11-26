@@ -49,6 +49,8 @@ const stub=http.createServer(async(req,res)=>{
  if(call==='Ingress/ListIngress')return send({items:[...lk.rooms].filter(([name])=>!room||name===room).map(([name,i])=>info(name,i))});
  if(call==='Ingress/CreateIngress'){const i={id:`IN_fake_${lk.rooms.size+1}`,key:`FAKE-STREAM-KEY-for-tests-only-${lk.rooms.size+1}`,publishing:false};lk.rooms.set(room,i);return send(info(room,i));}
  if(call==='RoomService/ListRooms')return send({rooms:[]});
+ // #522: the room is closed half a minute after a broadcast stops.
+ if(call==='RoomService/DeleteRoom')return send({});
  return send({code:'unimplemented',msg:call},501);
 });
 await new Promise(r=>stub.listen(54633,'127.0.0.1',r));
@@ -61,8 +63,9 @@ const starts=async room=>{const i=lk.rooms.get(`chat-${room}`);assert(i,`${room}
 const stops=async room=>{Object.assign(lk.rooms.get(`chat-${room}`),{publishing:false,endedAt:Date.now()});await webhook('ingress_ended',room);};
 
 const ALICE='00000000-0000-4000-8000-000000000001',BOB='00000000-0000-4000-8000-000000000002';
-const YT_ID='dQw4w9WgXcQ',YT=`https://www.youtube.com/watch?v=${YT_ID}`,YT_PLAYER=`https://www.youtube-nocookie.com/embed/${YT_ID}?autoplay=1&rel=0`;
-const LB_ID='M7lc1UVf-VE',LB_YT=`https://www.youtube.com/watch?v=${LB_ID}`;
+// Made-up video ids (the right shape, nobody's video): the pictures this test saves are shown to members.
+const YT_ID='Xy12AbCd_-9',YT=`https://www.youtube.com/watch?v=${YT_ID}`,YT_PLAYER=`https://www.youtube-nocookie.com/embed/${YT_ID}?autoplay=1&rel=0`;
+const LB_ID='Ab34CdEf_-7',LB_YT=`https://www.youtube.com/watch?v=${LB_ID}`;
 const LIVE=(name,room)=>`🔴 ${name} is live now. Watch live: https://chat.robbooker.com/chat?room=${room}&stage=1`;
 const WILL_FOLLOW=name=>`The live video in ${name} has ended. The recording will follow.`;
 const RECORDED=(name,url)=>`The live video in ${name} has ended. Watch the recording: ${url}`;
@@ -271,10 +274,5 @@ try{
  await open(alice,'lb-recordings','LB Recordings');
  await a.waitForSelector('[data-recording-video="youtube"]',{visible:true,timeout:30000*scale});
  assert.deepEqual(alice.errors,[]);assert.deepEqual(bob.errors,[]);
- // Only when asked (CHAT_REAL_PLAYER=1, for a picture; never on CI): the real player, from YouTube itself.
- if(shots&&process.env.CHAT_REAL_PLAYER==='1')try{const real=await bob.context.newPage();await real.setViewport({width:1440,height:900});
-  await real.goto(`${base}/chat?room=main`);await real.waitForSelector(card,{visible:true,timeout:60000*scale});await real.click(card+' button');
-  await real.waitForSelector(card+' iframe',{timeout:15000});await sleep(9000);
-  await real.evaluate(sel=>document.querySelector(sel).scrollIntoView({block:'center'}),card);await shot(real,'ended-recording-playing');}catch(error){console.log(`(no picture of the real player: ${error.message})`);}
  console.log('PASS LB: a link posted in LB Recordings appears on LB\'s ended notice by itself; the first link wins; SS Recordings is not LB\'s');
 }finally{await browser.close();stub.close();}

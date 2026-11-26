@@ -20,10 +20,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("next/server", async (original) => ({ ...(await original<typeof import("next/server")>()), after: mocks.after }));
 vi.mock("@/lib/chatAuth", () => ({ requireChatUser: mocks.auth }));
-vi.mock("@/lib/chatAdmin", () => ({
-  createChatAdminClient: () => ({ rpc: mocks.rpc }),
-  requestOriginAllowed: (req: NextRequest) => req.headers.get("origin") !== "https://evil.test",
-}));
+vi.mock("@/lib/chatAdmin", () => ({ createChatAdminClient: () => ({ rpc: mocks.rpc }) }));
 vi.mock("@/lib/chatMembers", () => ({ findChatMember: async () => ({ id: "member-alice", display_name: "Alice" }) }));
 vi.mock("@/lib/chatRealtimePublish", () => ({ publishRoomEventAfterResponse: mocks.publish, publishRoomEvent: mocks.publishNow }));
 vi.mock("@/lib/chatStageLiveKit", async (original) => ({
@@ -40,6 +37,10 @@ vi.mock("@/lib/chatStageLiveKit", async (original) => ({
     roomMetadata: async (room: string) => (mocks.lk.calls.push(`metadata:${room}`), null),
     setRoomMetadata: async (room: string) => void mocks.lk.calls.push(`setMetadata:${room}`),
     viewerToken: async () => "token",
+    viewer: async () => null,
+    removeViewer: async () => false,
+    closeRoom: async (room: string) => void mocks.lk.calls.push(`close:${room}`),
+    videoRooms: async () => [],
   }),
   stageHandApi: () => ({ participants: async (room: string) => (mocks.lk.calls.push(`participants:${room}`), []), setHand: async () => true }),
 }));
@@ -49,6 +50,7 @@ import { GET as liveGet, POST as livePost } from "@/app/api/chat/stage/live/rout
 import { POST as onScreenPost } from "@/app/api/chat/stage/on-screen/route";
 import { POST as handPost } from "@/app/api/chat/stage/hand/route";
 import { POST as recordingPost } from "@/app/api/chat/stage/recording/route";
+import { GET as stockGet } from "@/app/api/chat/stage/stock/route";
 import { STAGE_ROOMS, isStageRoom } from "@/lib/chatStageLive";
 import { stageNoticeAfterResponse } from "@/lib/chatStageNotifyServer";
 import { forgetStageState } from "@/lib/chatStageVideo";
@@ -106,6 +108,7 @@ describe("a room that does not offer live video", () => {
       await onScreenPost(post("/api/chat/stage/on-screen", { room, symbol: "APUS" })),
       await handPost(post("/api/chat/stage/hand", { room, raised: true, identity: "member-alice#abcd1234" })),
       await recordingPost(post("/api/chat/stage/recording", { room, message: NOTICE, url: "https://youtu.be/dQw4w9WgXcQ" })),
+      await stockGet(get(`/api/chat/stage/stock?room=${room}&ticker=APUS`)),
     ]) {
       expect(response.status).toBe(404);
       expect(await response.json()).toEqual({ error: "stage_not_offered" });
@@ -189,8 +192,16 @@ describe("POST /api/chat/stage/recording", () => {
       expect(await response.json()).toEqual({ error: "admin_only" });
     }
     mocks.auth.mockResolvedValue(admin());
-    for (const body of [null, [], "x", {}, { message: NOTICE, url: null }, { room: 7, message: NOTICE, url: null }, { room: "nowhere", message: NOTICE, url: null }])
-      expect((await send(body)).status, JSON.stringify(body)).toBe(400);
+    // #522: the body must be a JSON object that names its room as text; a missing room never means LB.
+    for (const body of [null, [], "x", 5, {}, { message: NOTICE, url: null }, { room: 7, message: NOTICE, url: null }, { room: "", message: NOTICE, url: null }, { room: ["main"], message: NOTICE, url: null }, { room: "nowhere", message: NOTICE, url: null }]) {
+      const response = await send(body);
+      expect(response.status, JSON.stringify(body)).toBe(400);
+      expect(await response.json()).toEqual({ error: "invalid_room" });
+    }
+    // #522: the stricter origin check: no Origin, Sec-Fetch-Site or Referer at all is refused; another site's is too.
+    const bare = new NextRequest("https://example.test/api/chat/stage/recording", { method: "POST", headers: { "Content-Type": "application/json", host: "example.test" }, body: JSON.stringify({ room: "main", message: NOTICE, url: null }) });
+    expect((await recordingPost(bare)).status).toBe(403);
+    expect((await send({ room: "main", message: NOTICE, url: null }, { origin: "null" })).status).toBe(403);
     for (const message of [undefined, "", "not-a-uuid", 5, `${NOTICE} or 1=1`]) expect((await send({ room: "main", message, url: null })).status).toBe(400);
     expect(mocks.rpc).not.toHaveBeenCalled();
   });

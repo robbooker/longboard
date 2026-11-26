@@ -128,8 +128,8 @@ function AppCardBody({ source, active, visible }: CardBodyProps) {
 }
 
 /** #506: just a room's live video. */
-function LiveVideoCardBody({ source }: CardBodyProps) {
-  return <LiveVideoCard room={source as ChatRoom} />;
+function LiveVideoCardBody({ source, visible }: CardBodyProps) {
+  return <LiveVideoCard room={source as ChatRoom} visible={visible} />;
 }
 
 export const CARD_COMPONENTS: Record<CardType, CardComponent> = {

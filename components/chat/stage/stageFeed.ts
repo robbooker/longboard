@@ -13,9 +13,11 @@ export type StageFeedEvents = {
   audioBlocked(blocked: boolean): void;
   /**
    * "connected": in the LiveKit room. "reconnecting": LiveKit is retrying by itself.
-   * "ended": LiveKit closed the room or removed this viewer. "failed": the connection was lost for good.
+   * "ended": LiveKit closed the room. "failed": the connection was lost for good.
+   * #522 "removed": the server removed this viewer (their access changed). "replaced": another of
+   * the member's own screens took this connection's seat (a member has two per room).
    */
-  connection(state: "connected" | "reconnecting" | "ended" | "failed"): void;
+  connection(state: "connected" | "reconnecting" | "ended" | "failed" | "removed" | "replaced"): void;
   /**
    * #508: everyone in the LiveKit room with a raised hand (this viewer included), told again each
    * time it changes. Optional: stageFeedConnect() below listens for it, the player need not.

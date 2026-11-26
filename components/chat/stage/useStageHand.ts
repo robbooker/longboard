@@ -84,6 +84,9 @@ export function useStageHand(room: ChatRoom): StageHandState {
       last.current = { identity: null, raised: false };
     }
     if (identity) last.current = { identity, raised: participants.some((p) => p.identity === identity && p.hand) };
+    // #522: a member's seats are reused, so a new connection can have the identity of a lost one:
+    // it is this viewer's again, hand down (LiveKit dropped the old participant when this one joined).
+    if (identity) setStale((list) => (list.includes(identity) ? list.filter((id) => id !== identity) : list));
   }, [identity, participants, post]);
 
   const run = useCallback(

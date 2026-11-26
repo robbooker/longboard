@@ -16,7 +16,7 @@ import { APP_COMPONENTS } from "./cards/cardComponents";
 import LiveVideoCard from "./cards/LiveVideoCard";
 import { useChatTheme } from "./room/useChatTheme";
 import { chooseDualView } from "@/lib/chatDualView";
-import { useStageLiveRooms } from "./hooks/useStageLiveRooms";
+import { StageRoomsContext, useStageLiveRooms } from "./hooks/useStageLiveRooms";
 import StageWatchLive from "./StageWatchLive";
 import publicStyles from "./PublicChat.module.css";
 import styles from "./QuadChat.module.css";
@@ -177,7 +177,16 @@ function QuadContents({ dual, ...props }: PublicChatProps & { dual?: boolean }) 
     () => layout.flatMap((key) => choices.find((c) => c.key === key)?.room ?? []),
     [layout, choices],
   );
-  const liveRooms = useStageLiveRooms(props.stageVideo && ready && !mobile ? paneRooms : null);
+  // #523: the video-only panes read their room's state from the same reader (on a phone too; a
+  // video pane is only ever offered where live video is set up).
+  const videoRooms = useMemo(
+    () => layout.flatMap((key) => choices.find((c) => c.key === key)?.video ?? []),
+    [layout, choices],
+  );
+  const stageRooms = useStageLiveRooms(
+    ready ? [...(props.stageVideo && !mobile ? paneRooms : []), ...videoRooms] : null,
+  );
+  const liveRooms = stageRooms.live;
   // #415: the Gainers pane carries the Trader Radio control; the toolbar marker covers the rest.
   const gainersShown = layout.some(
     (key, index) =>
@@ -246,6 +255,7 @@ function QuadContents({ dual, ...props }: PublicChatProps & { dual?: boolean }) 
       {!ready ? (
         <p role="status">{error || "Loading your conversations…"}</p>
       ) : (
+        <StageRoomsContext.Provider value={stageRooms}>
         <div className={styles.grid} data-expanded={expanded !== null}>
           {layout.map((key, index) => {
             const choice = choices.find((c) => c.key === key);
@@ -360,7 +370,7 @@ function QuadContents({ dual, ...props }: PublicChatProps & { dual?: boolean }) 
                       return <App key={key} active={active === index} visible={visible} />;
                     })()
                   ) : choice?.video ? (
-                    <LiveVideoCard key={key} room={choice.video} />
+                    <LiveVideoCard key={key} room={choice.video} visible={visible} />
                   ) : choice ? (
                     <PublicChat
                       key={key}
@@ -407,6 +417,7 @@ function QuadContents({ dual, ...props }: PublicChatProps & { dual?: boolean }) 
             );
           })}
         </div>
+        </StageRoomsContext.Provider>
       )}
     </div>
   );

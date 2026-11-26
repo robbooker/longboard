@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { canAccessChatRoom } from "@/lib/chatAccess";
-import { requestOriginAllowed } from "@/lib/chatAdmin";
 import { requireChatUser } from "@/lib/chatAuth";
-import { isStageRoom } from "@/lib/chatStageLive";
 import { publishRoomEventAfterResponse } from "@/lib/chatRealtimePublish";
 import { isChatAdmin } from "@/lib/chatRole";
-import { parseStageTicker } from "@/lib/chatStageLive";
+import { isStageRoom, parseStageTicker } from "@/lib/chatStageLive";
 import { stageVideoApi } from "@/lib/chatStageLiveKit";
-import { forgetStageState, setStageOnScreen, stageVideoConfig } from "@/lib/chatStageVideo";
-import { parseChatRoom } from "@/lib/publicChat";
+import { stageBody, stageOriginAllowed } from "@/lib/chatStageRequest";
+import { forgetStageOnScreen, parseStageRoom, setStageOnScreen, stageVideoConfig } from "@/lib/chatStageVideo";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,15 +22,16 @@ const json = (body: unknown, status = 200) =>
  * room's metadata (no database), where /api/chat/stage/status reads it for anyone who opens the
  * stage later. Open stages are told at once over the room's "stage" signal,
  * which carries the ticker itself.
+ * #522: the body must be a JSON object that names its room (400 otherwise).
  */
 export async function POST(req: NextRequest) {
-  if (!requestOriginAllowed(req)) return json({ error: "origin_not_allowed" }, 403);
-  const body = await req.json().catch(() => null);
+  if (!stageOriginAllowed(req)) return json({ error: "origin_not_allowed" }, 403);
+  const body = await stageBody(req);
   const auth = await requireChatUser(req);
   if (!auth.ok) return json({ error: auth.error }, auth.status);
   if (!isChatAdmin(auth) || auth.apiToken || auth.agent) return json({ error: "admin_only" }, 403);
-  const room = parseChatRoom(body?.room);
-  if (!room) return json({ error: "invalid_room" }, 400);
+  const room = parseStageRoom(body?.room);
+  if (!room || !body) return json({ error: "invalid_room" }, 400);
   // #524: only the rooms that offer live video (lib/chatStageLive.ts).
   if (!isStageRoom(room)) return json({ error: "stage_not_offered" }, 404);
   if (!canAccessChatRoom(auth.access, room)) return json({ error: "room_forbidden" }, 403);
@@ -43,9 +42,10 @@ export async function POST(req: NextRequest) {
   try {
     const onScreen = await setStageOnScreen(stageVideoApi(config), room, symbol);
     if (!onScreen) return json({ error: "not_started" }, 409);
-    // This server reads the room again for the next status request; the signal carries the ticker
-    // for stages already open (and each keeps the newest it has heard of).
-    forgetStageState(room);
+    // This server reads the stock again for the next status request; the signal carries the ticker
+    // for stages already open (and each keeps the newest it has heard of). #523: only the stock is
+    // forgotten: the room's state has not changed, so it is not read from LiveKit again for this.
+    forgetStageOnScreen(room);
     publishRoomEventAfterResponse(room, { kind: "changed", topics: ["stage"], onScreen });
     return json({ onScreen });
   } catch {

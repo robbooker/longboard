@@ -23,14 +23,24 @@ const mocks = vi.hoisted(() => ({
   member: vi.fn(),
   publish: vi.fn(),
   notice: vi.fn(),
-  lk: { ingresses: [] as StageIngress[], calls: [] as string[], made: 0, fail: false, metadata: new Map<string, string>(), failMetadata: false },
+  lk: {
+    ingresses: [] as StageIngress[],
+    calls: [] as string[],
+    made: 0,
+    fail: false,
+    metadata: new Map<string, string>(),
+    failMetadata: false,
+    // #522: who is connected to a video room, by identity (the stand-in for LiveKit's participants).
+    viewers: new Map<string, { joinedAt: number; tab?: string }>(),
+    failViewers: false,
+  },
   quotes: vi.fn(),
   shares: vi.fn(),
 }));
 vi.mock("@/lib/chatGainersQuotes", () => ({ gainersQuotes: mocks.quotes }));
 vi.mock("@/lib/chatGainersShares", () => ({ gainersShares: mocks.shares }));
 vi.mock("@/lib/chatAuth", () => ({ requireChatUser: mocks.auth }));
-vi.mock("@/lib/chatAdmin", () => ({ createChatAdminClient: () => ({}), requestOriginAllowed: (req: NextRequest) => req.headers.get("origin") !== "https://evil.test" }));
+vi.mock("@/lib/chatAdmin", () => ({ createChatAdminClient: () => ({}) }));
 vi.mock("@/lib/chatMembers", () => ({ findChatMember: mocks.member }));
 vi.mock("@/lib/chatRealtimePublish", () => ({ publishRoomEventAfterResponse: mocks.publish }));
 // #503: what the "live now" notice does with a hint is lib/__tests__/chatStageNotify.test.ts; here, only that it is asked.
@@ -66,7 +76,22 @@ vi.mock("@/lib/chatStageLiveKit", async (original) => ({
       if (mocks.lk.failMetadata) throw new Error("down");
       mocks.lk.metadata.set(room, metadata);
     },
-    viewerToken: async (room: string, identity: string, name: string) => `token|${room}|${identity}|${name}`,
+    viewerToken: async (room: string, identity: string, name: string, tab?: string) => `token|${room}|${identity}|${name}${tab ? `|${tab}` : ""}`,
+    viewer: async (room: string, identity: string) => {
+      mocks.lk.calls.push(`viewer:${room}:${identity}`);
+      if (mocks.lk.failViewers) throw new Error("down");
+      return mocks.lk.viewers.get(identity) ?? null;
+    },
+    removeViewer: async (room: string, identity: string) => {
+      mocks.lk.calls.push(`remove:${room}:${identity}`);
+      return mocks.lk.viewers.delete(identity);
+    },
+    closeRoom: async (room: string) => {
+      mocks.lk.calls.push(`close:${room}`);
+      mocks.lk.metadata.delete(room);
+      mocks.lk.viewers.clear();
+    },
+    videoRooms: async () => ["chat-main"],
   }),
 }));
 import { GET as status } from "@/app/api/chat/stage/status/route";
@@ -75,7 +100,16 @@ import { GET as liveGet, POST as livePost } from "@/app/api/chat/stage/live/rout
 import { POST as webhook } from "@/app/api/chat/stage/livekit-webhook/route";
 import { POST as onScreenPost } from "@/app/api/chat/stage/on-screen/route";
 import { GET as stockGet } from "@/app/api/chat/stage/stock/route";
-import { forgetStageState, forgetStageWebhooks, stageNoticeLookDone, stageNoticeLookStarted, STAGE_NOTICE_FOLLOW_UP_GAP_MS } from "@/lib/chatStageVideo";
+import { forgetStageChanges, stageChangeTiming } from "@/lib/chatStageChange";
+import {
+  STAGE_NOTICE_FOLLOW_UP_GAP_MS,
+  STAGE_SETTLED_MEMORY_MS,
+  STAGE_STATE_MEMORY_MS,
+  forgetStageState,
+  forgetStageWebhooks,
+  stageNoticeLookDone,
+  stageNoticeLookStarted,
+} from "@/lib/chatStageVideo";
 
 const access = { longboard: true, boardroom: true, shortscout: false, admin: false };
 const member = (over: Record<string, unknown> = {}) => ({ ok: true, user: { id: "acct-bob", email: "bob@example.test", role: "user" }, access, serverSession: false, ...over });
@@ -86,9 +120,24 @@ const post = (path: string, body: unknown, headers: Record<string, string> = {})
   new NextRequest(`https://example.test${path}`, { method: "POST", headers: { "Content-Type": "application/json", origin: "https://example.test", host: "example.test", ...headers }, body: JSON.stringify(body) });
 const live = (publishing: boolean): StageIngress[] => [{ id: "IN_0", url: "rtmps://fake.livekit.test/x", streamKey: FAKE_STREAM_KEY, publishing }];
 
+/** Lets the work a route leaves for "after the response" (which runs at once outside a request) finish. */
+const settled = async () => {
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+};
+/** The LiveKit calls so far, without the per-seat lookups a token makes. */
+const lkCalls = () => mocks.lk.calls.filter((call) => !call.startsWith("viewer:"));
+const waits: number[] = [];
+
 beforeEach(() => {
   vi.clearAllMocks();
   forgetStageState();
+  // The grace before a room is closed, and the second look after a webhook, do not really wait here.
+  waits.length = 0;
+  forgetStageChanges();
+  stageChangeTiming.wait = async (ms) => void waits.push(ms);
+  mocks.lk.viewers = new Map();
+  mocks.lk.failViewers = false;
   forgetStageWebhooks();
   mocks.lk.ingresses = [];
   mocks.lk.calls = [];
@@ -144,6 +193,146 @@ describe("GET /api/chat/stage/status", () => {
     await Promise.all(Array.from({ length: 25 }, () => status(get("/api/chat/stage/status?room=main"))));
     await status(get("/api/chat/stage/status?room=main"));
     expect(mocks.lk.calls).toEqual(["list:chat-main", "metadata:chat-main"]);
+  });
+  it("#523: a room at rest costs ordinary chat almost nothing: waiting is remembered for half a minute, nothing else is read, and a read caused by a signal is never answered from that memory", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-01-05T15:00:00Z"));
+      const plain = async () => (await (await status(get("/api/chat/stage/status?room=main"))).json()).state;
+      const signalled = async () => (await (await status(get("/api/chat/stage/status?room=main&fresh=1"))).json()).state;
+      // (The room being closed after a stop has its own test below: here its grace never ends.)
+      stageChangeTiming.wait = () => new Promise<void>(() => undefined);
+      mocks.lk.ingresses = live(false);
+      mocks.lk.metadata.set("chat-main", '{"onScreen":"APUS","at":1700000000000}');
+      expect(await (await status(get("/api/chat/stage/status?room=main"))).json()).toEqual({ state: "waiting", video: true, onScreen: null });
+      // One LiveKit call: the ingress list. The stock on screen is not read for a member while nothing is live.
+      expect(mocks.lk.calls).toEqual(["list:chat-main"]);
+      expect(mocks.notice).toHaveBeenCalledTimes(1);
+      // Ordinary room opens and switches for the next half minute: nothing asked of LiveKit, nothing looked at.
+      for (const seconds of [1, 5, 12, 29]) {
+        vi.setSystemTime(new Date(Date.parse("2026-01-05T15:00:00Z") + seconds * 1000));
+        expect(await plain()).toBe("waiting");
+      }
+      expect(mocks.lk.calls).toEqual(["list:chat-main"]);
+      // The broadcast starts and this server is not told (the webhook went to another one). A page
+      // that asks because of the room's signal is answered from LiveKit, not from the long memory...
+      mocks.lk.ingresses = live(true);
+      expect(await plain()).toBe("waiting");
+      expect(await signalled()).toBe("live");
+      // ...and from then on everyone on this server is told live.
+      expect(await plain()).toBe("live");
+      expect(mocks.lk.calls).toEqual(["list:chat-main", "list:chat-main", "metadata:chat-main"]);
+      // Live is only ever remembered for the few seconds.
+      mocks.lk.ingresses = live(false);
+      vi.setSystemTime(new Date(Date.parse("2026-01-05T15:00:29Z") + STAGE_STATE_MEMORY_MS - 1));
+      expect(await plain()).toBe("live");
+      vi.setSystemTime(new Date(Date.parse("2026-01-05T15:00:29Z") + STAGE_STATE_MEMORY_MS));
+      expect(await plain()).toBe("waiting");
+      // A signalled read inside the few seconds shares the answer (a burst costs one call), and reads again after them.
+      const calls = mocks.lk.calls.length;
+      expect(await signalled()).toBe("waiting");
+      expect(mocks.lk.calls).toHaveLength(calls);
+      vi.setSystemTime(new Date(Date.now() + STAGE_STATE_MEMORY_MS));
+      expect(await signalled()).toBe("waiting");
+      expect(mocks.lk.calls).toHaveLength(calls + 1);
+      // The long memory ends by itself: the longest a LIVE button can be late with no signal at all.
+      const at = Date.now();
+      mocks.lk.ingresses = live(true);
+      vi.setSystemTime(new Date(at + STAGE_SETTLED_MEMORY_MS - 1));
+      expect(await plain()).toBe("waiting");
+      vi.setSystemTime(new Date(at + STAGE_SETTLED_MEMORY_MS));
+      expect(await plain()).toBe("live");
+      // The cards' request for several rooms follows the same rule.
+      forgetStageState();
+      mocks.lk.ingresses = live(false);
+      mocks.lk.calls = [];
+      await status(get("/api/chat/stage/status?rooms=main,social"));
+      vi.setSystemTime(new Date(Date.now() + 20_000));
+      await status(get("/api/chat/stage/status?rooms=main,social"));
+      expect([...mocks.lk.calls].sort()).toEqual(["list:chat-main", "list:chat-social"]);
+      await status(get("/api/chat/stage/status?rooms=main,social&fresh=1"));
+      expect([...mocks.lk.calls].sort()).toEqual(["list:chat-main", "list:chat-main", "list:chat-social", "list:chat-social"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it("#523: a failed read is never remembered for long, and a room that has only ever waited is not looked at once a minute", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-01-05T16:00:00Z"));
+      const plain = async () => (await (await status(get("/api/chat/stage/status?room=main"))).json()).state;
+      mocks.lk.fail = true;
+      expect(await plain()).toBe("off");
+      mocks.lk.fail = false;
+      mocks.lk.ingresses = live(false);
+      vi.setSystemTime(new Date(Date.now() + STAGE_STATE_MEMORY_MS));
+      expect(await plain()).toBe("waiting");
+      expect(mocks.notice).toHaveBeenCalledTimes(1);
+      // Ten minutes of ordinary chat in a room at rest: a LiveKit call each half minute, and no look at its message.
+      mocks.lk.calls = [];
+      for (let i = 0; i < 20; i++) {
+        vi.setSystemTime(new Date(Date.now() + STAGE_SETTLED_MEMORY_MS));
+        expect(await plain()).toBe("waiting");
+      }
+      expect(mocks.lk.calls).toEqual(Array.from({ length: 20 }, () => "list:chat-main"));
+      expect(mocks.notice).toHaveBeenCalledTimes(1);
+      // While live, the message is still looked at once a minute (a missed end must be noticed).
+      mocks.lk.ingresses = live(true);
+      vi.setSystemTime(new Date(Date.now() + STAGE_SETTLED_MEMORY_MS));
+      expect(await plain()).toBe("live");
+      expect(mocks.notice).toHaveBeenCalledTimes(2);
+      vi.setSystemTime(new Date(Date.now() + 61_000));
+      expect(await plain()).toBe("live");
+      expect(mocks.notice).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it("#523: an admin is still told the stock on screen while the room waits; a member's page never causes that read", async () => {
+    mocks.lk.ingresses = live(false);
+    mocks.lk.metadata.set("chat-main", '{"onScreen":"APUS","at":1700000000000}');
+    expect((await (await status(get("/api/chat/stage/status?room=main"))).json()).onScreen).toBeNull();
+    expect(mocks.lk.calls).toEqual(["list:chat-main"]);
+    mocks.auth.mockResolvedValue(admin());
+    expect((await (await status(get("/api/chat/stage/status?room=main"))).json()).onScreen).toEqual({ symbol: "APUS", at: 1_700_000_000_000 });
+    expect(mocks.lk.calls).toEqual(["list:chat-main", "metadata:chat-main"]);
+  });
+  it("#522: the room must be named: no room, an empty one or an unknown one is refused, and an empty entry in a list is not LB", async () => {
+    mocks.lk.ingresses = live(true);
+    for (const path of ["/api/chat/stage/status", "/api/chat/stage/status?room=", "/api/chat/stage/status?room=nowhere", "/api/chat/stage/status?fresh=1"]) {
+      const response = await status(get(path));
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: "invalid_room" });
+    }
+    expect(await (await status(get("/api/chat/stage/status?rooms="))).json()).toEqual({ states: {}, video: true });
+    expect(await (await status(get("/api/chat/stage/status?rooms=,,nowhere,"))).json()).toEqual({ states: {}, video: true });
+    expect(mocks.lk.calls).toEqual([]);
+  });
+  it("#522: a broadcast this server saw live and now reads as stopped has its LiveKit room closed after the grace, once; one that came back is left alone", async () => {
+    const fresh = async () => (await (await status(get("/api/chat/stage/status?room=main&fresh=1"))).json()).state;
+    mocks.lk.ingresses = live(true);
+    expect(await fresh()).toBe("live");
+    forgetStageState("main");
+    mocks.lk.ingresses = live(false);
+    expect(await fresh()).toBe("waiting");
+    await settled();
+    expect(waits).toEqual([30_000]);
+    expect(lkCalls().filter((call) => call.startsWith("close"))).toEqual(["close:chat-main"]);
+    // Waiting, and waiting again: nothing more is closed.
+    forgetStageState("main");
+    expect(await fresh()).toBe("waiting");
+    await settled();
+    expect(lkCalls().filter((call) => call.startsWith("close"))).toHaveLength(1);
+    // A stop that is over by the end of the grace (the broadcast came back): the room is not closed.
+    forgetStageState("main");
+    mocks.lk.ingresses = live(true);
+    expect(await fresh()).toBe("live");
+    forgetStageState("main");
+    mocks.lk.ingresses = live(false);
+    stageChangeTiming.wait = async () => void (mocks.lk.ingresses = live(true));
+    expect(await fresh()).toBe("waiting");
+    await settled();
+    expect(lkCalls().filter((call) => call.startsWith("close"))).toHaveLength(1);
   });
   it("answers off when LiveKit cannot be reached", async () => {
     mocks.lk.fail = true;
@@ -226,6 +415,46 @@ describe("GET /api/chat/stage/status", () => {
       vi.setSystemTime(began + 26_000 + 25_000 + 3 * STAGE_NOTICE_FOLLOW_UP_GAP_MS);
       await ask();
       expect(mocks.notice).toHaveBeenCalledTimes(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it("#521 with #523: an owed look is run by an ordinary status answer served from the half-minute memory of waiting, with no LiveKit read to decide; a player's later read is never answered from that memory", async () => {
+    const began = Date.now();
+    vi.useFakeTimers({ now: began, toFake: ["Date"] });
+    try {
+      stageChangeTiming.wait = () => new Promise<void>(() => undefined);
+      mocks.lk.ingresses = live(false);
+      const plain = async () => (await (await status(get("/api/chat/stage/status?room=main"))).json()).state;
+      const caused = async () => (await (await status(get("/api/chat/stage/status?room=main&fresh=1"))).json()).state;
+      expect(await plain()).toBe("waiting");
+      expect(mocks.notice).toHaveBeenCalledTimes(1);
+      // That look never reports back (the stand-in does not, so the test starts it as the real one does).
+      stageNoticeLookStarted("main", 22_000, began);
+      const reads = mocks.lk.calls.length;
+      // Not yet due: an ordinary answer from the long memory runs nothing.
+      vi.setSystemTime(began + 21_000);
+      expect(await plain()).toBe("waiting");
+      expect(mocks.notice).toHaveBeenCalledTimes(1);
+      // Due, and the answer is still the remembered "waiting" (24 s old, far past the few seconds):
+      // the look is run again all the same, and the status itself asks LiveKit nothing.
+      vi.setSystemTime(began + 24_000);
+      expect(await plain()).toBe("waiting");
+      expect(mocks.notice).toHaveBeenCalledTimes(2);
+      expect(mocks.notice).toHaveBeenLastCalledWith("main", expect.anything(), null, { tellRoom: true });
+      expect(mocks.lk.calls.length).toBe(reads);
+      // The player that let go asks once more half a minute later, saying it was caused: that read
+      // is made of LiveKit (never the long memory), so a broadcast that came back, or an end nobody
+      // reported, is seen then; and it too runs a look that is still owed.
+      stageNoticeLookStarted("main", 22_000, began + 24_000);
+      mocks.lk.ingresses = live(true);
+      vi.setSystemTime(began + 29_000);
+      expect(await plain()).toBe("waiting");
+      expect(await caused()).toBe("live");
+      // And a remembered "live" is only ever a few seconds old, so that read cannot be told a stale "live".
+      mocks.lk.ingresses = live(false);
+      vi.setSystemTime(began + 29_000 + STAGE_STATE_MEMORY_MS);
+      expect(await caused()).toBe("waiting");
     } finally {
       vi.useRealTimers();
     }
@@ -330,6 +559,21 @@ describe("POST /api/chat/stage/on-screen (#507)", () => {
     expect(mocks.lk.calls).toEqual([]);
     expect(mocks.publish).not.toHaveBeenCalled();
   });
+  it("#522: the body must be a JSON object that names its room: a missing room never puts a stock on LB's screen", async () => {
+    mocks.auth.mockResolvedValue(admin());
+    mocks.lk.ingresses = live(true);
+    const raw = (body: string) => onScreenPost(new NextRequest("https://example.test/api/chat/stage/on-screen", { method: "POST", headers: { "Content-Type": "application/json", origin: "https://example.test", host: "example.test" }, body }));
+    for (const body of ['{"symbol":"APUS"}', '{"room":null,"symbol":"APUS"}', '{"room":7,"symbol":null}', '{"room":"","symbol":"APUS"}', "null", "[]", '"APUS"', "7", "not json", ""]) {
+      const response = await raw(body);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: "invalid_room" });
+    }
+    const bare = await onScreenPost(new NextRequest("https://example.test/api/chat/stage/on-screen", { method: "POST", headers: { host: "example.test" }, body: '{"room":"main","symbol":"APUS"}' }));
+    expect(bare.status).toBe(403);
+    expect(mocks.lk.calls).toEqual([]);
+    expect(mocks.lk.metadata.size).toBe(0);
+    expect(mocks.publish).not.toHaveBeenCalled();
+  });
   it("sets it for an admin: saved in the LiveKit room, uncached, the room told with the ticker, and the next status has it", async () => {
     mocks.auth.mockResolvedValue(admin());
     mocks.lk.ingresses = live(true);
@@ -386,26 +630,55 @@ describe("POST /api/chat/stage/on-screen (#507)", () => {
 
 describe("GET /api/chat/stage/stock (#507)", () => {
   const gainers = () => member();
-  it("answers Polygon's numbers for one ticker, and nothing more", async () => {
+  const onScreen = (symbol: string | null) => mocks.lk.metadata.set("chat-main", JSON.stringify({ onScreen: symbol, at: 1_700_000_000_000 }));
+  const lookup = (ticker = "FRSH", room = "main") => stockGet(get(`/api/chat/stage/stock?room=${room}&ticker=${ticker}`));
+  it("answers Polygon's numbers for the ticker on screen in that room, and nothing more", async () => {
     mocks.auth.mockResolvedValue(gainers());
-    const response = await stockGet(get("/api/chat/stage/stock?ticker=FRSH"));
+    onScreen("FRSH");
+    const response = await lookup();
     expect(response.status).toBe(200);
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
     expect(await response.json()).toEqual({ ticker: "FRSH", quote: { price: 10, changePct: 100, volume: 12_345_678 }, sharesOutstanding: 120_000_000 });
-    expect(await (await stockGet(get("/api/chat/stage/stock?ticker=ZZZT"))).json()).toEqual({ ticker: "ZZZT", quote: null, sharesOutstanding: null });
     // Polygon down: dashes, not an error page.
     mocks.quotes.mockRejectedValue(new Error("down"));
     mocks.shares.mockRejectedValue(new Error("down"));
-    expect(await (await stockGet(get("/api/chat/stage/stock?ticker=FRSH"))).json()).toEqual({ ticker: "FRSH", quote: null, sharesOutstanding: null });
+    expect(await (await lookup()).json()).toEqual({ ticker: "FRSH", quote: null, sharesOutstanding: null });
+  });
+  it("#523: answers ONLY for the ticker on screen in that room, so it cannot be used to look up other stocks", async () => {
+    mocks.auth.mockResolvedValue(gainers());
+    // Nothing on screen (no LiveKit room at all), then cleared, then another stock: every lookup is refused.
+    for (const set of [() => undefined, () => onScreen(null), () => onScreen("AEHL")]) {
+      forgetStageState();
+      set();
+      const refused = await lookup("FRSH");
+      expect(refused.status).toBe(409);
+      expect(await refused.json()).toEqual({ error: "not_on_screen" });
+    }
+    expect((await lookup("AEHL")).status).toBe(200);
+    expect(mocks.quotes).toHaveBeenCalledTimes(1);
+    expect(mocks.quotes).toHaveBeenCalledWith(["AEHL"]);
+    // What is on screen is this server's few-second memory of the LiveKit room: one read for many lookups.
+    mocks.lk.calls = [];
+    for (let i = 0; i < 5; i++) await lookup("AEHL");
+    expect(mocks.lk.calls).toEqual([]);
+    // The room must be named, be real, and be one the member can read; live video must be set up.
+    expect((await stockGet(get("/api/chat/stage/stock?ticker=AEHL"))).status).toBe(400);
+    expect(await (await stockGet(get("/api/chat/stage/stock?ticker=AEHL"))).json()).toEqual({ error: "invalid_room" });
+    expect((await lookup("AEHL", "nowhere")).status).toBe(400);
+    expect((await lookup("AEHL", "shortscout")).status).toBe(403);
+    delete process.env.LIVEKIT_URL;
+    expect((await lookup("AEHL")).status).toBe(404);
+    expect(mocks.quotes).toHaveBeenCalledTimes(6);
   });
   it("needs a sign-in, the Gainers room and one clean ticker", async () => {
+    onScreen("FRSH");
     mocks.auth.mockResolvedValue({ ok: false, status: 401, error: "unauthenticated" });
-    expect((await stockGet(get("/api/chat/stage/stock?ticker=FRSH"))).status).toBe(401);
+    expect((await lookup()).status).toBe(401);
     mocks.auth.mockResolvedValue(member({ access: { longboard: false, boardroom: false, shortscout: false, admin: false } }));
-    expect((await stockGet(get("/api/chat/stage/stock?ticker=FRSH"))).status).toBe(403);
+    expect((await lookup()).status).toBe(403);
     mocks.auth.mockResolvedValue(gainers());
-    for (const bad of ["", "frsh", "FRSH,AEHL", "TOOLONG", "A1", "%24FRSH", "BRK-B"]) expect((await stockGet(get(`/api/chat/stage/stock?ticker=${bad}`))).status).toBe(400);
-    expect((await stockGet(get("/api/chat/stage/stock"))).status).toBe(400);
+    for (const bad of ["", "frsh", "FRSH,AEHL", "TOOLONG", "A1", "%24FRSH", "BRK-B"]) expect((await lookup(bad)).status).toBe(400);
+    expect((await stockGet(get("/api/chat/stage/stock?room=main"))).status).toBe(400);
     expect(mocks.quotes).not.toHaveBeenCalled();
     expect(mocks.shares).not.toHaveBeenCalled();
   });
@@ -413,29 +686,31 @@ describe("GET /api/chat/stage/stock (#507)", () => {
     vi.useFakeTimers();
     try {
       vi.setSystemTime(new Date("2026-01-05T15:00:00Z"));
+      onScreen("FRSH");
       const as = (id: string) => mocks.auth.mockResolvedValue(member({ user: { id, email: `${id}@example.test`, role: "user" } }));
       as("acct-looker");
       const answers = [];
-      for (let i = 0; i < 62; i++) answers.push((await stockGet(get(`/api/chat/stage/stock?ticker=${i % 2 ? "FRSH" : "ZZZT"}`))).status);
-      expect(answers.slice(0, 60).every((code) => code === 200)).toBe(true);
+      // A lookup for a stock that is not on screen is refused, and still counts.
+      for (let i = 0; i < 62; i++) answers.push((await lookup(i % 2 ? "FRSH" : "ZZZT")).status);
+      expect(answers.slice(0, 60)).toEqual(Array.from({ length: 60 }, (_, i) => (i % 2 ? 200 : 409)));
       expect(answers.slice(60)).toEqual([429, 429]);
-      const refused = await stockGet(get("/api/chat/stage/stock?ticker=FRSH"));
+      const refused = await lookup();
       expect(await refused.json()).toEqual({ error: "rate_limited" });
       expect(refused.headers.get("Cache-Control")).toBe("private, no-store");
       // A refused lookup asks Polygon nothing.
-      expect(mocks.quotes).toHaveBeenCalledTimes(60);
-      expect(mocks.shares).toHaveBeenCalledTimes(60);
+      expect(mocks.quotes).toHaveBeenCalledTimes(30);
+      expect(mocks.shares).toHaveBeenCalledTimes(30);
       // Someone else is not held up, and a bad ticker never counts.
       as("acct-other");
-      expect((await stockGet(get("/api/chat/stage/stock?ticker=FRSH"))).status).toBe(200);
-      for (let i = 0; i < 70; i++) expect((await stockGet(get("/api/chat/stage/stock?ticker=bad1"))).status).toBe(400);
-      expect((await stockGet(get("/api/chat/stage/stock?ticker=FRSH"))).status).toBe(200);
+      expect((await lookup()).status).toBe(200);
+      for (let i = 0; i < 70; i++) expect((await lookup("bad1")).status).toBe(400);
+      expect((await lookup()).status).toBe(200);
       // Five minutes after the first lookup, the account may ask again.
       as("acct-looker");
       vi.setSystemTime(new Date("2026-01-05T15:04:59Z"));
-      expect((await stockGet(get("/api/chat/stage/stock?ticker=FRSH"))).status).toBe(429);
+      expect((await lookup()).status).toBe(429);
       vi.setSystemTime(new Date("2026-01-05T15:05:00Z"));
-      expect((await stockGet(get("/api/chat/stage/stock?ticker=FRSH"))).status).toBe(200);
+      expect((await lookup()).status).toBe(200);
     } finally {
       vi.useRealTimers();
     }
@@ -443,17 +718,82 @@ describe("GET /api/chat/stage/stock (#507)", () => {
 });
 
 describe("POST /api/chat/stage/token", () => {
-  const ask = (room = "main", headers = {}) => token(post("/api/chat/stage/token", { room }, headers));
+  const ask = (room = "main", headers = {}, more: Record<string, unknown> = {}) => token(post("/api/chat/stage/token", { room, ...more }, headers));
+  const identityOf = async (response: Response) => ((await response.json()).token as string).split("|")[2];
   it("gives a member of a live room a watch token named for them", async () => {
     mocks.lk.ingresses = live(true);
     const response = await ask();
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.url).toBe("wss://fake.livekit.test");
-    expect(body.token).toMatch(/^token\|chat-main\|member-bob#[0-9a-f]{8}\|Bob Test$/);
+    expect(body.token).toBe("token|chat-main|member-bob#00000001|Bob Test");
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
     expect(JSON.stringify(body)).not.toContain(SECRET);
     expect(mocks.member).toHaveBeenCalledWith(expect.anything(), "acct-bob");
+  });
+  it("#522: reads who is asking fresh from the database, never from the 30-second sign-in memory", async () => {
+    mocks.lk.ingresses = live(true);
+    await ask();
+    expect(mocks.auth).toHaveBeenCalledExactlyOnceWith(expect.anything(), undefined, { fresh: true });
+    // Suspended a moment ago: the fresh read says so, and no token is made whatever a server remembered.
+    mocks.auth.mockResolvedValue({ ok: false, status: 401, error: "unauthenticated" });
+    const refused = await ask();
+    expect(refused.status).toBe(401);
+    expect((await refused.json()).token).toBeUndefined();
+  });
+  it("#522: a member has two seats in a room; every token is for one of them, whatever is asked", async () => {
+    mocks.lk.ingresses = live(true);
+    mocks.auth.mockResolvedValue(member({ user: { id: "acct-seats", email: "s@example.test", role: "user" } }));
+    const seats = ["member-bob#00000001", "member-bob#00000002"];
+    // Nobody connected: the seat asked for (a stage tab asks for 1, a card or a phone for 2; anything else is 1).
+    expect(await identityOf(await ask("main", {}, { seat: 1 }))).toBe(seats[0]);
+    expect(await identityOf(await ask("main", {}, { seat: 2 }))).toBe(seats[1]);
+    for (const seat of [0, 3, 99, -1, 1.5, "2", null]) expect(await identityOf(await ask("main", {}, { seat }))).toBe(seats[0]);
+    // Each token costs one small lookup per seat, and nothing else of LiveKit.
+    mocks.lk.calls = [];
+    await ask();
+    expect(mocks.lk.calls).toEqual([`viewer:chat-main:${seats[0]}`, `viewer:chat-main:${seats[1]}`]);
+    // One screen connected in seat 1: a second screen gets seat 2 (two tabs do not knock each other off)...
+    mocks.lk.viewers.set(seats[0], { joinedAt: 1_000, tab: "tabaaaaaaa" });
+    expect(await identityOf(await ask("main", {}, { tab: "tabbbbbbbb", seat: 1 }))).toBe(seats[1]);
+    // ...and the first screen reconnecting (the same tab) gets its own seat back, replacing only itself.
+    mocks.lk.viewers.set(seats[1], { joinedAt: 2_000, tab: "tabbbbbbbb" });
+    expect(await identityOf(await ask("main", {}, { tab: "tabaaaaaaa", seat: 2 }))).toBe(seats[0]);
+    expect(await identityOf(await ask("main", {}, { tab: "tabbbbbbbb", seat: 1 }))).toBe(seats[1]);
+    // A third screen: no third seat. It takes the seat that joined longest ago.
+    expect(await identityOf(await ask("main", {}, { tab: "tabccccccc", seat: 2 }))).toBe(seats[0]);
+    mocks.lk.viewers.set(seats[0], { joinedAt: 3_000, tab: "tabccccccc" });
+    expect(await identityOf(await ask("main", {}, { tab: "tabddddddd" }))).toBe(seats[1]);
+    // The tab's name rides on the token (so LiveKit can say who holds a seat); a bad one is dropped.
+    expect((await (await ask("main", {}, { tab: "tabccccccc" })).json()).token).toBe(`token|chat-main|${seats[0]}|Bob Test|tabccccccc`);
+    expect((await (await ask("main", {}, { tab: "<script>" })).json()).token).toMatch(/^token\|chat-main\|member-bob#0000000[12]\|Bob Test$/);
+    // LiveKit cannot say who is connected: a token is still given, and still for one of the two seats.
+    mocks.lk.failViewers = true;
+    expect(seats).toContain(await identityOf(await ask("main", {}, { tab: "tabeeeeeee", seat: 2 })));
+  });
+  it("#522: the limit holds across servers: many tokens from two server instances are only ever for the member's two seats", async () => {
+    mocks.lk.ingresses = live(true);
+    mocks.auth.mockResolvedValue(member({ user: { id: "acct-cap", email: "cap@example.test", role: "user" } }));
+    // A second server instance: its own copy of the route and of everything it remembers (its rate
+    // limit, its memory of the room), talking to the same LiveKit.
+    vi.resetModules();
+    const other = (await import("@/app/api/chat/stage/token/route")).POST;
+    const identities = new Set<string>();
+    for (let i = 0; i < 36; i++) {
+      const route = i % 2 ? other : token;
+      const response = await route(post("/api/chat/stage/token", { room: "main", tab: `tab${String(i).padStart(7, "0")}`, seat: (i % 3) + 1 }));
+      expect(response.status).toBe(200);
+      const identity = ((await response.json()).token as string).split("|")[2];
+      identities.add(identity);
+      // Each one joins: LiveKit keeps one connection per identity, so joining takes that seat over.
+      mocks.lk.viewers.set(identity, { joinedAt: 10_000 + i, tab: `tab${String(i).padStart(7, "0")}` });
+    }
+    expect([...identities].sort()).toEqual(["member-bob#00000001", "member-bob#00000002"]);
+    expect(mocks.lk.viewers.size).toBe(2);
+    // Another member's seats are their own.
+    mocks.member.mockResolvedValue({ id: "member-cara", display_name: "Cara Test", accepts_requests: true });
+    mocks.auth.mockResolvedValue(member({ user: { id: "acct-cara", email: "c@example.test", role: "user" } }));
+    expect(await identityOf(await ask())).toBe("member-cara#00000001");
   });
   it("refuses a member while the room is not live", async () => {
     expect((await ask()).status).toBe(409);
@@ -483,9 +823,24 @@ describe("POST /api/chat/stage/token", () => {
     expect(await response.json()).toEqual({ error: "room_forbidden" });
     expect(mocks.lk.calls).toEqual([]);
   });
+  it("#522: the room must be named, as text, in a JSON object: a missing room is never taken to mean LB", async () => {
+    mocks.lk.ingresses = live(true);
+    const raw = (body: string) => token(new NextRequest("https://example.test/api/chat/stage/token", { method: "POST", headers: { "Content-Type": "application/json", origin: "https://example.test", host: "example.test" }, body }));
+    for (const body of ["{}", '{"room":null}', '{"room":7}', '{"room":["main"]}', '{"room":""}', '{"room":"nowhere"}', "null", "[]", '"main"', "7", "not json", ""]) {
+      const response = await raw(body);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: "invalid_room" });
+    }
+    expect(mocks.lk.calls).toEqual([]);
+  });
   it("refuses a signed-out caller, another site, an API token, an agent and a bot", async () => {
     mocks.lk.ingresses = live(true);
     expect((await ask("main", { origin: "https://evil.test" })).status).toBe(403);
+    // #522: and a request that does not say where it came from at all.
+    const bare = await token(new NextRequest("https://example.test/api/chat/stage/token", { method: "POST", headers: { host: "example.test" }, body: '{"room":"main"}' }));
+    expect(bare.status).toBe(403);
+    expect(await bare.json()).toEqual({ error: "origin_not_allowed" });
+    expect(mocks.auth).not.toHaveBeenCalled();
     mocks.auth.mockResolvedValue({ ok: false, status: 401, error: "unauthenticated" });
     expect((await ask()).status).toBe(401);
     for (const kind of [{ apiToken: true }, { agent: { id: "a" } }, { access: { ...access, botRooms: ["main"] } }]) {
@@ -609,7 +964,10 @@ describe("/api/chat/stage/live (#512: the room's permanent stream address and ke
     const body = await response.json();
     expect(body).toEqual({ state: "waiting", address: "rtmps://fake.livekit.test/x", streamKey: FAKE_STREAM_KEY, created: true });
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
-    expect(mocks.lk.calls).toEqual(["list:chat-main", "delete:IN_0", "create:chat-main"]);
+    await settled();
+    // #522: and the LiveKit room is closed at once (no grace), so nobody stays connected to a room whose broadcast was cut off.
+    expect(mocks.lk.calls).toEqual(["list:chat-main", "delete:IN_0", "create:chat-main", "close:chat-main"]);
+    expect(waits).toEqual([]);
     expect(mocks.lk.ingresses.map((ingress) => ingress.id)).toEqual(["IN_1"]);
     expect(mocks.publish).toHaveBeenCalledExactlyOnceWith("main", { kind: "changed", topics: ["stage"] });
     expect(JSON.stringify(mocks.publish.mock.calls)).not.toMatch(/FAKE-(STREAM|OLD)-KEY/);
@@ -636,6 +994,49 @@ describe("/api/chat/stage/live (#512: the room's permanent stream address and ke
     expect(mocks.lk.calls).toEqual([]);
     expect(mocks.lk.ingresses).toEqual(live(true));
     expect(mocks.publish).not.toHaveBeenCalled();
+  });
+  it("#522: the body must be a JSON object that names its room; a reset that names no room never touches LB", async () => {
+    mocks.auth.mockResolvedValue(admin());
+    mocks.lk.ingresses = live(true);
+    const raw = (body: string) => livePost(new NextRequest("https://example.test/api/chat/stage/live", { method: "POST", headers: { "Content-Type": "application/json", origin: "https://example.test", host: "example.test" }, body }));
+    for (const body of ['{"action":"reset"}', '{"action":"open"}', '{"action":"refresh"}', '{"room":null,"action":"reset"}', '{"room":7,"action":"reset"}', '{"room":"","action":"reset"}', "null", "[]", '"reset"', "7", "not json", ""]) {
+      const response = await raw(body);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: "invalid_room" });
+    }
+    expect((await liveGet(get("/api/chat/stage/live"))).status).toBe(400);
+    expect((await liveGet(get("/api/chat/stage/live?room="))).status).toBe(400);
+    await settled();
+    // Nothing was read, deleted, made or closed, and nobody was told anything.
+    expect(mocks.lk.calls).toEqual([]);
+    expect(mocks.lk.ingresses).toEqual(live(true));
+    expect(mocks.publish).not.toHaveBeenCalled();
+    expect(mocks.notice).not.toHaveBeenCalled();
+    // A request that does not say where it came from is refused before anything else.
+    const bare = await livePost(new NextRequest("https://example.test/api/chat/stage/live", { method: "POST", headers: { host: "example.test" }, body: '{"room":"main","action":"reset"}' }));
+    expect(bare.status).toBe(403);
+    expect(mocks.lk.calls).toEqual([]);
+  });
+  it("#523: an admin player's refresh tells the room only when the state is new to this server, however many players report", async () => {
+    mocks.auth.mockResolvedValue(admin());
+    mocks.lk.ingresses = live(false);
+    // The first report: this server had not acted on the room yet.
+    expect((await act("refresh")).status).toBe(200);
+    expect(mocks.publish).toHaveBeenCalledTimes(1);
+    expect(mocks.notice).toHaveBeenCalledTimes(1);
+    // The broadcast arrives: three admins' players each report it, twice. The room is told once.
+    mocks.lk.ingresses = live(true);
+    for (let i = 0; i < 6; i++) expect((await act("refresh")).status).toBe(200);
+    expect(mocks.publish).toHaveBeenCalledTimes(2);
+    expect(mocks.notice.mock.calls.map((call) => [call[0], call[2]])).toEqual([["main", "acct-alice"], ["main", "acct-alice"]]);
+    // It drops: told once more, and the room is closed after the grace because this server had it live.
+    mocks.lk.ingresses = live(false);
+    for (let i = 0; i < 6; i++) expect((await act("refresh")).status).toBe(200);
+    await settled();
+    expect(mocks.publish).toHaveBeenCalledTimes(3);
+    expect(mocks.notice).toHaveBeenCalledTimes(3);
+    expect(mocks.lk.calls.filter((call) => call.startsWith("close"))).toEqual(["close:chat-main"]);
+    expect(waits).toEqual([30_000]);
   });
   it("#503: reset and the player's refresh each ask for the room's notice to be checked, as that admin; opening and reading do not", async () => {
     mocks.auth.mockResolvedValue(admin());
@@ -685,24 +1086,128 @@ describe("POST /api/chat/stage/livekit-webhook", () => {
     expect(mocks.publish).toHaveBeenCalledExactlyOnceWith("main", { kind: "changed", topics: ["stage"] });
     expect(await (await status(get("/api/chat/stage/status?room=main"))).json()).toMatchObject({ state: "live" });
   });
-  it("handles the broadcast arriving and leaving, and ignores viewers", async () => {
+  // #523. LiveKit reports a start as room_started + ingress_started + track_published, and a stop
+  // as participant_left + ingress_ended + room_finished: six events, two changes.
+  const START = [
+    { event: "room_started", id: "EV_s1", room: { name: "chat-main" } },
+    { event: "ingress_started", id: "EV_s2", ingressInfo: { ingressId: "IN_1", roomName: "chat-main" } },
+    { event: "track_published", id: "EV_s3", room: { name: "chat-main" }, participant: { identity: "stage-broadcast" } },
+  ];
+  const STOP = [
+    { event: "participant_left", id: "EV_e1", room: { name: "chat-main" }, participant: { identity: "stage-broadcast" } },
+    { event: "ingress_ended", id: "EV_e2", ingressInfo: { ingressId: "IN_1", roomName: "chat-main" } },
+    { event: "room_finished", id: "EV_e3", room: { name: "chat-main" } },
+  ];
+  it("#523: the six events of a broadcast starting and stopping tell the room twice, look at its message twice and close the room once", async () => {
+    // This server knows the room as waiting (an admin's player reported it earlier).
+    mocks.lk.ingresses = live(false);
+    expect((await webhook(await signed({ event: "room_finished", id: "EV_0", room: { name: "chat-main" } }))).status).toBe(200);
+    await settled();
+    mocks.publish.mockClear();
+    mocks.notice.mockClear();
+    mocks.lk.calls = [];
+    waits.length = 0;
+    // The broadcast starts.
+    mocks.lk.ingresses = live(true);
+    for (const event of START) expect((await webhook(await signed(event))).status).toBe(200);
+    await settled();
+    expect(mocks.publish).toHaveBeenCalledExactlyOnceWith("main", { kind: "changed", topics: ["stage"] });
+    expect(mocks.notice).toHaveBeenCalledTimes(1);
+    expect(mocks.lk.calls.filter((call) => call.startsWith("close"))).toEqual([]);
+    // Each event still made this server forget and read the state (so its next status answer is right).
+    expect(mocks.lk.calls).toEqual(["list:chat-main", "list:chat-main", "list:chat-main"]);
+    expect(await (await status(get("/api/chat/stage/status?room=main"))).json()).toMatchObject({ state: "live" });
+    // It stops.
+    mocks.lk.ingresses = live(false);
+    for (const event of STOP) expect((await webhook(await signed(event))).status).toBe(200);
+    await settled();
+    expect(mocks.publish).toHaveBeenCalledTimes(2);
+    expect(mocks.notice).toHaveBeenCalledTimes(2);
+    // No admin is behind a webhook.
+    expect(mocks.notice.mock.calls.every((call) => call[0] === "main" && call[2] === undefined)).toBe(true);
+    // #522: after the grace, with the broadcast still stopped, the LiveKit room is closed: once.
+    expect(waits).toEqual([30_000]);
+    expect(mocks.lk.calls.filter((call) => call.startsWith("close"))).toEqual(["close:chat-main"]);
+    // LiveKit repeating all six changes nothing.
+    for (const event of [...START, ...STOP]) expect((await webhook(await signed(event))).status).toBe(200);
+    await settled();
+    expect(mocks.publish).toHaveBeenCalledTimes(2);
+    expect(mocks.notice).toHaveBeenCalledTimes(2);
+    expect(mocks.lk.calls.filter((call) => call.startsWith("close"))).toHaveLength(1);
+  });
+  it("#523: an event that arrives a moment before LiveKit's own answer changes is looked at once more, so a go-live is never swallowed", async () => {
+    mocks.lk.ingresses = live(false);
+    expect((await webhook(await signed({ event: "room_finished", id: "EV_0", room: { name: "chat-main" } }))).status).toBe(200);
+    await settled();
+    mocks.publish.mockClear();
+    mocks.notice.mockClear();
+    waits.length = 0;
+    // All three "started" events arrive while LiveKit still answers "not publishing"; it does a moment later.
+    stageChangeTiming.wait = async (ms) => {
+      waits.push(ms);
+      mocks.lk.ingresses = live(true);
+    };
+    for (const event of START) expect((await webhook(await signed(event))).status).toBe(200);
+    await settled();
+    // One second look (not one per event), and the room is told then.
+    expect(waits).toEqual([3_000]);
+    expect(mocks.publish).toHaveBeenCalledExactlyOnceWith("main", { kind: "changed", topics: ["stage"] });
+    expect(mocks.notice).toHaveBeenCalledTimes(1);
+    expect(await (await status(get("/api/chat/stage/status?room=main"))).json()).toMatchObject({ state: "live" });
+  });
+  it("#523: when LiveKit cannot be read, the room is told and its message checked as before (a hiccup never hides a change)", async () => {
+    mocks.lk.fail = true;
+    expect((await webhook(await signed(START[1]))).status).toBe(200);
+    await settled();
+    expect(mocks.publish).toHaveBeenCalledTimes(1);
+    expect(mocks.notice).toHaveBeenCalledTimes(1);
+    expect(mocks.lk.calls.filter((call) => call.startsWith("close"))).toEqual([]);
+  });
+  it("#522: a server that never saw the room live still closes it when the event itself says the broadcast went; a stray room event closes nothing", async () => {
+    // A cold server: its first event is the room being made (an admin put a stock on screen before the
+    // broadcast). The room is waiting: nothing is closed, so that stock stays.
+    mocks.lk.ingresses = live(false);
+    expect((await webhook(await signed(START[0]))).status).toBe(200);
+    await settled();
+    expect(mocks.lk.calls.filter((call) => call.startsWith("close"))).toEqual([]);
+    // Another cold server, whose first event is the broadcast ending.
+    forgetStageState();
+    mocks.lk.calls = [];
+    expect((await webhook(await signed(STOP[1]))).status).toBe(200);
+    await settled();
+    expect(mocks.lk.calls.filter((call) => call.startsWith("close"))).toEqual(["close:chat-main"]);
+  });
+  it("#522: an event with no id is refused and nothing is done (it could not be told from a repeat)", async () => {
+    mocks.lk.ingresses = live(true);
+    for (const event of [
+      { event: "ingress_started", id: "", ingressInfo: { ingressId: "IN_1", roomName: "chat-main" } },
+      { event: "ingress_started", ingressInfo: { ingressId: "IN_1", roomName: "chat-main" } },
+      { event: "ingress_ended", id: "", ingressInfo: { ingressId: "IN_1", roomName: "chat-main" } },
+    ])
+      expect((await webhook(await signed(event))).status).toBe(400);
+    await settled();
+    expect(mocks.lk.calls).toEqual([]);
+    expect(mocks.publish).not.toHaveBeenCalled();
+    expect(mocks.notice).not.toHaveBeenCalled();
+  });
+  it("handles each room apart, and ignores viewers", async () => {
+    mocks.lk.ingresses = live(true);
     const events = [
       { event: "track_published", id: "EV_a", room: { name: "chat-main" }, participant: { identity: "stage-broadcast" } },
-      { event: "participant_left", id: "EV_b", room: { name: "chat-main" }, participant: { identity: "stage-broadcast" } },
       { event: "room_started", id: "EV_c", room: { name: "chat-social" } },
-      { event: "room_finished", id: "EV_d", room: { name: "chat-social" } },
-      { event: "ingress_ended", id: "EV_e", ingressInfo: { roomName: "chat-main" } },
     ];
     for (const event of events) expect((await webhook(await signed(event))).status).toBe(200);
-    expect(mocks.publish.mock.calls.map((call) => call[0])).toEqual(["main", "main", "social", "social", "main"]);
+    expect(mocks.publish.mock.calls.map((call) => call[0])).toEqual(["main", "social"]);
     mocks.publish.mockClear();
+    mocks.lk.calls = [];
     for (const event of [
-      { event: "participant_joined", id: "EV_f", room: { name: "chat-main" }, participant: { identity: "member-bob#ab12cd34" } },
-      { event: "participant_left", id: "EV_g", room: { name: "chat-main" }, participant: { identity: "member-bob#ab12cd34" } },
+      { event: "participant_joined", id: "EV_f", room: { name: "chat-main" }, participant: { identity: "member-bob#00000001" } },
+      { event: "participant_left", id: "EV_g", room: { name: "chat-main" }, participant: { identity: "member-bob#00000001" } },
       { event: "track_published", id: "EV_h", room: { name: "chat-main" }, participant: { identity: "someone-else" } },
     ])
       expect((await webhook(await signed(event))).status).toBe(200);
     expect(mocks.publish).not.toHaveBeenCalled();
+    expect(mocks.lk.calls).toEqual([]);
   });
   it("refuses a bad signature, a changed body and a missing header", async () => {
     expect((await webhook(await signed(started("EV_2"), "some-other-secret-0123456789abcdef0123"))).status).toBe(401);
@@ -729,13 +1234,17 @@ describe("POST /api/chat/stage/livekit-webhook", () => {
   });
   it("#503: asks for the room's notice to be checked on the broadcast coming or going, never for a viewer, another app or a forgery", async () => {
     const event = (id: string, name: string, identity: string, room = "chat-main") => ({ event: name, id, room: { name: room }, participant: { identity } });
-    for (const sent of [event("N1", "track_published", "stage-broadcast"), event("N2", "participant_left", "stage-broadcast"), started("N3")])
-      expect((await webhook(await signed(sent))).status).toBe(200);
+    mocks.lk.ingresses = live(true);
+    expect((await webhook(await signed(event("N1", "track_published", "stage-broadcast")))).status).toBe(200);
+    mocks.lk.ingresses = live(false);
+    expect((await webhook(await signed(event("N2", "participant_left", "stage-broadcast")))).status).toBe(200);
+    mocks.lk.ingresses = live(true);
+    expect((await webhook(await signed(started("N3")))).status).toBe(200);
     expect(mocks.notice.mock.calls.map((call) => call[0])).toEqual(["main", "main", "main"]);
     // No admin is behind a webhook.
     expect(mocks.notice.mock.calls.every((call) => call[2] === undefined)).toBe(true);
     mocks.notice.mockClear();
-    for (const sent of [event("N4", "participant_joined", "member-bob#ab12cd34"), event("N5", "track_published", "stage-broadcast", "some-other-app")])
+    for (const sent of [event("N4", "participant_joined", "member-bob#00000001"), event("N5", "track_published", "stage-broadcast", "some-other-app")])
       expect((await webhook(await signed(sent))).status).toBe(200);
     expect((await webhook(await signed(started("N6"), "some-other-secret-0123456789abcdef0123"))).status).toBe(401);
     expect(mocks.notice).not.toHaveBeenCalled();
