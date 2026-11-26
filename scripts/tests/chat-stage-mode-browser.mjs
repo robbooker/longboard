@@ -37,9 +37,9 @@ const ago=s=>new Date(Date.now()-s*1000).toISOString();
 let source=1;
 const alert=(sym,secondsAgo,vol)=>sql(`select public.ingest_chat_gainers_alert('-100',$1,$2::timestamptz,$3)`,[source++,ago(secondsAgo),`🚨 ${sym} (+${(40+source).toFixed(1)}%)\nPrice: $2.50\nVolume: ${vol.toLocaleString('en-US')}\nMarket Cap: 12.5M`]);
 const facts=body=>fetch(`${base}/api/chat/gainers/facts`,{method:'POST',headers:{authorization:`Bearer ${TOKEN}`,'content-type':'application/json'},body:JSON.stringify(body)});
-// Today's alerts must be today in New York: not in the first quarter hour after midnight there.
+// Today's alerts must be today in New York. #525: run-browser-tests.mjs pins this test to 9:00 AM there (clock in browser-manifest.mjs), so this only ever stops a run by hand.
 const etMinutes=(()=>{const p=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'numeric',minute:'numeric',hourCycle:'h23'}).formatToParts(new Date()).map(x=>[x.type,x.value]));return Number(p.hour)*60+Number(p.minute);})();
-assert(etMinutes>=15,'run this test at least 15 minutes after midnight in New York');
+assert(etMinutes>=15,'run by hand, without run-browser-tests.mjs and its 9:00 AM New York clock: at least 15 minutes after midnight in New York');
 // Alice is the admin, Bob a member.
 await sql("update profiles set role='admin' where email='alice@example.test'");
 await sql("update profiles set role='user' where email='bob@example.test'");

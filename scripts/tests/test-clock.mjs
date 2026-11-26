@@ -4,8 +4,9 @@
 // tokens and cookies the browser keeps never look expired). It hands that to the fixture, the Next
 // server and the test as CHAT_TEST_CLOCK_OFFSET_MS and loads this file into each with --import, so
 // all three read the same moved clock. The clock still ticks; only the starting time is pinned.
-// PGlite reads the time from JavaScript, so the fixture's now() moves with it. The test passes
-// shiftClock to the browser page (page.evaluateOnNewDocument) so the page agrees too.
+// PGlite reads the time from JavaScript, so the fixture's now() moves with it. #525: the runner also
+// loads test-clock-pages.mjs into the test, which gives every page it opens the same clock, and a
+// test with a Next preload gets one small file that loads this one and then the preload.
 // Test-only: nothing in the app reads CHAT_TEST_CLOCK_OFFSET_MS.
 
 /** Moves `scope`'s Date by `offset` ms: Date.now(), new Date() and Date(). Self-contained (also runs in a page). */

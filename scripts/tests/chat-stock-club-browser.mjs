@@ -36,6 +36,8 @@ const posts=async()=>rowsOf(await sql(`select body,author_label,bot_slug from lo
 // #403: the club's #1 is today's Longboard morning report #1 (its newest version; an older day's
 // report doesn't count). While the report rebuilds (6:45-8:45 AM Central) a new #1 posts, never a
 // stock already posted that day; after that nothing automatic changes.
+// #525: the day is read once here and the app reads it again at every step, so the test must not cross midnight in
+// New York: run-browser-tests.mjs pins it to 9:00 AM there (clock in browser-manifest.mjs).
 const nyDay=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const yesterday=new Date(Date.parse(`${nyDay}T12:00:00Z`)-86_400_000).toISOString().slice(0,10);
 const central=(h,m)=>{ // today's h:m in Chicago, as an ISO time (DST-safe)
