@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { canAccessChatRoom } from "@/lib/chatAccess";
 import { requestOriginAllowed } from "@/lib/chatAdmin";
 import { requireChatUser } from "@/lib/chatAuth";
+import { isStageRoom } from "@/lib/chatStageLive";
 import { publishRoomEventAfterResponse } from "@/lib/chatRealtimePublish";
 import { isChatAdmin } from "@/lib/chatRole";
 import { parseStageTicker } from "@/lib/chatStageLive";
@@ -32,6 +33,8 @@ export async function POST(req: NextRequest) {
   if (!isChatAdmin(auth) || auth.apiToken || auth.agent) return json({ error: "admin_only" }, 403);
   const room = parseChatRoom(body?.room);
   if (!room) return json({ error: "invalid_room" }, 400);
+  // #524: only the rooms that offer live video (lib/chatStageLive.ts).
+  if (!isStageRoom(room)) return json({ error: "stage_not_offered" }, 404);
   if (!canAccessChatRoom(auth.access, room)) return json({ error: "room_forbidden" }, 403);
   const symbol = body.symbol === null ? null : parseStageTicker(body.symbol);
   if (body.symbol !== null && !symbol) return json({ error: "invalid_symbol" }, 400);

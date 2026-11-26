@@ -77,3 +77,13 @@ export function parseStageOnScreen(value: unknown): StageOnScreen | null {
 /** #507: the newer of what is known and what just arrived (the same age: what just arrived). */
 export const newerStageOnScreen = (known: StageOnScreen | null, next: StageOnScreen | null) =>
   next && (!known || next.at >= known.at) ? next : known;
+
+/**
+ * #524: the rooms that offer live video, and the only list of them. They are the conversation rooms
+ * (people talk there, replies and bell alerts work, and the room's notice can be posted and
+ * rewritten) plus Booker Stock Club, where webinars are held. Not offered: Gainers (every post there
+ * is read as a stock alert), What's New, and the announcement and recording rooms (post-only rooms).
+ * The stage routes refuse any other room, the room menu has no "Go live" there, and no status is asked.
+ */
+export const STAGE_ROOMS: readonly string[] = ["main", "shortscout", "social", "developers", "lb-review", "runner-watch", "admins", "ai-insights", "club"];
+export const isStageRoom = (room: unknown): boolean => typeof room === "string" && STAGE_ROOMS.includes(room);

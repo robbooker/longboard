@@ -219,7 +219,7 @@ describe("GET /api/chat/stage/status", () => {
       expect(mocks.notice).toHaveBeenCalledTimes(3);
       // The cards' several-rooms read runs it too, within its one look per request.
       vi.setSystemTime(began + 26_000 + 25_000 + STAGE_NOTICE_FOLLOW_UP_GAP_MS);
-      await ask("/api/chat/stage/status?rooms=main,gainers");
+      await ask("/api/chat/stage/status?rooms=main,social");
       expect(mocks.notice).toHaveBeenCalledTimes(4);
       // It reports back: nothing is owed.
       stageNoticeLookDone("main");
@@ -253,16 +253,16 @@ describe("GET /api/chat/stage/status", () => {
   // #505: Dual, Quad and Six view ask for their cards' rooms in one request.
   it("answers several rooms at once, leaving out rooms the member cannot read or that do not exist", async () => {
     mocks.lk.ingresses = live(true);
-    const response = await status(get("/api/chat/stage/status?rooms=main,gainers,main,nowhere,shortscout"));
+    const response = await status(get("/api/chat/stage/status?rooms=main,social,main,nowhere,shortscout"));
     const body = await response.json();
-    expect(body).toEqual({ states: { main: "live", gainers: "live" }, video: true });
+    expect(body).toEqual({ states: { main: "live", social: "live" }, video: true });
     expect(JSON.stringify(body)).not.toContain(FAKE_STREAM_KEY);
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
     // One LiveKit read per room and nothing else (#507's stock on screen is not asked for cards)...
-    expect([...mocks.lk.calls].sort()).toEqual(["list:chat-gainers", "list:chat-main"]);
+    expect([...mocks.lk.calls].sort()).toEqual(["list:chat-main", "list:chat-social"]);
     // ...and that read is shared with the single-room answer, which adds only its own stock read.
     await status(get("/api/chat/stage/status?room=main"));
-    expect([...mocks.lk.calls].sort()).toEqual(["list:chat-gainers", "list:chat-main", "metadata:chat-main"]);
+    expect([...mocks.lk.calls].sort()).toEqual(["list:chat-main", "list:chat-social", "metadata:chat-main"]);
     mocks.auth.mockResolvedValue(outsider());
     expect(await (await status(get("/api/chat/stage/status?rooms=main,lb-announcements"))).json()).toEqual({ states: {}, video: true });
   });
@@ -270,32 +270,32 @@ describe("GET /api/chat/stage/status", () => {
   // the check of the "live now" message is bounded: one room per request, the rest on a later read.
   it("answers waiting for rooms that only have their key, and checks one room's message per request", async () => {
     mocks.lk.ingresses = live(false);
-    expect(await (await status(get("/api/chat/stage/status?rooms=main,gainers"))).json()).toEqual({ states: { main: "waiting", gainers: "waiting" }, video: true });
+    expect(await (await status(get("/api/chat/stage/status?rooms=main,social"))).json()).toEqual({ states: { main: "waiting", social: "waiting" }, video: true });
     expect(mocks.notice).toHaveBeenCalledTimes(1);
     // Remembered answers check nothing; the next fresh read looks at the room that had to wait.
-    await status(get("/api/chat/stage/status?rooms=main,gainers"));
+    await status(get("/api/chat/stage/status?rooms=main,social"));
     expect(mocks.notice).toHaveBeenCalledTimes(1);
     forgetStageState("main");
-    forgetStageState("gainers");
-    await status(get("/api/chat/stage/status?rooms=main,gainers"));
+    forgetStageState("social");
+    await status(get("/api/chat/stage/status?rooms=main,social"));
     expect(mocks.notice).toHaveBeenCalledTimes(2);
-    expect(mocks.notice.mock.calls.map((call) => call[0]).sort()).toEqual(["gainers", "main"]);
+    expect(mocks.notice.mock.calls.map((call) => call[0]).sort()).toEqual(["main", "social"]);
     expect(mocks.notice.mock.calls.every((call) => call[2] === null && call[3]?.tellRoom === true)).toBe(true);
     // Nothing has changed since: no more checks, however often the cards ask.
     forgetStageState("main");
-    forgetStageState("gainers");
-    await status(get("/api/chat/stage/status?rooms=main,gainers"));
+    forgetStageState("social");
+    await status(get("/api/chat/stage/status?rooms=main,social"));
     expect(mocks.notice).toHaveBeenCalledTimes(2);
     // Rooms never set up ask for no check at all.
     mocks.notice.mockClear();
     forgetStageState();
     mocks.lk.ingresses = [];
-    expect(await (await status(get("/api/chat/stage/status?rooms=main,gainers"))).json()).toEqual({ states: { main: "off", gainers: "off" }, video: true });
+    expect(await (await status(get("/api/chat/stage/status?rooms=main,social"))).json()).toEqual({ states: { main: "off", social: "off" }, video: true });
     expect(mocks.notice).not.toHaveBeenCalled();
   });
   it("asks LiveKit nothing for several rooms when live video is not set up", async () => {
     delete process.env.LIVEKIT_URL;
-    expect(await (await status(get("/api/chat/stage/status?rooms=main,gainers"))).json()).toEqual({ states: { main: "off", gainers: "off" }, video: false });
+    expect(await (await status(get("/api/chat/stage/status?rooms=main,social"))).json()).toEqual({ states: { main: "off", social: "off" }, video: false });
     expect(mocks.lk.calls).toEqual([]);
   });
 });

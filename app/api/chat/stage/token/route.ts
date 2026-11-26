@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { canAccessChatRoom } from "@/lib/chatAccess";
 import { createChatAdminClient, requestOriginAllowed } from "@/lib/chatAdmin";
 import { requireChatUser } from "@/lib/chatAuth";
+import { isStageRoom } from "@/lib/chatStageLive";
 import { findChatMember } from "@/lib/chatMembers";
 import { stageVideoApi } from "@/lib/chatStageLiveKit";
 import { stageReachable } from "@/lib/chatStageLive";
@@ -42,6 +43,8 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const room = parseChatRoom(body?.room);
   if (!room) return json({ error: "invalid_room" }, 400);
+  // #524: only the rooms that offer live video (lib/chatStageLive.ts).
+  if (!isStageRoom(room)) return json({ error: "stage_not_offered" }, 404);
   if (!canAccessChatRoom(auth.access, room)) return json({ error: "room_forbidden" }, 403);
   const config = stageVideoConfig();
   if (!config) return json({ error: "video_off" }, 404);

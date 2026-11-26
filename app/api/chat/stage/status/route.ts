@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { canAccessChatRoom } from "@/lib/chatAccess";
 import { requireChatUser } from "@/lib/chatAuth";
+import { isStageRoom } from "@/lib/chatStageLive";
 import { stageVideoApi } from "@/lib/chatStageLiveKit";
 import { stageNoticeAfterResponse } from "@/lib/chatStageNotifyServer";
 import {
@@ -52,7 +53,7 @@ export async function GET(req: NextRequest) {
   const several = req.nextUrl.searchParams.get("rooms");
   if (several !== null) {
     const rooms = [...new Set(several.split(",").map(parseChatRoom))]
-      .filter((room): room is ChatRoom => !!room && canAccessChatRoom(auth.access, room))
+      .filter((room): room is ChatRoom => !!room && isStageRoom(room) && canAccessChatRoom(auth.access, room))
       .slice(0, MOST_ROOMS);
     const config = stageVideoConfig();
     const api = config && stageVideoApi(config);
@@ -85,6 +86,8 @@ export async function GET(req: NextRequest) {
   const room = parseChatRoom(req.nextUrl.searchParams.get("room"));
   if (!room) return json({ error: "invalid_room" }, 400);
   if (!canAccessChatRoom(auth.access, room)) return json({ error: "room_forbidden" }, 403);
+  // #524: a room that does not offer live video is simply off; LiveKit is not asked.
+  if (!isStageRoom(room)) return json({ state: "off", video: false });
   const config = stageVideoConfig();
   if (!config) return json({ state: "off", video: false });
   const api = stageVideoApi(config);

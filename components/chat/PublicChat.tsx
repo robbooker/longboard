@@ -8,7 +8,7 @@ import { takeEarlyDraft } from "@/lib/chatEarlyDraft";
 import { useChatScrollIntent } from "./hooks/useChatScrollIntent";
 import { useStageStatus } from "./hooks/useStageStatus";
 import { useStagePhone } from "./hooks/useStagePhone";
-import { STAGE_PHONE_QUERY, stageLiveBadge, stagePhoneReachable, stageReachable } from "@/lib/chatStageLive";
+import { STAGE_PHONE_QUERY, isStageRoom, stageLiveBadge, stagePhoneReachable, stageReachable } from "@/lib/chatStageLive";
 import { CHAT_STAGE_OPEN_EVENT } from "@/lib/chatStageNotice";
 import {
   chatPaneVisible,
@@ -471,9 +471,12 @@ function PublicChatContent({
   // a tab of its own). A Dual, Quad or Six view card does not: its page asks once for all its cards.
   // #509: a phone gets its own viewing room (components/chat/stage/StagePhone): only the real video,
   // so no admin preview there, and never over the phone's room list.
-  const stageAdmin = stageMode && isAdmin && !pane && !popout;
-  const stageVideoHere = stageVideo && !pane && !popout;
-  const stage = useStageStatus(stageVideo && !pane && !inlineDm ? room : null);
+  // #524: only in the rooms that offer live video (lib/chatStageLive.ts): elsewhere there is no
+  // "Go live", no stage and no status is asked.
+  const stageRoom = isStageRoom(room);
+  const stageAdmin = stageMode && isAdmin && !pane && !popout && stageRoom;
+  const stageVideoHere = stageVideo && !pane && !popout && stageRoom;
+  const stage = useStageStatus(stageVideo && !pane && !inlineDm && stageRoom ? room : null);
   const [stageWanted, setStageOpen] = useState(false);
   const stagePhone = useStagePhone(stageAdmin || stageVideoHere);
   const stageOpen =
