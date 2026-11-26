@@ -17,7 +17,7 @@
 // Tests use /usr/bin/chromium; CI links the runner's Chrome there.
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync, rmSync, appendFileSync, openSync, closeSync } from 'node:fs';
-import { connect } from 'node:net';
+import { connect, createServer } from 'node:net';
 import { join, resolve } from 'node:path';
 import { PRESETS, TESTS } from './browser-manifest.mjs';
 import { offsetToEastern } from './test-clock.mjs';
@@ -138,6 +138,11 @@ async function stop(child) {
   await child.exited;
 }
 const listening = port => new Promise(r => { const s = connect(port, '127.0.0.1'); s.once('connect', () => { s.destroy(); r(true); }); s.once('error', () => r(false)); });
+// #516: a port can be taken while nothing listens on it. When the kernel hands a fixture's port out
+// as the local end of some outgoing connection, the port stays taken for a minute after that
+// connection closes (TIME-WAIT); connecting to it is refused, so `listening` calls it free, and the
+// fixture then fails with EADDRINUSE. Binding it is the real question, so ask that.
+const bindable = port => new Promise(r => { const s = createServer(); s.once('error', () => r(false)); s.listen(port, '127.0.0.1', () => s.close(() => r(true))); });
 async function until(check, seconds, alive) {
   for (let i = 0; i < seconds * 2; i++) { if (await check()) return true; if (alive && !alive()) return false; await sleep(500); }
   return false;
@@ -213,9 +218,18 @@ async function runOnce(t, base) {
   const app = t.app + off, db = t.db + off;
   let fixture, dev;
   try {
-    // Another run on this machine may hold a port for a moment; wait for it rather than fail.
+    // Another run on this machine may hold a port for a moment; wait for it rather than fail. #516:
+    // "free" means the fixture can bind its port, waited for longer than a closed connection keeps
+    // one (60 s on Linux). Two rounds of fixture starts used to give up after about 55 s.
+    let noted = false;
+    const free = async () => {
+      if (await listening(app) || await listening(db)) return false;
+      if (await bindable(db)) return true;
+      if (!noted) { noted = true; appendFileSync(logs.fixture, `[runner] nothing listens on ${db} but it cannot be bound yet; waiting for it:\n${await holders(db)}\n`); }
+      return false;
+    };
     for (let tries = 0; ; tries++) {
-      if (!await until(async () => !(await listening(app)) && !(await listening(db)), 60)) return { code: 1, error: `port ${app} or ${db} is already in use` };
+      if (!await until(free, 90)) return { code: 1, error: `port ${app} or ${db} is already in use` };
       fixture = start(process.execPath, [`scripts/tests/${names[fixtureFile]}`], withClock({ ...(t.portEnv ? { CHAT_FIXTURE_PORT: String(db), CHAT_APP_PORT: String(app) } : {}), ...(t.sharedEnv ?? {}) }), logs.fixture);
       if (await until(() => listening(db), 180, alive(fixture))) break;
       await stop(fixture);
