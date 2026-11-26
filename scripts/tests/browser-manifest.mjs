@@ -137,6 +137,8 @@ export const TESTS = [
   { name: 'chat-members-welcome', preload: 'chat-members-join-preload.mjs', env: ['members'], timeout: 360 },
   { name: 'chat-gainers-table', env: ['gainersLookup', 'polygon'], timeout: 360, clock: '09:00' },
   // #476: the heading as one slim "About this table" bar; reuses the Gainers Table's fake Polygon.
+  // #528: Gainer Balloons (the app and the Dual, Quad and Six card), with a fake Polygon (chat-gainer-balloons-preload.mjs).
+  { name: 'chat-gainer-balloons', env: ['gainersLookup', 'polygon'], timeout: 600, clock: '09:00' },
   { name: 'chat-gainers-heading', preload: 'chat-gainers-table-preload.mjs', env: ['gainersLookup', 'polygon'], timeout: 360, clock: '09:00' },
   // #458: the overseas marker beside a "US" block, from a fake Short Check (chat-gainers-nexus-preload.mjs).
   { name: 'chat-gainers-nexus', env: ['gainersLookup', 'polygon', 'shortCheck'], timeout: 300, clock: '09:00' },
