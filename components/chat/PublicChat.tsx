@@ -679,11 +679,21 @@ function PublicChatContent({
   }, [loading, room]);
   const [nameState, setNameState] = useState<ActionState>("default");
   const [sendState, setSendState] = useState<ActionState>("default");
+  // #526: after a reload the saved draft comes back once the page takes over. Text typed into the
+  // still-empty box before that (EARLY-TYPING, set just above in the same pass) is kept after it
+  // instead of being replaced by it.
+  const restoreDraft = useCallback(
+    (saved: string) =>
+      setBody((typed) =>
+        typed && typed !== saved ? `${saved}${/\s$/.test(saved) ? "" : " "}${typed}` : saved,
+      ),
+    [],
+  );
   useChatRefreshGuard(
     pane?.conversationId ? undefined : member?.id,
     pane?.conversationId ? null : `room:${room}`,
     body,
-    setBody,
+    restoreDraft,
     uploads.blocked ||
       uploads.files.length > 0 ||
       sendState === "loading" ||
