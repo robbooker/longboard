@@ -1,84 +1,133 @@
-// #503: telling a room its live video is on, once. The database is a small stand-in that keeps the
-// one promise the real one makes (an id is inserted at most once); LiveKit is a list of ingresses.
+// #503: telling a room its live video is on, once. #524: the record of a broadcast is its row in
+// chat_stage_broadcasts; the database here is a small stand-in that keeps the promises the real
+// functions make (supabase/migrations/20261126120000_chat_stage_broadcasts.sql, checked against the
+// real thing by scripts/tests/chat-stage-broadcasts-database.mjs): an id is created at most once, a
+// room has one open broadcast at a time, a stale open one is closed when a new one opens, and bell
+// entries are written a slice at a time with the place remembered. LiveKit is a list of ingresses.
 //  - once only: a repeated webhook, two servers at the same moment, two servers either side of a
 //    ten-minute line, a reconnect within 10 minutes; a later broadcast is announced again;
+//  - #524: a broadcast longer than 6 hours is announced once; a missed end followed by a new
+//    broadcast announces it and closes the stale notice; a brief drop never re-announces;
 //  - the end: the message is rewritten and its alerts are taken back; a short drop changes nothing;
-//    #512: with no End button and an ingress that is never deleted, the end is the ingress no
-//    longer publishing, however it is noticed (a webhook, an admin's player, the status);
-//  - who is told: the room's member list, without bots, "Mentions only"/"Muted" and the acting admin;
+//  - #524 bells: written in slices; "message there, bells missing" is finished by the next look, once;
 //  - the words: the room message, the bell's reading of it and the phone notification.
 import { describe, expect, it } from "vitest";
 import {
+  STAGE_BELLS_RETRY_MS,
   STAGE_DROP_GRACE_MS,
   STAGE_NOTICE_SLOT_MS,
   STAGE_RECONNECT_MS,
+  STAGE_SEEN_GAP_MS,
+  stageBroadcastVerdict,
   stageNoticeId,
   stageNoticeIds,
   stageNoticePush,
-  stageNoticeRecipients,
   syncStageNotice,
   tellStageEnded,
   tellStageLive,
-  type StageNotice,
+  writeStageBells,
+  type StageBroadcast,
   type StageNoticeStore,
-  type StageRecipientReads,
 } from "@/lib/chatStageNotify";
-import { composeStageEndedNotice, composeStageLiveNotice, stageLiveNotice, stageLivePush, stageNoticeAuthor, STAGE_NOTICE_AUTHOR } from "@/lib/chatStageNotice";
+import { composeStageEndedNotice, composeStageLiveNotice, stageEndedNotice, stageLiveNotice, stageLivePush, stageNoticeAuthor, STAGE_NOTICE_AUTHOR } from "@/lib/chatStageNotice";
 import { isReservedChatName } from "@/lib/publicChat";
 import type { ChatRoom } from "@/lib/publicChat";
 
 const MIN = 60_000;
+const HOUR = 60 * MIN;
 const T0 = Date.UTC(2026, 10, 25, 14, 30, 0) + 3 * MIN; // three minutes into a ten-minute slot
 const ORIGIN = "https://chat.example.test";
 const LIVE = "🔴 LB is live now. Watch live: https://chat.example.test/chat?room=main&stage=1";
-const ENDED = "The live video in LB has ended.";
+const ENDED = "The live video in LB has ended. The recording will follow.";
+const ENDED_BEFORE = "The live video in LB has ended.";
+const RECORDING = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+const ENDED_RECORDED = `The live video in LB has ended. Watch the recording: ${RECORDING}`;
+const PAGE = 3;
+
+type Row = StageBroadcast & { room: ChatRoom; body: string; cursor: number; bells: Set<string> };
 
 /** The database as these rules see it. `tick` lets two callers interleave at every step. */
 function fakeStore(members: string[] = ["acct-bob", "acct-cara"]) {
-  const rows = new Map<string, StageNotice & { room: ChatRoom }>();
-  const state = { clock: T0, notified: [] as { id: string; room: ChatRoom; accounts: string[] }[], withdrawn: [] as string[], posts: 0, recipientReads: 0 };
+  const rows = new Map<string, Row>();
+  const state = { clock: T0, opens: 0, seenWrites: 0, pages: 0, bellWrites: [] as string[], withdrawn: [] as string[], failPageAt: 0 };
   const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
+  const copy = (row: Row | undefined): StageBroadcast | null => (row ? { ...row } : null);
   const store: StageNoticeStore = {
-    notices: async (ids) => {
+    latest: async (room) => {
       await tick();
-      return ids.flatMap((id) => (rows.has(id) ? [{ ...rows.get(id)! }] : []));
+      return copy([...rows.values()].filter((row) => row.room === room).sort((a, b) => b.createdAt - a.createdAt)[0]);
     },
-    post: async (id, room, body) => {
+    broadcast: async (id) => {
       await tick();
-      state.posts++;
+      return copy(rows.get(id));
+    },
+    open: async (id, room, body, startedAt, staleBody) => {
+      await tick();
+      state.opens++;
       if (rows.has(id)) return false;
-      rows.set(id, { id, room, body, createdAt: state.clock, editedAt: null, revision: 0 });
+      // One transaction: the stale open broadcast is closed, then the new one is written.
+      for (const row of rows.values())
+        if (row.room === room && row.endedAt === null) {
+          row.endedAt = Math.max(row.lastLiveAt, row.startedAt);
+          row.body = staleBody;
+          row.bells.clear();
+          state.withdrawn.push(row.id);
+        }
+      rows.set(id, { id, room, body, startedAt: Math.min(startedAt, state.clock), lastLiveAt: state.clock, endedAt: null, recordingUrl: null, recordingSource: null, notifiedAt: null, createdAt: state.clock, cursor: 0, bells: new Set() });
       return true;
     },
-    rewrite: async (_room, notice, body) => {
-      await tick();
-      const row = rows.get(notice.id);
-      if (!row || row.revision !== notice.revision) return false;
-      rows.set(notice.id, { ...row, body, editedAt: state.clock, revision: row.revision + 1 });
-      return true;
+    seen: async (id, at, gap) => {
+      const row = rows.get(id);
+      if (row && row.endedAt === null && row.lastLiveAt < at - gap) {
+        row.lastLiveAt = at;
+        state.seenWrites++;
+      }
     },
-    recipients: async () => {
-      state.recipientReads++;
+    close: async (_room, id, body, endedAt) => {
       await tick();
-      return members;
-    },
-    notify: async (id, room, accounts) => {
-      await tick();
-      state.notified.push({ id, room, accounts });
-    },
-    withdraw: async (id) => {
+      const row = rows.get(id);
+      if (!row || row.endedAt !== null) return false;
+      row.endedAt = Math.min(Math.max(endedAt, row.startedAt), state.clock);
+      row.body = body;
+      row.bells.clear();
       state.withdrawn.push(id);
+      return true;
+    },
+    reopen: async (_room, id, body) => {
+      await tick();
+      const row = rows.get(id);
+      if (!row || row.endedAt === null) return false;
+      row.endedAt = null;
+      row.lastLiveAt = state.clock;
+      row.body = body;
+      return true;
+    },
+    notifyPage: async (id) => {
+      await tick();
+      state.pages++;
+      if (state.failPageAt && state.pages === state.failPageAt) throw new Error("stage_notice_notify");
+      const row = rows.get(id);
+      if (!row || row.endedAt !== null || row.notifiedAt !== null) return { done: true };
+      const slice = members.slice(row.cursor, row.cursor + PAGE);
+      for (const account of slice) {
+        if (!row.bells.has(account)) state.bellWrites.push(account);
+        row.bells.add(account);
+      }
+      row.cursor += slice.length;
+      if (slice.length < PAGE) row.notifiedAt = state.clock;
+      return { done: slice.length < PAGE };
     },
   };
   const live = (room: ChatRoom, now: number, startedAt?: number | null) => {
     state.clock = now;
     return tellStageLive(store, room, { now, startedAt, origin: ORIGIN });
   };
-  const end = (room: ChatRoom, now: number) => {
+  const end = (room: ChatRoom, now: number, endedAt = now) => {
     state.clock = now;
-    return tellStageEnded(store, room, now);
+    return tellStageEnded(store, room, endedAt);
   };
-  return { store, rows, state, live, end, bodies: () => [...rows.values()].map((row) => row.body) };
+  const told = () => [...rows.values()].filter((row) => row.notifiedAt !== null).length;
+  return { store, rows, state, live, end, told, bodies: () => [...rows.values()].map((row) => row.body) };
 }
 
 describe("the words", () => {
@@ -89,13 +138,20 @@ describe("the words", () => {
   });
   it("the ended message, an ordinary announcement and a look-alike are not live notices", () => {
     expect(composeStageEndedNotice("LB")).toBe(ENDED);
-    for (const body of [ENDED, "LB is live now.", `${LIVE} and more`, `Hello\n${LIVE}`, "🔴 LB is live now. Watch live: https://evil.test/elsewhere?room=main&stage=1", "🔴 LB is live now. Watch live: javascript:alert(1)"])
+    expect(composeStageEndedNotice("LB", RECORDING)).toBe(ENDED_RECORDED);
+    for (const body of [ENDED, ENDED_RECORDED, ENDED_BEFORE, "LB is live now.", `${LIVE} and more`, `Hello\n${LIVE}`, "🔴 LB is live now. Watch live: https://evil.test/elsewhere?room=main&stage=1", "🔴 LB is live now. Watch live: javascript:alert(1)"])
       expect(stageLiveNotice(body), body).toBeNull();
   });
   it("#504: the notice is shown as Live Video, live or ended; the bot's other posts keep their name", () => {
     expect(STAGE_NOTICE_AUTHOR).toBe("Live Video");
     expect(stageNoticeAuthor("longboard", LIVE)).toBe("Live Video");
-    expect(stageNoticeAuthor("longboard", ENDED)).toBe("Live Video");
+    // Ended: as it reads now, with a recording, and as it read before #524 (those messages are still in the rooms).
+    for (const body of [ENDED, ENDED_RECORDED, ENDED_BEFORE]) expect(stageNoticeAuthor("longboard", body), body).toBe("Live Video");
+    expect(stageEndedNotice(ENDED)).toEqual({ roomName: "LB", recordingUrl: null });
+    expect(stageEndedNotice(ENDED_BEFORE)).toEqual({ roomName: "LB", recordingUrl: null });
+    expect(stageEndedNotice(ENDED_RECORDED)).toEqual({ roomName: "LB", recordingUrl: RECORDING });
+    for (const body of [LIVE, "The live video in LB has ended. Watch the recording: http://plain.test/x", `${ENDED_RECORDED} more`, "The live video in LB has ended. The recording will follow. PS"])
+      expect(stageEndedNotice(body), body).toBeNull();
     expect(stageNoticeAuthor("longboard", composeStageEndedNotice("Booker Stock Club"))).toBe("Live Video");
     for (const body of ["Profile pictures are here.", `${LIVE} and more`, `Hello\n${ENDED}`, "The live video in LB has ended. More soon."])
       expect(stageNoticeAuthor("longboard", body), body).toBeNull();
@@ -116,26 +172,49 @@ describe("once per broadcast", () => {
     const db = fakeStore();
     expect(await db.live("main", T0, T0 - 2_000)).toBe("announced");
     expect(db.bodies()).toEqual([LIVE]);
-    expect(db.state.notified).toEqual([{ id: stageNoticeId("main", Math.floor(T0 / STAGE_NOTICE_SLOT_MS)), room: "main", accounts: ["acct-bob", "acct-cara"] }]);
+    const [row] = db.rows.values();
+    expect(row.id).toBe(stageNoticeId("main", Math.floor(T0 / STAGE_NOTICE_SLOT_MS)));
+    expect([...row.bells]).toEqual(["acct-bob", "acct-cara"]);
+    expect(row).toMatchObject({ startedAt: T0 - 2_000, endedAt: null, notifiedAt: T0 });
   });
   it("a repeated webhook, a retry and the admin's player all find the notice already there", async () => {
     const db = fakeStore();
     await db.live("main", T0, T0);
-    for (const later of [50, 900, 30_000, 4 * MIN, 45 * MIN, 3 * 60 * MIN]) expect(await db.live("main", T0 + later, T0)).toBe("already");
+    for (const later of [50, 900, 30_000, 4 * MIN, 45 * MIN, 3 * HOUR]) expect(await db.live("main", T0 + later, T0)).toBe("already");
     expect(db.rows.size).toBe(1);
-    expect(db.state.notified).toHaveLength(1);
-    // Nothing was even attempted, and nobody's list was read again.
-    expect(db.state.posts).toBe(1);
-    expect(db.state.recipientReads).toBe(1);
+    // Nothing was even attempted again, and nobody's bell was written twice.
+    expect(db.state.opens).toBe(1);
+    expect(db.state.bellWrites).toEqual(["acct-bob", "acct-cara"]);
+  });
+  it("#524: a broadcast that runs longer than 6 hours is announced once, however rarely anyone looks", async () => {
+    const db = fakeStore();
+    await db.live("main", T0, T0);
+    // A trading-desk day: looked at every few minutes, then not at all for five hours, then again.
+    for (const later of [5 * MIN, 20 * MIN, 6 * HOUR - MIN, 6 * HOUR + MIN, 7 * HOUR, 12 * HOUR, 26 * HOUR])
+      expect(await db.live("main", T0 + later, T0), `${later / HOUR} h`).toBe("already");
+    expect(db.rows.size).toBe(1);
+    expect(db.bodies()).toEqual([LIVE]);
+    expect(db.state.bellWrites).toHaveLength(2);
+    // And it still ends as one broadcast.
+    expect(await db.end("main", T0 + 27 * HOUR)).toBe(true);
+    expect(db.bodies()).toEqual([ENDED]);
+  });
+  it("#524: while it is live, \"last seen live\" is written at most once a minute", async () => {
+    const db = fakeStore();
+    await db.live("main", T0, T0);
+    for (let second = 1; second <= 300; second += 5) await db.live("main", T0 + second * 1_000, T0);
+    expect(db.state.seenWrites).toBeLessThanOrEqual(5);
+    expect(db.state.seenWrites).toBeGreaterThanOrEqual(4);
+    expect(STAGE_SEEN_GAP_MS).toBe(60_000);
   });
   it("two servers at the same moment: both try the same id, one creates it, one notifies", async () => {
     const db = fakeStore();
     const results = await Promise.all(Array.from({ length: 6 }, () => db.live("main", T0, T0 - 1_000)));
     expect(results.filter((result) => result === "announced")).toHaveLength(1);
     expect(results.filter((result) => result === "already")).toHaveLength(5);
-    expect(db.state.posts).toBe(6); // all six really raced: each read "no notice" before any insert
+    expect(db.state.opens).toBe(6); // all six really raced: each read "no broadcast" before any insert
     expect(db.rows.size).toBe(1);
-    expect(db.state.notified).toHaveLength(1);
+    expect(db.state.bellWrites).toEqual(["acct-bob", "acct-cara"]);
   });
   it("two servers either side of a ten-minute line still agree, because the id comes from LiveKit's start time", async () => {
     const db = fakeStore();
@@ -144,28 +223,41 @@ describe("once per broadcast", () => {
     const results = await Promise.all([db.live("main", line - 20, startedAt), db.live("main", line + 20, startedAt), db.live("main", line + 900, startedAt)]);
     expect(results.filter((result) => result === "announced")).toHaveLength(1);
     expect(db.rows.size).toBe(1);
-    expect(db.state.notified).toHaveLength(1);
+    expect(db.state.bellWrites).toHaveLength(2);
   });
   it("without a start time from LiveKit the server's clock picks the slot, and two calls in it still make one notice", async () => {
     const db = fakeStore();
     const results = await Promise.all([db.live("main", T0, null), db.live("main", T0 + 40, undefined)]);
     expect(results.sort()).toEqual(["already", "announced"]);
-    expect(db.state.notified).toHaveLength(1);
+    expect(db.rows.size).toBe(1);
+  });
+  it("the database refusing a second open broadcast (another server, another id) announces nothing twice", async () => {
+    const db = fakeStore();
+    await db.live("main", T0, T0);
+    const open = db.store.open;
+    // What the real store answers when the room's one-open-broadcast rule stops the insert.
+    db.store.open = async () => false;
+    db.store.latest = async () => null;
+    db.store.broadcast = async () => null;
+    expect(await db.live("main", T0 + 15 * MIN, T0 + 15 * MIN)).toBe("already");
+    db.store.open = open;
+    expect(db.rows.size).toBe(1);
   });
   it("rooms are separate: each is told about its own broadcast", async () => {
     const db = fakeStore();
     expect(await db.live("main", T0, T0)).toBe("announced");
-    expect(await db.live("shortscout", T0, T0)).toBe("announced");
-    expect(db.state.notified.map((sent) => sent.room)).toEqual(["main", "shortscout"]);
-    expect(stageNoticeIds("main", T0).some((id) => stageNoticeIds("shortscout", T0).includes(id))).toBe(false);
+    expect(await db.live("club", T0, T0)).toBe("announced");
+    expect([...db.rows.values()].map((row) => row.room)).toEqual(["main", "club"]);
+    expect(db.bodies()[1]).toBe("🔴 Booker Stock Club is live now. Watch live: https://chat.example.test/chat?room=club&stage=1");
+    expect(stageNoticeIds("main", T0).some((id) => stageNoticeIds("club", T0).includes(id))).toBe(false);
   });
-  it("a refused post (a paused room, a room the bot may not post in) notifies nobody", async () => {
+  it("a refused post (a paused room) notifies nobody", async () => {
     const db = fakeStore();
-    db.store.post = async () => {
+    db.store.open = async () => {
       throw new Error("stage_notice_post");
     };
-    await expect(db.live("gainers", T0, T0)).rejects.toThrow("stage_notice_post");
-    expect(db.state.notified).toEqual([]);
+    await expect(db.live("main", T0, T0)).rejects.toThrow("stage_notice_post");
+    expect(db.state.bellWrites).toEqual([]);
   });
 });
 
@@ -177,11 +269,11 @@ describe("the broadcast ends, drops and comes back", () => {
     expect(await db.end("main", T0 + 50 * MIN)).toBe(true);
     expect(db.bodies()).toEqual([ENDED]);
     expect(db.state.withdrawn).toEqual([id]);
+    expect(db.rows.get(id)!.bells.size).toBe(0);
     // A second end signal (ingress_ended, room_finished, a status read) finds nothing live.
     expect(await db.end("main", T0 + 50 * MIN + 500)).toBe(false);
     expect(await Promise.all([db.end("main", T0 + 51 * MIN), db.end("main", T0 + 51 * MIN)])).toEqual([false, false]);
     expect(db.state.withdrawn).toEqual([id]);
-    expect(db.state.notified).toHaveLength(1);
   });
   it("two servers ending at once rewrite it once", async () => {
     const db = fakeStore();
@@ -200,28 +292,36 @@ describe("the broadcast ends, drops and comes back", () => {
     await db.end("main", T0 + 20 * MIN);
     const back = T0 + 20 * MIN + STAGE_RECONNECT_MS - 1_000;
     // StreamYard reconnecting is a new session at LiveKit, with a new start time.
-    expect(await Promise.all([db.live("main", back, back - 500), db.live("main", back + 30, back - 500)])).toEqual(["resumed", "resumed"]);
+    expect((await Promise.all([db.live("main", back, back - 500), db.live("main", back + 30, back - 500)])).sort()).toEqual(["already", "resumed"]);
     expect(db.bodies()).toEqual([LIVE]);
     expect(db.rows.size).toBe(1);
-    expect(db.state.notified).toHaveLength(1);
+    expect(db.state.bellWrites).toHaveLength(2);
     expect(await db.live("main", back + 5_000, back - 500)).toBe("already");
     // And it can end again.
     expect(await db.end("main", back + 30 * MIN)).toBe(true);
     expect(db.bodies()).toEqual([ENDED]);
   });
+  it("#524: a reconnect looked at late is still the same broadcast (it began soon after the end)", async () => {
+    const db = fakeStore();
+    await db.live("main", T0, T0);
+    await db.end("main", T0 + 20 * MIN);
+    // Back 4 minutes after the end; the first look at it comes 40 minutes later.
+    expect(await db.live("main", T0 + 64 * MIN, T0 + 24 * MIN)).toBe("resumed");
+    expect(db.rows.size).toBe(1);
+  });
   it("a new broadcast later (10 minutes or more after the end) is announced again, in its own message", async () => {
     const db = fakeStore();
     await db.live("main", T0, T0);
     await db.end("main", T0 + 30 * MIN);
-    const next = T0 + 30 * MIN + STAGE_RECONNECT_MS;
+    // (Begun, by LiveKit's time, a full 10 minutes after the end.)
+    const next = T0 + 30 * MIN + STAGE_RECONNECT_MS + 800;
     expect(await Promise.all([db.live("main", next, next - 800), db.live("main", next + 10, next - 800)])).toEqual(expect.arrayContaining(["announced", "already"]));
     expect(db.bodies()).toEqual([ENDED, LIVE]);
-    expect(db.state.notified).toHaveLength(2);
-    expect(db.state.notified[0].id).not.toBe(db.state.notified[1].id);
+    expect(db.told()).toBe(2);
     // The next day too.
     await db.end("main", next + 60 * MIN);
-    expect(await db.live("main", next + 24 * 60 * MIN, next + 24 * 60 * MIN)).toBe("announced");
-    expect(db.state.notified).toHaveLength(3);
+    expect(await db.live("main", next + 24 * HOUR, next + 24 * HOUR)).toBe("announced");
+    expect(db.rows.size).toBe(3);
   });
   it("a start time that belongs to an earlier, finished broadcast does not hide a new one", async () => {
     const db = fakeStore();
@@ -230,22 +330,125 @@ describe("the broadcast ends, drops and comes back", () => {
     // LiveKit still reports the first start time, 40 minutes on: the clock's slot is used instead.
     expect(await db.live("main", T0 + 40 * MIN, T0)).toBe("announced");
     expect(db.rows.size).toBe(2);
-    expect(db.state.notified).toHaveLength(2);
     expect(await db.live("main", T0 + 40 * MIN + 100, T0)).toBe("already");
   });
-  it("a notice whose end was never seen stops counting after 6 hours", async () => {
+  it("#524: a missed end, then a new broadcast: it is announced, and the stale notice is marked ended at that moment", async () => {
     const db = fakeStore();
     await db.live("main", T0, T0);
-    expect(await db.live("main", T0 + 5 * 60 * MIN, T0 + 5 * 60 * MIN)).toBe("already");
-    expect(await db.live("main", T0 + 7 * 60 * MIN, T0 + 7 * 60 * MIN)).toBe("announced");
+    const [stale] = db.rows.keys();
+    await db.live("main", T0 + 50 * MIN, T0); // last seen live 50 minutes in
+    // It stopped at about the hour. No webhook arrived and nobody had the room open: the notice still says live.
+    // Ninety minutes later a new broadcast starts (well inside the old 6 hours).
+    const next = T0 + 150 * MIN;
+    expect(await db.live("main", next + 2_000, next)).toBe("announced");
+    expect(db.bodies()).toEqual([ENDED, LIVE]);
+    expect(db.state.withdrawn).toEqual([stale]);
+    // The stale one is recorded as over since it was last seen live.
+    expect(db.rows.get(stale)).toMatchObject({ endedAt: T0 + 50 * MIN });
+    expect(db.rows.get(stale)!.bells.size).toBe(0); // its bells were taken back; the new one's are written
+    expect(db.state.bellWrites).toHaveLength(4);
+    // Every later look agrees.
+    expect(await db.live("main", next + 5 * MIN, next)).toBe("already");
+    expect(db.rows.size).toBe(2);
+  });
+  it("#524: the same missed end found late by a look, then a new broadcast minutes after that look: still announced", async () => {
+    const db = fakeStore();
+    await db.live("main", T0, T0);
+    await db.live("main", T0 + 50 * MIN, T0);
+    // Someone opens the room two hours later: the look marks it ended, as of when it was last seen live.
+    expect(await db.end("main", T0 + 170 * MIN, T0 + 50 * MIN)).toBe(true);
+    // A new broadcast three minutes after that look is not mistaken for the old one coming back.
+    const next = T0 + 173 * MIN;
+    expect(await db.live("main", next + 1_000, next)).toBe("announced");
+    expect(db.bodies()).toEqual([ENDED, LIVE]);
+  });
+  it("#524: a brief drop nobody marked does not re-announce: what is on now began within 10 minutes of the last sight", () => {
+    const row: StageBroadcast = { id: "x", startedAt: T0, lastLiveAt: T0 + 50 * MIN, endedAt: null, recordingUrl: null, recordingSource: null, notifiedAt: T0, createdAt: T0 };
+    const verdict = (startedAt: number | null, now = T0 + 3 * HOUR) => stageBroadcastVerdict(row, { now, startedAt });
+    expect(verdict(T0)).toBe("same"); // the very session that was announced
+    expect(verdict(T0 + 52 * MIN)).toBe("same"); // dropped and reconnected two minutes after the last sight
+    expect(verdict(T0 + 50 * MIN + STAGE_RECONNECT_MS - 1)).toBe("same");
+    expect(verdict(T0 + 50 * MIN + STAGE_RECONNECT_MS)).toBe("new");
+    // No start time from LiveKit: the clock, with the old six hours.
+    expect(verdict(null, T0 + 5 * HOUR)).toBe("same");
+    expect(verdict(null, T0 + 7 * HOUR)).toBe("new");
+    // An ended one: back within 10 minutes by the clock, or by LiveKit's start time when looked at late.
+    const ended = { ...row, endedAt: T0 + 60 * MIN };
+    expect(stageBroadcastVerdict(ended, { now: T0 + 65 * MIN, startedAt: null })).toBe("resume");
+    expect(stageBroadcastVerdict(ended, { now: T0 + 2 * HOUR, startedAt: T0 + 64 * MIN })).toBe("resume");
+    expect(stageBroadcastVerdict(ended, { now: T0 + 2 * HOUR, startedAt: T0 + 71 * MIN })).toBe("new");
+    // LiveKit still giving the start time already announced says nothing about a return.
+    expect(stageBroadcastVerdict(ended, { now: T0 + 2 * HOUR, startedAt: T0 })).toBe("new");
+  });
+});
+
+describe("#524 bell entries: slices, and \"message there, bells missing\"", () => {
+  const many = Array.from({ length: 10 }, (_, i) => `acct-${i + 1}`);
+  it("a large room is covered a slice at a time, each account once", async () => {
+    const db = fakeStore(many);
+    expect(await db.live("main", T0, T0)).toBe("announced");
+    expect(db.state.pages).toBe(4); // 3 + 3 + 3 + 1
+    expect(db.state.bellWrites).toEqual(many);
+    expect([...db.rows.values()][0].notifiedAt).toBe(T0);
+  });
+  it("cut off after the message was posted: the next look finishes the bells, from where they stopped, exactly once", async () => {
+    const db = fakeStore(many);
+    db.state.failPageAt = 2; // the announcing call dies on its second slice (a timeout)
+    await expect(db.live("main", T0, T0)).rejects.toThrow("stage_notice_notify");
+    const [row] = db.rows.values();
+    expect(db.bodies()).toEqual([LIVE]);
+    expect(row.notifiedAt).toBeNull();
+    expect(db.state.bellWrites).toEqual(many.slice(0, 3));
+    // A look a few seconds later (a second webhook) leaves it: the first call may still be at work.
+    expect(await db.live("main", T0 + 5_000, T0)).toBe("already");
+    expect(db.state.bellWrites).toHaveLength(3);
+    // The next look after that finishes the job: only the members not yet told.
+    expect(await db.live("main", T0 + STAGE_BELLS_RETRY_MS, T0)).toBe("already");
+    expect(db.state.bellWrites).toEqual(many);
+    expect(row.notifiedAt).toBe(T0 + STAGE_BELLS_RETRY_MS);
+    expect(db.rows.size).toBe(1);
+    // And never again.
+    const pages = db.state.pages;
+    expect(await db.live("main", T0 + 5 * MIN, T0)).toBe("already");
+    expect(db.state.pages).toBe(pages);
+    expect(db.state.bellWrites).toEqual(many);
+  });
+  it("cut off before any bell was written: all of them are written by the next look", async () => {
+    const db = fakeStore(many);
+    db.state.failPageAt = 1;
+    await expect(db.live("main", T0, T0)).rejects.toThrow();
+    expect(db.state.bellWrites).toEqual([]);
+    await db.live("main", T0 + MIN, T0);
+    expect(db.state.bellWrites).toEqual(many);
+  });
+  it("two looks finishing at once still write each bell once", async () => {
+    const db = fakeStore(many);
+    db.state.failPageAt = 1;
+    await expect(db.live("main", T0, T0)).rejects.toThrow();
+    await Promise.all([db.live("main", T0 + MIN, T0), db.live("main", T0 + MIN, T0), db.live("main", T0 + MIN, T0)]);
+    expect(db.state.bellWrites).toEqual(many);
+  });
+  it("a broadcast that ended meanwhile is not told about late", async () => {
+    const db = fakeStore(many);
+    db.state.failPageAt = 1;
+    await expect(db.live("main", T0, T0)).rejects.toThrow();
+    await db.end("main", T0 + 30_000);
+    const [row] = db.rows.values();
+    expect(await writeStageBells(db.store, row.id, "main")).toBe(true);
+    expect(db.state.bellWrites).toEqual([]);
+  });
+  it("gives up after its limit of slices rather than looping, and says so", async () => {
+    let calls = 0;
+    expect(await writeStageBells({ notifyPage: async () => (calls++, { done: false }) }, "x", "main")).toBe(false);
+    expect(calls).toBe(400);
   });
 });
 
 describe("following LiveKit (syncStageNotice)", () => {
-  type Ingress = { publishing: boolean; startedAt?: number };
+  type Ingress = { publishing: boolean; startedAt?: number; activeAt?: number };
   function setup(first: Ingress[]) {
     const db = fakeStore();
-    const lk = { ingresses: first, reads: 0, waits: [] as number[], afterWait: null as Ingress[] | null, now: T0, stoppedFor: undefined as number | null | undefined };
+    const lk = { ingresses: first, reads: 0, waits: [] as number[], afterWait: null as Ingress[] | null, now: T0, stoppedFor: undefined as number | null | undefined, timely: false };
     const sync = () =>
       syncStageNotice(
         {
@@ -261,6 +464,7 @@ describe("following LiveKit (syncStageNotice)", () => {
           now: () => ((db.state.clock = lk.now), lk.now),
           origin: ORIGIN,
           stoppedFor: () => lk.stoppedFor ?? null,
+          timely: lk.timely,
         },
         "main",
       );
@@ -276,12 +480,7 @@ describe("following LiveKit (syncStageNotice)", () => {
     lk.ingresses = [{ publishing: true, startedAt: T0 }];
     expect(await sync()).toBe("announced");
     expect(await sync()).toBe("already");
-    expect(db.state.notified).toHaveLength(1);
-  });
-  it("a hint that it is live, while LiveKit says it is not, announces nothing", async () => {
-    const { db, sync } = setup([{ publishing: false }]);
-    expect(await sync()).toBe("none");
-    expect(db.state.notified).toEqual([]);
+    expect(db.told()).toBe(1);
   });
   it("a short drop: the message is left alone when the broadcast is back within the grace", async () => {
     const { db, lk, sync } = setup([{ publishing: true, startedAt: T0 }]);
@@ -293,7 +492,36 @@ describe("following LiveKit (syncStageNotice)", () => {
     expect(lk.waits).toEqual([STAGE_DROP_GRACE_MS]);
     expect(db.bodies()).toEqual([LIVE]);
     expect(db.state.withdrawn).toEqual([]);
-    expect(db.state.notified).toHaveLength(1);
+    expect(db.state.bellWrites).toHaveLength(2);
+  });
+  it("#524: a short drop hours into a broadcast nobody had looked at for a while does not re-announce", async () => {
+    // Announced at T0 and not looked at again. Four hours in, StreamYard drops for a few seconds:
+    // LiveKit's webhook brings a look, which finds it back (as a new session) within the grace.
+    const { db, lk, sync } = setup([{ publishing: true, startedAt: T0 }]);
+    await sync();
+    lk.timely = true;
+    lk.now = T0 + 4 * HOUR;
+    lk.ingresses = [{ publishing: false, activeAt: T0 + 4 * HOUR - 2_000 }];
+    lk.afterWait = [{ publishing: true, startedAt: T0 + 4 * HOUR + 6_000 }];
+    expect(await sync()).toBe("already");
+    expect(db.rows.size).toBe(1);
+    expect(db.bodies()).toEqual([LIVE]);
+    // The same if that look is lost during its wait and the next one comes minutes later.
+    const lost = setup([{ publishing: true, startedAt: T0 }]);
+    await lost.sync();
+    lost.lk.timely = true;
+    lost.lk.now = T0 + 4 * HOUR;
+    lost.lk.ingresses = [{ publishing: false }];
+    const waiting = syncStageNotice(
+      { store: lost.db.store, ingresses: async () => lost.lk.ingresses, wait: () => new Promise(() => undefined), now: () => ((lost.db.state.clock = lost.lk.now), lost.lk.now), origin: ORIGIN, timely: true },
+      "main",
+    );
+    void waiting; // never comes back: the function was recycled
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    lost.lk.now = T0 + 4 * HOUR + 5 * MIN;
+    lost.lk.ingresses = [{ publishing: true, startedAt: T0 + 4 * HOUR + 40_000 }];
+    expect(await lost.sync()).toBe("already");
+    expect(lost.db.rows.size).toBe(1);
   });
   it("#521: waits only the rest of the grace when it is known how long the broadcast has been stopped", async () => {
     // Stopped 8 seconds ago: 12 more, then looked at again. It came back: nothing changes.
@@ -302,6 +530,7 @@ describe("following LiveKit (syncStageNotice)", () => {
     back.lk.ingresses = [{ publishing: false }];
     back.lk.afterWait = [{ publishing: true, startedAt: T0 + 9_000 }];
     back.lk.stoppedFor = 8_000;
+    back.lk.now = T0 + 10_000;
     expect(await back.sync()).toBe("already");
     expect(back.lk.waits).toEqual([STAGE_DROP_GRACE_MS - 8_000]);
     // Stopped for longer than the grace already (a look that was lost and is run again): no wait
@@ -311,11 +540,14 @@ describe("following LiveKit (syncStageNotice)", () => {
       await lost.sync();
       lost.lk.ingresses = [{ publishing: false }];
       lost.lk.stoppedFor = stoppedFor;
+      lost.lk.now = T0 + 30 * MIN;
       const reads = lost.lk.reads;
       expect(await lost.sync()).toBe("ended");
       expect(lost.lk.waits).toEqual([]);
       expect(lost.lk.reads).toBe(reads + 1);
       expect(lost.db.bodies()).toEqual([ENDED]);
+      // Recorded as over since this server saw it stop.
+      expect([...lost.db.rows.values()][0].endedAt).toBe(T0 + 30 * MIN - stoppedFor);
     }
     // Not known, or nonsense: the whole grace, as before.
     for (const stoppedFor of [null, -5_000, 0]) {
@@ -341,15 +573,34 @@ describe("following LiveKit (syncStageNotice)", () => {
     expect(ended.lk.waits).toEqual([]);
     expect(await ended.sync()).toBe("none");
   });
+  it("#524: when it stopped is recorded as well as it is known", async () => {
+    const at = async (change: (lk: ReturnType<typeof setup>["lk"]) => void) => {
+      const { db, lk, sync } = setup([{ publishing: true, startedAt: T0 }]);
+      await sync();
+      lk.now = T0 + 10 * MIN;
+      await sync(); // last seen live ten minutes in
+      lk.ingresses = [{ publishing: false }];
+      lk.now = T0 + 2 * HOUR;
+      change(lk);
+      expect(await sync()).toBe("ended");
+      return [...db.rows.values()][0].endedAt;
+    };
+    // LiveKit's webhook (or an admin's action) says so now.
+    expect(await at((lk) => (lk.timely = true))).toBe(T0 + 2 * HOUR);
+    // LiveKit says when the ingress was last active.
+    expect(await at((lk) => (lk.ingresses = [{ publishing: false, activeAt: T0 + 55 * MIN }]))).toBe(T0 + 55 * MIN);
+    // Nothing known (a status read long after, on a server that never saw it live): since it was last seen live.
+    expect(await at(() => undefined)).toBe(T0 + 10 * MIN);
+  });
   it("#512: one permanent ingress, no End button: each broadcast is announced, and ended when it stops publishing", async () => {
     // The room's ingress exists before, between and after broadcasts: the state is never "off".
     const { db, lk, sync } = setup([{ publishing: false }]);
+    lk.timely = true;
     expect(await sync()).toBe("none");
     // StreamYard goes live.
     lk.ingresses = [{ publishing: true, startedAt: T0 }];
     expect(await sync()).toBe("announced");
-    expect(db.state.notified).toHaveLength(1);
-    const first = db.state.notified[0].id;
+    const [first] = db.rows.keys();
     // StreamYard stops. The ingress stays; nothing else says "end". Three hints at once (LiveKit's
     // webhook, an admin's player, a member's status read): one rewrite, the alerts taken back once.
     lk.ingresses = [{ publishing: false, startedAt: T0 }];
@@ -358,7 +609,7 @@ describe("following LiveKit (syncStageNotice)", () => {
     expect(lk.waits).toEqual([STAGE_DROP_GRACE_MS, STAGE_DROP_GRACE_MS, STAGE_DROP_GRACE_MS]);
     expect(db.bodies()).toEqual([ENDED]);
     expect(db.state.withdrawn).toEqual([first]);
-    // Later hints while it rests at "waiting" (the once-a-minute look) do nothing and wait for nothing.
+    // Later hints while it rests at "waiting" do nothing and wait for nothing.
     lk.waits.length = 0;
     lk.now = T0 + 45 * MIN;
     expect(await sync()).toBe("none");
@@ -367,7 +618,7 @@ describe("following LiveKit (syncStageNotice)", () => {
     lk.ingresses = [{ publishing: true, startedAt: T0 + 45 * MIN }];
     expect(await sync()).toBe("resumed");
     expect(db.bodies()).toEqual([LIVE]);
-    expect(db.state.notified).toHaveLength(1);
+    expect(db.state.bellWrites).toHaveLength(2);
     lk.ingresses = [{ publishing: false }];
     lk.now = T0 + 60 * MIN;
     expect(await sync()).toBe("ended");
@@ -376,8 +627,8 @@ describe("following LiveKit (syncStageNotice)", () => {
     lk.now = T0 + 120 * MIN + 2_000;
     expect(await sync()).toBe("announced");
     expect(db.bodies()).toEqual([ENDED, LIVE]);
-    expect(db.state.notified).toHaveLength(2);
-    expect(db.state.notified[1].id).not.toBe(first);
+    expect(db.state.bellWrites).toHaveLength(4);
+    expect([...db.rows.keys()][1]).not.toBe(first);
     // And it ends the same way, with the ingress still there.
     lk.ingresses = [{ publishing: false }];
     lk.now = T0 + 150 * MIN;
@@ -395,10 +646,20 @@ describe("following LiveKit (syncStageNotice)", () => {
     // Someone opens the room: the status asks for a look.
     expect(await sync()).toBe("ended");
     expect(db.bodies()).toEqual([ENDED]);
-    lk.ingresses = [{ publishing: true, startedAt: T0 + 180 * MIN }];
-    lk.now = T0 + 180 * MIN;
+    // #524: even a broadcast that starts two minutes after that look is a new one.
+    lk.ingresses = [{ publishing: true, startedAt: T0 + 122 * MIN }];
+    lk.now = T0 + 122 * MIN + 3_000;
     expect(await sync()).toBe("announced");
-    expect(db.state.notified).toHaveLength(2);
+    expect(db.rows.size).toBe(2);
+  });
+  it("#524: an end nobody signalled and nobody looked at: the next broadcast's own start announces it and ends the stale notice", async () => {
+    const { db, lk, sync } = setup([{ publishing: true, startedAt: T0 }]);
+    await sync();
+    lk.timely = true;
+    lk.ingresses = [{ publishing: true, startedAt: T0 + 3 * HOUR }];
+    lk.now = T0 + 3 * HOUR + 1_500;
+    expect(await sync()).toBe("announced");
+    expect(db.bodies()).toEqual([ENDED, LIVE]);
   });
   it("a LiveKit outage changes nothing", async () => {
     const { db, sync } = setup([{ publishing: true, startedAt: T0 }]);
@@ -406,56 +667,6 @@ describe("following LiveKit (syncStageNotice)", () => {
     const failing = syncStageNotice({ store: db.store, ingresses: async () => Promise.reject(new Error("down")), wait: async () => undefined, now: () => T0, origin: ORIGIN }, "main");
     await expect(failing).rejects.toThrow("down");
     expect(db.bodies()).toEqual([LIVE]);
-  });
-});
-
-describe("who is told (stageNoticeRecipients)", () => {
-  const PAGE = 3;
-  function reads(over: Partial<StageRecipientReads> & { list?: string[]; refuse?: string[] } = {}) {
-    const list = over.list ?? ["m1", "m2", "m3", "m4", "m5", "m6", "m7"];
-    const asked: string[] = [];
-    const value: StageRecipientReads = {
-      readers: async () => ["acct-admin", "acct-owner"],
-      members: async (reader, room, cursor) => {
-        asked.push(`${reader}:${room}:${cursor ?? ""}`);
-        if (over.refuse?.includes(reader)) return null;
-        const from = cursor ? list.indexOf(cursor) + 1 : 0;
-        return list.slice(from, from + PAGE);
-      },
-      accounts: async (ids) => ids.map((id) => id.replace("m", "acct-")),
-      bots: async () => [],
-      quiet: async () => [],
-      ...over,
-    };
-    return { value, asked };
-  }
-  it("everyone on the room's member list, page after page", async () => {
-    const { value, asked } = reads();
-    expect(await stageNoticeRecipients(value, "main")).toEqual(["acct-1", "acct-2", "acct-3", "acct-4", "acct-5", "acct-6", "acct-7"]);
-    expect(asked).toEqual(["acct-admin:main:", "acct-admin:main:m3", "acct-admin:main:m6", "acct-admin:main:m7"]);
-  });
-  it("only that list: someone who cannot read the room is never on it, so is never told", async () => {
-    const { value } = reads({ list: ["m2"] });
-    expect(await stageNoticeRecipients(value, "shortscout")).toEqual(["acct-2"]);
-    expect(await stageNoticeRecipients(reads({ list: [] }).value, "shortscout")).toEqual([]);
-  });
-  it("no bots, nobody who muted the room or chose Mentions only, and not the admin whose action it is", async () => {
-    const { value } = reads({ bots: async () => ["acct-3"], quiet: async (room) => (room === "main" ? ["acct-5", "acct-6"] : []) });
-    expect(await stageNoticeRecipients(value, "main", "acct-1")).toEqual(["acct-2", "acct-4", "acct-7"]);
-    // Another room's mute does not count here.
-    expect(await stageNoticeRecipients(value, "social", null)).toEqual(["acct-1", "acct-2", "acct-4", "acct-5", "acct-6", "acct-7"]);
-  });
-  it("each account once, even with two member rows", async () => {
-    const { value } = reads({ accounts: async () => ["acct-1", "acct-1", "acct-2"] });
-    expect(await stageNoticeRecipients(value, "main")).toEqual(["acct-1", "acct-2"]);
-  });
-  it("uses the next reader when one cannot read the room's list; with none, nobody is told", async () => {
-    const one = reads({ refuse: ["acct-admin"] });
-    expect(await stageNoticeRecipients(one.value, "main")).toHaveLength(7);
-    expect(one.asked[0]).toBe("acct-admin:main:");
-    expect(one.asked[1]).toBe("acct-owner:main:");
-    expect(await stageNoticeRecipients(reads({ refuse: ["acct-admin", "acct-owner"] }).value, "main")).toEqual([]);
-    expect(await stageNoticeRecipients(reads({ readers: async () => [] }).value, "main")).toEqual([]);
   });
 });
 
