@@ -13,8 +13,10 @@
 //   timeout  seconds before the test is stopped (default 240).
 //   variant/args  run the same test file again with these arguments, reported as <name>:<variant>.
 //   sharedEnv     extra environment for both the fixture and the test.
-//   clock    'HH:MM': the fixture, the Next server and the test start at the next weekday's HH:MM in
-//            New York, whatever time the run really is (#499, test-clock.mjs). The clock still ticks.
+//   clock    'HH:MM': the fixture, the Next server, the test and every page it opens start at the next
+//            weekday's HH:MM in New York, whatever time the run really is (#499, test-clock.mjs). The
+//            clock still ticks. #525: every test that reads "today" in New York has one (9:00 AM, so
+//            alerts seeded minutes or hours back are still today), and it works beside a preload.
 // quarantine: '<reason>' runs the test and reports it, but a failure does not fail the check.
 // retired:    '<reason>' the test is not run.
 // Every value here is synthetic; no production key ever belongs in this file.
@@ -126,30 +128,31 @@ export const TESTS = [
   { name: 'chat-feature-priority-notice' },
   { name: 'chat-gainers', fixture: 'none' },
   // #419: every Gainers alert shows its own small time and date; other rooms keep their grouping.
-  { name: 'chat-gainers-alert-time' },
+  { name: 'chat-gainers-alert-time', clock: '09:00' },
   // #436: the latest press release under a stock's first alert, posted through the lookup route.
   // #499: at 9:00 AM New York on a weekday, so its alerts always fall in today's Eastern day.
   { name: 'chat-gainers-alert-news', env: ['gainersLookup'], clock: '09:00' },
   { name: 'chat-members-join', env: ['members'], timeout: 360 },
   // #390: the welcome email and one-tap sign-in; the same fake Stripe and Resend as chat-members-join.
   { name: 'chat-members-welcome', preload: 'chat-members-join-preload.mjs', env: ['members'], timeout: 360 },
-  { name: 'chat-gainers-table', env: ['gainersLookup', 'polygon'], timeout: 360 },
+  { name: 'chat-gainers-table', env: ['gainersLookup', 'polygon'], timeout: 360, clock: '09:00' },
   // #476: the heading as one slim "About this table" bar; reuses the Gainers Table's fake Polygon.
-  { name: 'chat-gainers-heading', preload: 'chat-gainers-table-preload.mjs', env: ['gainersLookup', 'polygon'], timeout: 360 },
+  { name: 'chat-gainers-heading', preload: 'chat-gainers-table-preload.mjs', env: ['gainersLookup', 'polygon'], timeout: 360, clock: '09:00' },
   // #458: the overseas marker beside a "US" block, from a fake Short Check (chat-gainers-nexus-preload.mjs).
-  { name: 'chat-gainers-nexus', env: ['gainersLookup', 'polygon', 'shortCheck'], timeout: 300 },
+  { name: 'chat-gainers-nexus', env: ['gainersLookup', 'polygon', 'shortCheck'], timeout: 300, clock: '09:00' },
   // #386: Booker Stock Club; chat-stock-club-preload.mjs answers Polygon (synthetic).
-  { name: 'chat-stock-club', env: ['cron', 'gainersLookup', 'polygon', 'stockClub'], timeout: 360 },
+  { name: 'chat-stock-club', env: ['cron', 'gainersLookup', 'polygon', 'stockClub'], timeout: 360, clock: '09:00' },
   // #378: the Terminal theme on a room, the Gainers Table and the FAQ; reuses the Gainers Table's fake Polygon.
-  { name: 'chat-terminal-theme', preload: 'chat-gainers-table-preload.mjs', env: ['gainersLookup', 'polygon'], timeout: 360 },
+  { name: 'chat-terminal-theme', preload: 'chat-gainers-table-preload.mjs', env: ['gainersLookup', 'polygon'], timeout: 360, clock: '09:00' },
   // #501: stage mode (admin-only preview); its stock panel reads the Gainers Table through the same fake Polygon.
-  { name: 'chat-stage-mode', preload: 'chat-gainers-table-preload.mjs', env: ['gainersLookup', 'polygon'], timeout: 360 },
+  { name: 'chat-stage-mode', preload: 'chat-gainers-table-preload.mjs', env: ['gainersLookup', 'polygon'], timeout: 360, clock: '09:00' },
   // #502: live video in stage mode, open to members; LiveKit is a stand-in inside the test, and the stock panel reads the Gainers Table through the same fake Polygon.
   // #509: the phone's viewing room for a live room (video, and the room chat on a button); LiveKit is a stand-in inside the test.
   { name: 'chat-stage-phone', env: ['livekitPhone'], timeout: 540, weight: 150 },
-  { name: 'chat-stage-video', preload: 'chat-gainers-table-preload.mjs', env: ['livekit', 'gainersLookup', 'polygon'], timeout: 600 },
+  // #522: longer since the test also waits out the half minute before the server closes an ended room, twice.
+  { name: 'chat-stage-video', preload: 'chat-gainers-table-preload.mjs', env: ['livekit', 'gainersLookup', 'polygon'], timeout: 900, clock: '09:00' },
   // #507: the host sets the stock on screen for everyone; LiveKit, Ably and Polygon are all stand-ins (its own preload has the last two).
-  { name: 'chat-stage-on-screen', env: ['ably', 'livekit', 'gainersLookup', 'polygon'], timeout: 360 },
+  { name: 'chat-stage-on-screen', env: ['ably', 'livekit', 'gainersLookup', 'polygon'], timeout: 360, clock: '09:00' },
   // #508: Raise hand for everyone watching; LiveKit (the room's participants and their attributes) is a stand-in inside the test.
   { name: 'chat-stage-hand', preload: 'chat-gainers-table-preload.mjs', env: ['livekit', 'gainersLookup', 'polygon'], timeout: 360 },
   { name: 'chat-header-cards' },

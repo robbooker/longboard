@@ -4,6 +4,7 @@ import { createChatAdminClient, requestOriginAllowed } from "@/lib/chatAdmin";
 import { isEntitlementKey, normalizeEmail } from "@/lib/memberAccess";
 import { supabaseMemberStore } from "@/lib/members/memberStore";
 import { forgetAllChatSessions } from "@/lib/chatSessionCache";
+import { removeStagePersonAfterResponse } from "@/lib/chatStageRemove";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const json = (body: unknown, status = 200) => NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
@@ -81,10 +82,13 @@ export async function PATCH(request: NextRequest) {
     })
     .eq("id", payload.id)
     .is("revoked_at", null)
-    .select("id");
+    .select("id, person_id");
   if (error) return json({ error: "revoke_failed" }, 503);
   if (!(data ?? []).length) return json({ error: "not_found" }, 404);
   // #489: entitlements are by email, not account, so drop every cached chat sign-in here.
   forgetAllChatSessions();
+  // #522: whoever held it stops watching any live video it let them into (best effort, after the response).
+  const person = (data ?? [])[0]?.person_id;
+  if (typeof person === "string") removeStagePersonAfterResponse(person);
   return json({ revoked: payload.id });
 }

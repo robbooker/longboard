@@ -71,6 +71,13 @@ function fakeApi(initial: StageIngress[] = []) {
       state.metadata.set(room, metadata);
     },
     viewerToken: async () => "unused",
+    viewer: async () => null,
+    removeViewer: async () => false,
+    closeRoom: async (room) => {
+      api.calls.push(`close:${room}`);
+      state.metadata.delete(room);
+    },
+    videoRooms: async () => [...state.metadata.keys()],
   };
   return api;
 }
@@ -106,9 +113,10 @@ describe("names", () => {
     expect(chatRoomOfStageVideoRoom("chat-lb-review")).toBe("lb-review");
     for (const other of ["main", "chat-", "chat-nowhere", "", null, 7]) expect(chatRoomOfStageVideoRoom(other)).toBeNull();
   });
-  it("gives each connection its own identity and still knows the member", () => {
-    const identity = stageViewerIdentity("member-1", "ab12cd34");
-    expect(identity).not.toBe(stageViewerIdentity("member-1", "ffffffff"));
+  it("gives each seat its own identity and still knows the member", () => {
+    const identity = stageViewerIdentity("member-1", 1);
+    expect(identity).toBe("member-1#00000001");
+    expect(identity).not.toBe(stageViewerIdentity("member-1", 2));
     expect(stageViewerMember(identity)).toBe("member-1");
     expect(stageViewerMember("stage-broadcast")).toBe("stage-broadcast");
   });
@@ -265,7 +273,7 @@ describe("#512: one permanent stream address and key per room", () => {
 });
 
 describe("#512: the status noticing a change nobody signalled", () => {
-  it("asks for the room's message to be checked when this server sees the state change, and otherwise once a minute", () => {
+  it("asks for the room's message to be checked when this server sees the state change, and otherwise once a minute while live", () => {
     // A room that was never set up has no message to keep right.
     expect(stageNoticeCheckDue("main", "off", 1_000)).toBe(false);
     expect(stageNoticeCheckDue("main", "off", 1_000 + STAGE_NOTICE_CHECK_MS)).toBe(false);
@@ -274,10 +282,13 @@ describe("#512: the status noticing a change nobody signalled", () => {
     // The broadcast arrives, and stops, with no webhook: each is seen at the next fresh read.
     expect(stageNoticeCheckDue("main", "live", 2_000_002)).toBe(true);
     expect(stageNoticeCheckDue("main", "live", 2_004_000)).toBe(false);
-    expect(stageNoticeCheckDue("main", "waiting", 2_008_000)).toBe(true);
-    expect(stageNoticeCheckDue("main", "waiting", 2_008_000 + STAGE_NOTICE_CHECK_MS - 1)).toBe(false);
-    // Nothing changed for a minute: looked at once more (another server may have seen it live).
-    expect(stageNoticeCheckDue("main", "waiting", 2_008_000 + STAGE_NOTICE_CHECK_MS)).toBe(true);
+    // While it stays live, once a minute (a missed end must be noticed).
+    expect(stageNoticeCheckDue("main", "live", 2_002_000 + STAGE_NOTICE_CHECK_MS)).toBe(true);
+    expect(stageNoticeCheckDue("main", "waiting", 2_108_000)).toBe(true);
+    expect(stageNoticeCheckDue("main", "waiting", 2_108_000 + STAGE_NOTICE_CHECK_MS - 1)).toBe(false);
+    // #523: a room that has simply been waiting all along is NOT looked at again every minute.
+    expect(stageNoticeCheckDue("main", "waiting", 2_108_000 + STAGE_NOTICE_CHECK_MS)).toBe(false);
+    expect(stageNoticeCheckDue("main", "waiting", 2_108_000 + 60 * STAGE_NOTICE_CHECK_MS)).toBe(false);
     // Its ingress deleted by hand at LiveKit: checked that once.
     expect(stageNoticeCheckDue("main", "off", 3_000_000)).toBe(true);
     expect(stageNoticeCheckDue("main", "off", 3_000_000 + STAGE_NOTICE_CHECK_MS)).toBe(false);

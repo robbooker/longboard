@@ -19,6 +19,12 @@
 //    server and survives a reload; the card plays at 16:9 at its even width and widened;
 //  - Dual: the same choice, playing, at the desktop size and on an open folding phone (where the
 //    volume slider gives way and mute stays).
+// #523:
+//  - the cards read their room's state from the page's one shared reader: every status request the
+//    page makes is the cards' `rooms=` request, never one per card;
+//  - a card hidden behind an expanded pane keeps its connection for a short grace (a quick flip
+//    never reconnects), then lets go of it, and connects again (a fresh token) when it is shown;
+//    hiding and showing asks the status nothing.
 // CHAT_SHOT_DIR saves quad-video-card.png, card-not-live.png, picker.png, six-video-card-wide.png
 // and dual-video-card.png.
 import {build} from 'esbuild';
@@ -39,7 +45,7 @@ const rooms=['main','shortscout','gainers'];
 const messages=Object.fromEntries(rooms.map(room=>[room,[{id:randomUUID(),room_slug:room,member_id:'33333333-3333-4333-8333-333333333330',guest_id:null,author_label:'Bob',body:`Welcome to ${room}`,created_at:new Date(Date.now()-60000).toISOString(),unread_seq:1}]]));
 const activity={mentions:[],dms:[],mentionCount:0,dmCount:0,mentionThrough:0,dmThrough:0,roomCounts:{},roomThrough:{},roomMessageCounts:{},roomMessageThrough:{}};
 // The stand-in server's live video: each room's state, and what the page asked.
-const stage={main:'off'},statusReads=[],tokens=[],writes=[];
+const stage={main:'off'},statusReads=[],statusAsked=[],tokens=[],writes=[];
 let saved=null,savedWidths=null;
 await build({stdin:{contents:`import React from 'react';import {createRoot} from 'react-dom/client';import QuadChat from './components/chat/QuadChat';import SixChat from './components/chat/SixChat';const six=location.pathname==='/chat/six';const Shell=six?SixChat:QuadChat;createRoot(document.getElementById('root')).render(<Shell dual={location.pathname==='/chat/dual'} accountId="test-account" bootstrap={${JSON.stringify({accountId:'test-account',room:'main',member,roomState,messages:[],reactions:[],counts:{},featureChannel:false})}} allowedRooms={${JSON.stringify(rooms)}} serverSession={false} isAdmin room="main" popout fontVariableClass="" appVersion="test"/>);`,resolveDir:root,loader:'tsx'},bundle:true,platform:'browser',jsx:'automatic',outfile:join(dir,'bundle.js'),define:{'process.env.NODE_ENV':'"development"','process.env':'{}'},plugins:[{name:'test-platform',setup(b){
  b.onResolve({filter:/^(next\/(link|image|dynamic|navigation)|@\/lib\/supabase\/client)$/},a=>({path:a.path,namespace:'mock'}));
@@ -65,8 +71,11 @@ const server=createServer(async(req,res)=>{
  if(/^\/chat\/(quad|six|dual)/.test(req.url)){res.setHeader('Content-Type','text/html');return res.end('<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{box-sizing:border-box}body{margin:0}</style><link rel="stylesheet" href="/bundle.css"><div id="root"></div><script src="/bundle.js"></script>');}
  if(['/bundle.js','/bundle.css'].includes(req.url)){res.setHeader('Content-Type',req.url.endsWith('css')?'text/css':'text/javascript');return res.end(await readFile(join(dir,req.url.slice(1))));}
  if(req.url==='/chat-sw.js'){res.setHeader('Content-Type','text/javascript');return res.end('');}
- if(req.url.startsWith('/api/chat/stage/status')){const room=new URL(req.url,'http://localhost').searchParams.get('room');statusReads.push(room);
-  return rooms.includes(room)?send({state:stage[room]??'off',video:true}):send({error:'room_forbidden'},403);}
+ // #523: the cards ask through the page's shared reader (`rooms=`); a room she cannot read is left out of the answer.
+ if(req.url.startsWith('/api/chat/stage/status')){const q=new URL(req.url,'http://localhost').searchParams,several=q.get('rooms');statusAsked.push(several===null?'room':'rooms');
+  if(several===null){const room=q.get('room');statusReads.push(room);return rooms.includes(room)?send({state:stage[room]??'off',video:true}):send({error:'room_forbidden'},403);}
+  const asked=several.split(',').filter(Boolean);statusReads.push(...asked);
+  return send({states:Object.fromEntries(asked.filter(room=>rooms.includes(room)).map(room=>[room,stage[room]??'off'])),video:true});}
  if(req.url.startsWith('/api/chat/card-layout')){
   if(req.method==='GET')return send({layout:saved?saved.map(c=>allowed(c)?c:null):null,saved:!!saved,widths:savedWidths});
   let raw='';for await(const chunk of req)raw+=chunk;const body=JSON.parse(raw||'{}');writes.push({path:'/api/chat/card-layout',body});
@@ -86,6 +95,8 @@ await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.
 
 // The page's stand-in for the LiveKit connection (see components/chat/stage/stageFeed.ts).
 const fakeFeed=()=>{
+ // #523: a hidden card's grace, shortened for the test (the real one is 12 seconds).
+ window.__chatVideoCardHiddenMsForTests=4000;
  const feed=window.__stageFeed={connects:[],closed:0,open:0,audioStarted:0,volume:null};
  window.__chatStageFeedForTests=async({url,token,video,events})=>{
   feed.connects.push({url,token});feed.open++;
@@ -195,13 +206,43 @@ try{
  await p.waitForFunction(()=>[...document.querySelectorAll('article')].some(e=>e.textContent.includes('Chat beside the video')),T);
  assert.deepEqual(writes.filter(w=>w.path==='/api/chat').map(w=>w.body.room),['main']);
  assert(await p.$eval(pane(2),e=>e.textContent.includes('Welcome to gainers')),'another pane is still a chat');
+ // #523: another pane is expanded, so the video pane is hidden (it stays mounted). A quick flip
+ // there and back keeps the connection...
+ // (The go-live signal's own two reads, one at once and one settle read, are done first.)
+ for(let waited=0;statusReads.length<3;waited+=100){assert(waited<30000*scale,`the signal's settle read: ${statusReads.join(',')}`);await sleep(100);}
+ assert.deepEqual(statusReads,['main','main','main'],'going live cost the page two status reads: one on the signal, one settle read');
+ const shownFeed=await feed(),shownTokens=tokens.length;
+ await p.click(`${pane(0)} button[aria-label="Expand pane 1"]`);
+ await p.waitForFunction(s=>document.querySelector(s).hidden,T,pane(1));
+ await p.click(`${pane(0)} button[aria-label="Restore four panes"]`);
+ await p.waitForFunction(s=>!document.querySelector(s).hidden,T,pane(1));
+ await fits(pane(1),'Quad pane after a quick flip to another pane');
+ assert.deepEqual(await feed().then(f=>[f.connects,f.open,f.closed]),[shownFeed.connects,1,shownFeed.closed],'a quick flip to another pane and back never reconnects');
+ // ...and left hidden, the card lets go of it after the grace, with no player kept behind the other pane.
+ const readsBeforeHide=statusReads.length;
+ await p.click(`${pane(0)} button[aria-label="Expand pane 1"]`);
+ await p.waitForFunction(s=>document.querySelector(s).hidden,T,pane(1));
+ assert.equal((await feed()).open,1,'still connected just after being hidden');
+ await p.waitForFunction(()=>window.__stageFeed.open===0,T);
+ await p.waitForFunction(s=>!document.querySelector(s+' [data-stage-video]')&&!document.querySelector(s+' [data-card-live-video]').hasAttribute('data-card-live-video-held'),T,pane(1));
+ assert.deepEqual(await feed().then(f=>[f.connects,f.open,f.closed]),[shownFeed.connects,0,shownFeed.closed+1],'a hidden card closes its connection after the grace');
+ await sleep(600);
+ assert.equal(tokens.length,shownTokens,'and asks for no token while hidden');
+ // Shown again: it connects again by itself, with a fresh token, and plays.
+ await p.click(`${pane(0)} button[aria-label="Restore four panes"]`);
+ await fits(pane(1),'Quad pane shown again');
+ assert.deepEqual(await feed().then(f=>[f.connects,f.open,f.closed]),[shownFeed.connects+1,1,shownFeed.closed+1],'shown again, the card reconnects');
+ assert.deepEqual(tokens.slice(shownTokens),[{room:'main',live:true}],'with one fresh token');
+ assert.equal(statusReads.length,readsBeforeHide,'hiding and showing a card asks the status nothing');
+ assert.equal((await feed()).volume,1,'and the member\'s sound choice is kept');
+ console.log('PASS Quad: a hidden video pane keeps its connection through a quick flip, lets go after the grace and reconnects when shown');
  // Wide (the pane expanded) and narrow (a small window, then a phone showing one pane).
  await p.click(`${pane(1)} button[aria-label="Expand pane 2"]`);
  const wide=await fits(pane(1),'Quad pane expanded');assert(wide.box.w>1300&&wide.area.w>m.area.w,'expanded, the picture is bigger');
  await p.click(`${pane(1)} button[aria-label="Restore four panes"]`);
  await p.setViewport({width:800,height:900});
  const narrow=await fits(pane(1),'Quad pane on an 800px window');assert(narrow.box.w<420,'a narrow pane');await noSideScroll();
- assert((await feed()).connects===1,'resizing never reconnects');
+ assert.equal((await feed()).connects,shownFeed.connects+1,'resizing never reconnects');
  // (Switching to a phone reloads the page in this browser, so the phone starts afresh.)
  await p.setViewport({width:390,height:844,isMobile:true,hasTouch:true});await p.waitForSelector('nav[aria-label="Choose visible conversation"] button:nth-child(2)',{visible:true,...T});
  await p.click('nav[aria-label="Choose visible conversation"] button:nth-child(2)');
@@ -281,5 +322,7 @@ try{
  await setStage('main','off');await p.waitForSelector(`${pane(1)} ${off}`,{visible:true,...T});
  assert.equal((await feed()).open,0);
  console.log('PASS Dual: the same card, playing at 16:9 on a computer and an open folding phone, and remembered');
+ // #523: every status request was the page's shared one for its cards; no card asked for itself.
+ assert(statusAsked.length>0&&statusAsked.every(kind=>kind==='rooms'),`every status request is the shared reader's: ${statusAsked.join(',')}`);
  assert.deepEqual(errors,[]);console.log('chat-video-card-browser: all checks passed');
 }catch(e){console.error(e);process.exitCode=1;}finally{server.closeAllConnections();await browser?.close();await new Promise(r=>server.close(r));await rm(dir,{recursive:true,force:true});}

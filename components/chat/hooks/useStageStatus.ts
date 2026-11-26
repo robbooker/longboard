@@ -3,6 +3,13 @@
 // shortly after it opens (or is switched to), when a "stage" signal for it arrives over Ably, and
 // when the tab comes back after a while. Never on a timer and never for any other room. With live
 // video not set up on the server (`room` null) nothing is asked at all.
+// #523:
+//  - a signal that carries the stock the host put on screen asks nothing: the stock is in the signal;
+//  - signals that arrive in a burst (a broadcast starting is several) ask once, and once more a few
+//    seconds after the last of them;
+//  - a read caused by something (a signal, the player, coming back to the tab, a stage link) says
+//    so with `fresh=1`, so the server never answers it from its half-minute memory of "waiting"
+//    (lib/chatStageVideo.ts STAGE_SETTLED_MEMORY_MS). Only the plain read when a room opens may be.
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   CHAT_STAGE_EVENT,
@@ -21,6 +28,10 @@ const AFTER_OPEN_MS = 400;
 const SETTLE_MS = 5_000;
 /** A tab that comes back is asked again only if its answer is older than this. */
 const STALE_MS = 30_000;
+/** #523: signals closer together than this are one change: one read now, one settle read after the last. */
+const SIGNAL_BURST_MS = 1_000;
+/** The page was opened by a "Watch live" link: its first read must not be a remembered "waiting". */
+const stageLinkOpened = () => new URL(window.location.href).searchParams.get("stage") === "1";
 
 export function useStageStatus(room: ChatRoom | null): {
   state: StageState;
@@ -43,10 +54,11 @@ export function useStageStatus(room: ChatRoom | null): {
         run();
       }, ms);
       timers.add(timer);
+      return timer;
     };
-    const check = () => {
+    const check = (fresh: boolean) => {
       checkedAt = Date.now();
-      fetch(`/api/chat/stage/status?room=${encodeURIComponent(room)}`, { cache: "no-store", signal: controller.signal })
+      fetch(`/api/chat/stage/status?room=${encodeURIComponent(room)}${fresh ? "&fresh=1" : ""}`, { cache: "no-store", signal: controller.signal })
         .then((response) => (response.ok ? response.json() : null))
         .then((body: { state?: unknown; onScreen?: unknown } | null) => {
           if (controller.signal.aborted || !body) return;
@@ -60,24 +72,37 @@ export function useStageStatus(room: ChatRoom | null): {
         })
         .catch(() => undefined);
     };
-    read.current = check;
-    later(check, AFTER_OPEN_MS);
+    read.current = () => check(true);
+    later(() => check(stageLinkOpened()), AFTER_OPEN_MS);
+    let signalledAt = 0;
+    let settle: ReturnType<typeof setTimeout> | undefined;
     const signal = (event: Event) => {
       const detail = (event as CustomEvent<ChatStageEventDetail>).detail;
       if (detail?.room !== room) return;
-      // #507: the host's stock comes with the signal: shown at once, before the status is asked again.
-      const told = parseStageOnScreen(detail.onScreen);
-      if (told)
-        setKnown((current) => {
-          if (current?.room !== room || current.state === "off") return current;
-          const onScreen = newerStageOnScreen(current.onScreen, told);
-          return onScreen === current.onScreen ? current : { ...current, onScreen };
-        });
-      check();
-      later(check, SETTLE_MS);
+      // #507: the host's stock comes with the signal and is shown at once. #523: and that is all:
+      // the signal says nothing about the broadcast, so the status is not asked again for it.
+      if (detail.onScreen) {
+        const told = parseStageOnScreen(detail.onScreen);
+        if (told)
+          setKnown((current) => {
+            if (current?.room !== room || current.state === "off") return current;
+            const onScreen = newerStageOnScreen(current.onScreen, told);
+            return onScreen === current.onScreen ? current : { ...current, onScreen };
+          });
+        return;
+      }
+      // #523: one read for a burst of signals, and one settle read after the last of them.
+      const now = Date.now();
+      if (now - signalledAt > SIGNAL_BURST_MS) check(true);
+      signalledAt = now;
+      if (settle) {
+        clearTimeout(settle);
+        timers.delete(settle);
+      }
+      settle = later(() => check(true), SETTLE_MS);
     };
     const shown = () => {
-      if (document.visibilityState === "visible" && Date.now() - checkedAt > STALE_MS) check();
+      if (document.visibilityState === "visible" && Date.now() - checkedAt > STALE_MS) check(true);
     };
     window.addEventListener(CHAT_STAGE_EVENT, signal);
     document.addEventListener("visibilitychange", shown);

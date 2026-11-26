@@ -4,6 +4,8 @@ import { requireChatUser } from "@/lib/chatAuth";
 import { gainersQuotes } from "@/lib/chatGainersQuotes";
 import { gainersShares } from "@/lib/chatGainersShares";
 import { parseStageTicker } from "@/lib/chatStageLive";
+import { stageVideoApi } from "@/lib/chatStageLiveKit";
+import { parseStageRoom, readStageOnScreen, sharedStageOnScreen, stageVideoConfig } from "@/lib/chatStageVideo";
 import { ChatTimingRateLimit } from "@/lib/chatTimings";
 
 export const runtime = "nodejs";
@@ -28,6 +30,10 @@ const limiter = new ChatTimingRateLimit(STOCK_LOOKUPS, STOCK_LOOKUPS_WINDOW_MS);
  * showing such a stock. A part Polygon has no answer for is null, and the stage shows "—".
  * #512: at most 60 lookups in five minutes per account (429 "rate_limited" after that; the stage
  * keeps the numbers it has, or "—", and asks again a minute later).
+ * #523: `room` is required, and the answer is given only for the ticker that is on screen in that
+ * room right now (409 "not_on_screen" for any other), so this address cannot be used to look up
+ * one stock after another. What is on screen is this server's few-second memory of the LiveKit
+ * room (the on-screen route forgets it when the host changes the stock).
  */
 export async function GET(request: NextRequest) {
   const auth = await requireChatUser(request);
@@ -36,7 +42,15 @@ export async function GET(request: NextRequest) {
   const param = request.nextUrl.searchParams.get("ticker");
   const ticker = parseStageTicker(param);
   if (!ticker || ticker !== param) return json({ error: "invalid_ticker" }, 400);
+  const room = parseStageRoom(request.nextUrl.searchParams.get("room"));
+  if (!room) return json({ error: "invalid_room" }, 400);
+  if (!canAccessChatRoom(auth.access, room)) return json({ error: "room_forbidden" }, 403);
+  const config = stageVideoConfig();
+  if (!config) return json({ error: "video_off" }, 404);
   if (!limiter.allow(auth.user.id)) return json({ error: "rate_limited" }, 429);
+  const api = stageVideoApi(config);
+  const onScreen = await sharedStageOnScreen(room, () => readStageOnScreen(api, room));
+  if (onScreen?.symbol !== ticker) return json({ error: "not_on_screen" }, 409);
   const [quotes, shares] = await Promise.all([
     gainersQuotes([ticker]).catch(() => null),
     gainersShares([ticker]).catch(() => null),

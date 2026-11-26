@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { requireAdmin } from "@/lib/auth";
 import { forgetChatUser } from "@/lib/chatSessionCache";
+import { removeStageViewerAfterResponse } from "@/lib/chatStageRemove";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,5 +48,8 @@ export async function DELETE(
 
   // #489: the cached chat sign-in carries the Boardroom tag, so drop it on this instance.
   forgetChatUser(id);
+  // #522: without the tag they may no longer watch LB's live video: any connection is closed, and
+  // a new token is given only for rooms they may still watch (best effort, after the response).
+  removeStageViewerAfterResponse(id);
   return NextResponse.json({ user_id: id, tag, removed: true });
 }

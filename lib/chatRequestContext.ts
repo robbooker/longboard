@@ -99,13 +99,19 @@ export function createRequestContextReader({
         cache.clear();
       },
     });
-  function once<T>(key: string, run: () => Promise<T>, failed: T): Promise<T> {
-    const hit = cache ? (cache.get(key) as T | undefined) : undefined;
+  /** `fresh` (#522): never answered from the kept answer; the read (or one already under way) is used. */
+  function once<T extends LongboardContext | SessionContext>(key: string, run: () => Promise<T>, failed: T, fresh = false): Promise<T> {
+    const hit = cache && !fresh ? (cache.get(key) as T | undefined) : undefined;
     if (hit) return Promise.resolve(hit);
     const existing = pending.get(key) as Promise<T> | undefined;
     if (existing) return existing;
     if (pending.size >= 5000) return Promise.resolve(failed);
     const task = run()
+      .then((value) => {
+        // #522: a fresh read that no longer lets the person in also drops what was kept for them here.
+        if (fresh && cache && !grants(value as LongboardContext | SessionContext)) cache.delete(key);
+        return value;
+      })
       .catch(() => failed)
       .finally(() => {
         if (pending.get(key) === task) pending.delete(key);
@@ -124,7 +130,7 @@ export function createRequestContextReader({
   const call = (admin: Admin, fn: string, args: Record<string, unknown>) =>
     admin.rpc(fn, args).abortSignal(AbortSignal.timeout(5000));
   return {
-    longboard(admin: Admin, userId: string, sessionId: string): Promise<LongboardContext> {
+    longboard(admin: Admin, userId: string, sessionId: string, fresh = false): Promise<LongboardContext> {
       const key = longboardSessionKey(userId, sessionId);
       return once<LongboardContext>(
         key,
@@ -145,9 +151,10 @@ export function createRequestContextReader({
           } as LongboardContext);
         },
         { mode: "unavailable" },
+        fresh,
       );
     },
-    session(admin: Admin, tokenHash: string): Promise<SessionContext> {
+    session(admin: Admin, tokenHash: string, fresh = false): Promise<SessionContext> {
       const key = chatSignInSessionKey(tokenHash);
       return once<SessionContext>(
         key,
@@ -167,6 +174,7 @@ export function createRequestContextReader({
           } as SessionContext);
         },
         { mode: "unavailable" },
+        fresh,
       );
     },
   };
