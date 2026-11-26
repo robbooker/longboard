@@ -37,7 +37,8 @@ const shots=process.env.CHAT_SHOT_DIR,TOKEN='synthetic-gainers-lookup-token-neve
 const control=async(path,body={})=>{const r=await fetch(fixture+'/test/'+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}),text=await r.text();assert.equal(r.status,200,text);return text?JSON.parse(text):null;};
 const sql=(text,args=[])=>control('sql',{sql:text,args});
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-const shot=async(page,name)=>{if(shots){await sleep(700);await page.screenshot({path:`${shots}/${name}`});}};
+// Pictures leave out the Next dev server's own corner badge: it isn't part of the app.
+const shot=async(page,name)=>{if(shots){await page.addStyleTag({content:'nextjs-portal{display:none!important}'});await sleep(700);await page.screenshot({path:`${shots}/${name}`});}};
 
 // --- Today's gainers (all with 150K+ shares so the Gainers Table lists them) and their company facts.
 const STOCKS={CHNA:['China',600_000],HKGO:['Hong Kong',2_000_000],CHHK:['China Hong Kong',900_000],SGPR:['Singapore',1_500_000],MLYS:['Malaysia',2_400_000],ISRL:['Israel',null],
