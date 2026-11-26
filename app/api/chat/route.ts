@@ -1,5 +1,6 @@
 import { isRecordingRoom, isWhatsNewRoom } from "@/lib/publicChat";
 import { processChatPushJobs } from "@/lib/chatPush";
+import { stageRecordingAfterPost } from "@/lib/chatStageRecordingServer";
 import { canAccessChatRoom, canStartChatPost, canWriteChatRoom } from "@/lib/chatAccess";
 import { AI_INSIGHTS_REPLIES_ONLY } from "@/lib/chatAiInsightsText";
 import { answerAiInsightsReply } from "@/lib/chatAiInsightsAnswers";
@@ -183,6 +184,9 @@ async function send(
       /* Cron retries the durable outbox. */
     }
   });
+  // #524: a YouTube or Loom link posted in LB Recordings or SS Recordings becomes the recording on
+  // that room's last live-video notice. Nothing happens for any other post; never delays this answer.
+  stageRecordingAfterPost(roomSlug, String(message.body ?? ""), typeof message.created_at === "string" ? message.created_at : null);
   // #482: a member's reply in AI Insights may be for the AI (a reply to its post, an @AI, or a
   // question to it). It decides and answers once, in the thread, after the response is sent.
   if (roomSlug === "ai-insights" && message.reply_to_id && !agent)

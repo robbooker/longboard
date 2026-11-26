@@ -4,7 +4,7 @@ import { createChatAdminClient } from "@/lib/chatAdmin";
 import { requireChatUser } from "@/lib/chatAuth";
 import { findChatMember } from "@/lib/chatMembers";
 import { stageVideoApi } from "@/lib/chatStageLiveKit";
-import { stageReachable } from "@/lib/chatStageLive";
+import { isStageRoom, stageReachable } from "@/lib/chatStageLive";
 import { stageBody, stageOriginAllowed } from "@/lib/chatStageRequest";
 import {
   parseStageRoom,
@@ -53,6 +53,8 @@ export async function POST(req: NextRequest) {
   const body = await stageBody(req);
   const room = parseStageRoom(body?.room);
   if (!room || !body) return json({ error: "invalid_room" }, 400);
+  // #524: only the rooms that offer live video (lib/chatStageLive.ts).
+  if (!isStageRoom(room)) return json({ error: "stage_not_offered" }, 404);
   if (!canAccessChatRoom(auth.access, room)) return json({ error: "room_forbidden" }, 403);
   const config = stageVideoConfig();
   if (!config) return json({ error: "video_off" }, 404);

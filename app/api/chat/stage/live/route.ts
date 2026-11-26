@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { canAccessChatRoom } from "@/lib/chatAccess";
 import { requireChatUser } from "@/lib/chatAuth";
+import { isStageRoom } from "@/lib/chatStageLive";
 import { publishRoomEventAfterResponse } from "@/lib/chatRealtimePublish";
 import { isChatAdmin } from "@/lib/chatRole";
 import { stageKeyWasReset, stageMayHaveChanged } from "@/lib/chatStageChange";
@@ -43,6 +44,8 @@ async function adminFor(req: NextRequest, roomParam: unknown) {
   // #522: strictly: a request that names no room is refused, never taken to mean LB.
   const room = parseStageRoom(roomParam);
   if (!room) return { response: json({ error: "invalid_room" }, 400) };
+  // #524: only the rooms that offer live video (lib/chatStageLive.ts).
+  if (!isStageRoom(room)) return { response: json({ error: "stage_not_offered" }, 404) };
   if (!canAccessChatRoom(auth.access, room)) return { response: json({ error: "room_forbidden" }, 403) };
   const config = stageVideoConfig();
   if (!config) return { response: json({ error: "video_off" }, 404) };

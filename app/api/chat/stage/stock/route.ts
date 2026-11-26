@@ -3,7 +3,7 @@ import { canAccessChatRoom } from "@/lib/chatAccess";
 import { requireChatUser } from "@/lib/chatAuth";
 import { gainersQuotes } from "@/lib/chatGainersQuotes";
 import { gainersShares } from "@/lib/chatGainersShares";
-import { parseStageTicker } from "@/lib/chatStageLive";
+import { isStageRoom, parseStageTicker } from "@/lib/chatStageLive";
 import { stageVideoApi } from "@/lib/chatStageLiveKit";
 import { parseStageRoom, readStageOnScreen, sharedStageOnScreen, stageVideoConfig } from "@/lib/chatStageVideo";
 import { ChatTimingRateLimit } from "@/lib/chatTimings";
@@ -44,6 +44,8 @@ export async function GET(request: NextRequest) {
   if (!ticker || ticker !== param) return json({ error: "invalid_ticker" }, 400);
   const room = parseStageRoom(request.nextUrl.searchParams.get("room"));
   if (!room) return json({ error: "invalid_room" }, 400);
+  // #524: only the rooms that offer live video (lib/chatStageLive.ts).
+  if (!isStageRoom(room)) return json({ error: "stage_not_offered" }, 404);
   if (!canAccessChatRoom(auth.access, room)) return json({ error: "room_forbidden" }, 403);
   const config = stageVideoConfig();
   if (!config) return json({ error: "video_off" }, 404);

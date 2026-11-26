@@ -155,6 +155,8 @@ export const TESTS = [
   { name: 'chat-stage-on-screen', env: ['ably', 'livekit', 'gainersLookup', 'polygon'], timeout: 360, clock: '09:00' },
   // #508: Raise hand for everyone watching; LiveKit (the room's participants and their attributes) is a stand-in inside the test.
   { name: 'chat-stage-hand', preload: 'chat-gainers-table-preload.mjs', env: ['livekit', 'gainersLookup', 'polygon'], timeout: 360 },
+  // #524: webinar notices (Booker Stock Club, the recording on the ended notice); LiveKit is a stand-in inside the test.
+  { name: 'chat-stage-notice', env: ['livekit'], timeout: 420, weight: 150 },
   { name: 'chat-header-cards' },
   { name: 'chat-jammie-admin' },
   { name: 'chat-jammie-approval' },

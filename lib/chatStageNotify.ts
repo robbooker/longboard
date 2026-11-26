@@ -1,26 +1,39 @@
 // #503 Stage mode: telling a room, once, that its live video is on.
 //
-// Nothing new is stored. The record of "this broadcast was announced" is the room message itself:
-// a Longboard Bot post whose id is worked out from the room and the ten-minute slot the broadcast
-// began in. public.post_chat_longboard_announcement inserts a given id at most once, whichever
-// server asks and however often, so only the one call that really created the message goes on to
-// the bell and the phones. The same message is rewritten when the broadcast ends, and rewritten
-// back, with no second notification, when it returns within STAGE_RECONNECT_MS.
-// The ids can be listed for any stretch of time, so the latest notice is found by primary key.
+// The room message is a Longboard Bot post whose id is worked out from the room and the ten-minute
+// slot the broadcast began in, so every server that sees the same broadcast asks for the same id and
+// the database creates it at most once.
+// #524: the record of a broadcast is its row in public.chat_stage_broadcasts (keyed by that message):
+// when it started, when it was last seen live, when it ended. That row, not a look back over six
+// hours of message ids, decides whether what LiveKit shows now is the broadcast already announced
+// (however long it has run), the same one back after a short drop, or a new one (announced, and an
+// earlier notice whose end nobody saw is marked ended at that moment). The database allows a room
+// one open broadcast at a time, and the message, its row and the closing of a stale one are written
+// together (lib/chatStageNotifyServer.ts, supabase/migrations/20261126120000_chat_stage_broadcasts.sql).
 // Server only (lib/chatLongboardBot.ts hashes with node:crypto); the wording is lib/chatStageNotice.ts.
 import { uuidFrom } from "./chatLongboardBot";
 import { CHAT_ROOMS, parseChatRoom, type ChatRoom } from "./publicChat";
-import { composeStageEndedNotice, composeStageLiveNotice, stageLiveNotice, stageLivePush } from "./chatStageNotice";
+import { composeStageEndedNotice, composeStageLiveNotice, stageLivePush } from "./chatStageNotice";
 import { stageStateOf, type StageIngress } from "./chatStageVideo";
 
 /** One notice at most per room per slot. Never longer than STAGE_RECONNECT_MS (see tellStageLive). */
 export const STAGE_NOTICE_SLOT_MS = 10 * 60_000;
 /** A broadcast that returns within this long of ending is the same broadcast: nobody is told again. */
 export const STAGE_RECONNECT_MS = 10 * 60_000;
-/** How far back a notice still counts as "the current broadcast": 6 hours of slots. */
+/** A phone notification is recognised as a live notice's for this long (6 hours of slots); see stageNoticePush. */
 export const STAGE_NOTICE_LOOKBACK_SLOTS = 36;
 /** A broadcast that stops sending is given this long to return before the message says it ended. */
 export const STAGE_DROP_GRACE_MS = 20_000;
+/** #524: while a broadcast is live, "last seen live" is written at most this often. */
+export const STAGE_SEEN_GAP_MS = 60_000;
+/** #524: when LiveKit gives no start time, an open notice not seen live for this long is an earlier broadcast's. */
+export const STAGE_UNSEEN_MS = 6 * 60 * 60_000;
+/** #524: bell entries still unfinished this long after the notice was posted are finished by the next look. */
+export const STAGE_BELLS_RETRY_MS = 45_000;
+/** #524: bell entries are written for this many members of the list per database call... */
+export const STAGE_BELL_PAGE = 500;
+/** ...and at most this many calls per look (200,000 members); the next look carries on from there. */
+export const STAGE_BELL_PAGES_MAX = 400;
 
 const slotOf = (ms: number) => Math.floor(ms / STAGE_NOTICE_SLOT_MS);
 export const stageNoticeId = (room: ChatRoom, slot: number) => uuidFrom(`stage-live-notice:${room}:${slot}`);
@@ -29,41 +42,90 @@ export function stageNoticeIds(room: ChatRoom, now: number) {
   const last = slotOf(now) + 1;
   return Array.from({ length: STAGE_NOTICE_LOOKBACK_SLOTS + 2 }, (_, back) => stageNoticeId(room, last - back));
 }
-const roomName = (room: ChatRoom) => CHAT_ROOMS.find((known) => known.slug === room)?.label ?? room;
+export const stageRoomName = (room: ChatRoom) => CHAT_ROOMS.find((known) => known.slug === room)?.label ?? room;
+const roomName = stageRoomName;
 
-export type StageNotice = { id: string; body: string; createdAt: number; editedAt: number | null; revision: number };
+/** #524: one announced broadcast (a row of chat_stage_broadcasts). `id` is its room message. Times in ms. */
+export type StageBroadcast = {
+  id: string;
+  startedAt: number;
+  lastLiveAt: number;
+  endedAt: number | null;
+  recordingUrl: string | null;
+  /** Who set or removed the recording ("post": the recordings room; "admin": by hand); null: nobody yet. */
+  recordingSource: "post" | "admin" | null;
+  /** When every bell entry had been written; null while that is unfinished. */
+  notifiedAt: number | null;
+  createdAt: number;
+};
 
 /** What the rules below ask of the database. lib/chatStageNotifyServer.ts is the real one. */
 export interface StageNoticeStore {
-  /** The notices among these ids. */
-  notices(ids: string[]): Promise<StageNotice[]>;
-  /** true only for the one call that created the message; false when the id was already there. */
-  post(id: string, room: ChatRoom, body: string): Promise<boolean>;
-  /** New words for a notice, only if nobody changed it since it was read. */
-  rewrite(room: ChatRoom, notice: StageNotice, body: string): Promise<boolean>;
-  /** The accounts to tell: lib/chatStageNotify.ts's stageNoticeRecipients. */
-  recipients(room: ChatRoom): Promise<string[]>;
-  /** A bell entry for each account (the database queues their phone notifications from it). */
-  notify(id: string, room: ChatRoom, accounts: string[]): Promise<void>;
-  /** Takes a notice's bell entries (and so any phone notification not yet sent) back. */
-  withdraw(id: string): Promise<void>;
+  /** The room's most recently announced broadcast, or null when it has never had one. */
+  latest(room: ChatRoom): Promise<StageBroadcast | null>;
+  /** The broadcast whose notice has this id, or null. */
+  broadcast(id: string): Promise<StageBroadcast | null>;
+  /**
+   * The "live now" message and its record, together. true only for the one call that created them;
+   * false when the id was already there or another server announced this broadcast at the same
+   * moment. An open broadcast the room still has is marked ended first (`staleBody`).
+   */
+  open(id: string, room: ChatRoom, body: string, startedAt: number, staleBody: string): Promise<boolean>;
+  /** The broadcast was live at `at`: remembered, unless something within `gap` ms of it already is. */
+  seen(id: string, at: number, gap: number): Promise<void>;
+  /** Over: the record, the message's words and its alerts taken back. true only for the one call that marked it. */
+  close(room: ChatRoom, id: string, body: string, endedAt: number): Promise<boolean>;
+  /** Back shortly after ending: the same message says live again. Nobody is notified. */
+  reopen(room: ChatRoom, id: string, body: string): Promise<boolean>;
+  /** Bell entries for the next slice of the room's members (the database queues their phone notifications from them). */
+  notifyPage(id: string, room: ChatRoom): Promise<{ done: boolean }>;
 }
 
-const isLive = (notice: StageNotice) => stageLiveNotice(notice.body) !== null;
-const latest = (notices: StageNotice[]) => notices.reduce<StageNotice | null>((a, b) => (a && a.createdAt >= b.createdAt ? a : b), null);
-const recentlyEnded = (notice: StageNotice, now: number) => now - (notice.editedAt ?? notice.createdAt) < STAGE_RECONNECT_MS;
+/**
+ * #524: writes a notice's bell entries, a slice of the member list at a time, until the database
+ * says the whole list is covered. The database remembers how far it got and never writes a member's
+ * entry twice, so this can be cut off anywhere (a timeout, a recycled function) and simply run
+ * again: by the announcing call, or by a later look that finds the job unfinished.
+ */
+export async function writeStageBells(store: Pick<StageNoticeStore, "notifyPage">, id: string, room: ChatRoom): Promise<boolean> {
+  for (let pages = 0; pages < STAGE_BELL_PAGES_MAX; pages++) if ((await store.notifyPage(id, room)).done) return true;
+  return false;
+}
+
+/**
+ * #524: what a broadcast LiveKit shows live right now is, next to the room's last announced one.
+ *  - "same": the one already announced, still (or again, after a drop too short to matter) on;
+ *  - "resume": that one ended under STAGE_RECONNECT_MS before this one began: the same broadcast is back;
+ *  - "new": another broadcast.
+ * `startedAt` is LiveKit's start time for what is on now (the same for every server), when it gives one.
+ * An open notice is the same broadcast when what is on now began before it was last seen live, or
+ * within the reconnect time after. That holds however long the broadcast runs and however rarely
+ * anyone looks. Begun later than that, the earlier broadcast ended unseen and this is a new one.
+ */
+export function stageBroadcastVerdict(last: StageBroadcast, at: { now: number; startedAt: number | null }): "same" | "resume" | "new" {
+  const { now, startedAt } = at;
+  if (last.endedAt === null) {
+    if (startedAt === null) return now - last.lastLiveAt < STAGE_UNSEEN_MS ? "same" : "new";
+    return startedAt - last.lastLiveAt < STAGE_RECONNECT_MS ? "same" : "new";
+  }
+  if (now - last.endedAt < STAGE_RECONNECT_MS) return "resume";
+  // Looked at late: what is on now is a later start than the one announced, begun soon after that one ended.
+  if (startedAt !== null && startedAt > last.startedAt && startedAt - last.endedAt < STAGE_RECONNECT_MS) return "resume";
+  return "new";
+}
 
 export type StageLiveResult = "announced" | "resumed" | "already";
 
 /**
  * The room's live video is on (as LiveKit says, not as a webhook hints). Tells the room once:
- *  - a live notice is already there: nothing (a repeated webhook, another server, a reconnect);
- *  - the last notice ended under 10 minutes ago: the same broadcast is back; its message says live
- *    again and nobody is notified;
+ *  - the room's last notice is this broadcast: nothing (a repeated webhook, another server, a
+ *    reconnect, the sixth hour of a long one). It is noted as seen live, at most once a minute, and
+ *    bell entries an earlier call did not finish are finished;
+ *  - it ended under 10 minutes before: the same broadcast is back; its message says live again and
+ *    nobody is notified;
  *  - otherwise a new notice, with the id of the slot the broadcast began in. Every server that
- *    sees this broadcast works out the same id, and only the call whose insert created the row
- *    notifies. `startedAt` is LiveKit's own start time for the broadcast, the same for every
- *    caller; without it the server's clock is used.
+ *    sees this broadcast works out the same id, and only the call that created it writes the bells.
+ *    An earlier notice still saying "live" is marked ended in the same step.
  */
 export async function tellStageLive(
   store: StageNoticeStore,
@@ -71,44 +133,48 @@ export async function tellStageLive(
   at: { now: number; startedAt?: number | null; origin: string },
 ): Promise<StageLiveResult> {
   const { now } = at;
+  // LiveKit's start time, unless it is in the future (then the clock is used).
+  const startedAt = typeof at.startedAt === "number" && at.startedAt > 0 && at.startedAt <= now + STAGE_NOTICE_SLOT_MS ? at.startedAt : null;
   const body = composeStageLiveNotice(roomName(room), at.origin, room);
-  const resume = async (notice: StageNotice): Promise<StageLiveResult | null> => {
-    if (isLive(notice)) return "already";
-    if (!recentlyEnded(notice, now)) return null;
-    await store.rewrite(room, notice, body);
-    return "resumed";
+  const settle = async (known: StageBroadcast): Promise<StageLiveResult | null> => {
+    const verdict = stageBroadcastVerdict(known, { now, startedAt });
+    if (verdict === "new") return null;
+    if (verdict === "resume") return (await store.reopen(room, known.id, body)) ? "resumed" : "already";
+    // At most once a minute, and nothing is sent to the database in between.
+    if (now - known.lastLiveAt >= STAGE_SEEN_GAP_MS) await store.seen(known.id, now, STAGE_SEEN_GAP_MS);
+    // The message is there and its bell entries are not all written: the call that posted it was cut off.
+    if (known.notifiedAt === null && now - known.createdAt >= STAGE_BELLS_RETRY_MS) await writeStageBells(store, known.id, room);
+    return "already";
   };
-  const last = latest(await store.notices(stageNoticeIds(room, now)));
-  const known = last && (await resume(last));
+  const last = await store.latest(room);
+  const known = last && (await settle(last));
   if (known) return known;
-  const started = at.startedAt;
-  const usable =
-    typeof started === "number" &&
-    started <= now + STAGE_NOTICE_SLOT_MS &&
-    now - started < (STAGE_NOTICE_LOOKBACK_SLOTS / 2) * STAGE_NOTICE_SLOT_MS;
   // The slot the broadcast began in; then the clock's own slot, for a start time that turns out to
   // be an older broadcast's (a slot is never longer than the reconnect window, so it is free).
-  for (const slot of new Set([slotOf(usable ? started : now), slotOf(now)])) {
+  const recent = startedAt !== null && now - startedAt < (STAGE_NOTICE_LOOKBACK_SLOTS / 2) * STAGE_NOTICE_SLOT_MS;
+  for (const slot of new Set([slotOf(recent ? startedAt : now), slotOf(now)])) {
     const id = stageNoticeId(room, slot);
-    if (await store.post(id, room, body)) {
-      await store.notify(id, room, await store.recipients(room));
+    if (id === last?.id) continue;
+    if (await store.open(id, room, body, startedAt ?? now, composeStageEndedNotice(roomName(room)))) {
+      await writeStageBells(store, id, room);
       return "announced";
     }
     // Already there: another server told the room a moment ago, or the slot holds an earlier notice.
-    const [held] = await store.notices([id]);
-    const settled = held ? await resume(held) : "already";
+    const held = await store.broadcast(id);
+    const settled = held ? await settle(held) : "already";
     if (settled) return settled;
   }
   return "already";
 }
 
-/** The broadcast is over: the live notice (if there is one) says so, and its alerts are taken back. */
-export async function tellStageEnded(store: StageNoticeStore, room: ChatRoom, now: number): Promise<boolean> {
-  const last = latest(await store.notices(stageNoticeIds(room, now)));
-  if (!last || !isLive(last)) return false;
-  if (!(await store.rewrite(room, last, composeStageEndedNotice(roomName(room))))) return false;
-  await store.withdraw(last.id);
-  return true;
+/**
+ * The broadcast is over: the open notice (if there is one) says so, and its alerts are taken back.
+ * `endedAt`: when it stopped, as well as that is known.
+ */
+export async function tellStageEnded(store: StageNoticeStore, room: ChatRoom, endedAt: number): Promise<boolean> {
+  const last = await store.latest(room);
+  if (!last || last.endedAt !== null) return false;
+  return store.close(room, last.id, composeStageEndedNotice(roomName(room), last.recordingUrl), endedAt);
 }
 
 export type StageSyncResult = StageLiveResult | "ended" | "none";
@@ -120,75 +186,49 @@ export type StageSyncResult = StageLiveResult | "ended" | "none";
  * ingress for good and there is no End button, so a broadcast is over when LiveKit says the ingress
  * is no longer publishing: it gets STAGE_DROP_GRACE_MS to come back, and then the message says it
  * ended and its alerts are taken back. (A room whose ingress is gone altogether is marked at once.)
+ * #524: when the broadcast stopped is kept with the record, as well as it is known: this server saw
+ * it stop (`stoppedFor`), or LiveKit says when its ingress was last active, or the caller was told
+ * just now (`timely`: a webhook, an admin's action). Otherwise all that is known is when it was
+ * last seen live. A broadcast that starts later is judged against that time (stageBroadcastVerdict),
+ * so a notice found stale long after the fact does not swallow the next broadcast's announcement.
  */
 export async function syncStageNotice(
   deps: {
     store: StageNoticeStore;
-    ingresses: () => Promise<Pick<StageIngress, "publishing" | "startedAt">[]>;
+    ingresses: () => Promise<Pick<StageIngress, "publishing" | "startedAt" | "activeAt">[]>;
     wait: (ms: number) => Promise<unknown>;
     now: () => number;
     origin: string;
     /** #521: how long the broadcast is already known to have been stopped (ms), when that is known: only the rest of the grace is waited. */
     stoppedFor?: () => number | null;
+    /** #524: the caller has just been told of a change (a webhook, an admin's action), so "stopped" means "stopped now". */
+    timely?: boolean;
   },
   room: ChatRoom,
 ): Promise<StageSyncResult> {
   let ingresses = await deps.ingresses();
   if (stageStateOf(ingresses) !== "live") {
-    const last = latest(await deps.store.notices(stageNoticeIds(room, deps.now())));
-    if (!last || !isLive(last)) return "none";
+    const last = await deps.store.latest(room);
+    if (!last || last.endedAt !== null) return "none";
+    const now = deps.now();
+    const sawFor = deps.stoppedFor?.() ?? null;
+    const active = Math.max(0, ...ingresses.map((ingress) => (ingress.publishing ? 0 : (ingress.activeAt ?? 0))));
+    const stopped =
+      sawFor !== null ? now - Math.max(0, sawFor) : active > last.lastLiveAt && active <= now ? active : deps.timely ? now : null;
     if (ingresses.length) {
-      const left = STAGE_DROP_GRACE_MS - Math.min(STAGE_DROP_GRACE_MS, Math.max(0, deps.stoppedFor?.() ?? 0));
+      // Kept before the wait: if this look is lost, the next one still knows the broadcast was on until then.
+      if (stopped !== null) await deps.store.seen(last.id, stopped, 0);
+      const left = STAGE_DROP_GRACE_MS - Math.min(STAGE_DROP_GRACE_MS, Math.max(0, sawFor ?? 0));
       if (left > 0) {
         await deps.wait(left);
         ingresses = await deps.ingresses();
       }
     }
-    if (stageStateOf(ingresses) !== "live") return (await tellStageEnded(deps.store, room, deps.now())) ? "ended" : "none";
+    if (stageStateOf(ingresses) !== "live")
+      return (await deps.store.close(room, last.id, composeStageEndedNotice(roomName(room), last.recordingUrl), stopped ?? last.lastLiveAt)) ? "ended" : "none";
   }
   const startedAt = Math.max(0, ...ingresses.filter((ingress) => ingress.publishing).map((ingress) => ingress.startedAt ?? 0));
   return tellStageLive(deps.store, room, { now: deps.now(), startedAt: startedAt || null, origin: deps.origin });
-}
-
-/** The reads stageNoticeRecipients needs. */
-export interface StageRecipientReads {
-  /** Accounts whose view of the room's member list may be used (the acting admin, then the owners and admins). */
-  readers(): Promise<string[]>;
-  /** The next members (ids) of the room's own member list after `cursor`; null when this reader cannot read it. */
-  members(reader: string, room: ChatRoom, cursor: string | null): Promise<string[] | null>;
-  /** The accounts behind member ids. */
-  accounts(memberIds: string[]): Promise<string[]>;
-  /** Bot accounts. */
-  bots(): Promise<string[]>;
-  /** Accounts that set this room to "Mentions only" or "Muted". */
-  quiet(room: ChatRoom): Promise<string[]>;
-}
-const MEMBER_PAGES_MAX = 2_000;
-
-/**
- * Who is told: the room's own member list (public.longboard_chat_room_members, the same rule as
- * every room notification: only people who can read the room now), without bot accounts, without
- * anyone who set the room to "Mentions only" or "Muted" (a live notice is for the whole room, like
- * an announcement, not a personal mention), and without `skip` (the admin whose action this is).
- */
-export async function stageNoticeRecipients(reads: StageRecipientReads, room: ChatRoom, skip?: string | null): Promise<string[]> {
-  let memberIds: string[] | null = null;
-  for (const reader of await reads.readers()) {
-    const ids: string[] = [];
-    let page = await reads.members(reader, room, null);
-    if (!page) continue;
-    for (let pages = 1; page?.length && pages < MEMBER_PAGES_MAX; pages++) {
-      ids.push(...page);
-      page = await reads.members(reader, room, page[page.length - 1]);
-    }
-    if (page === null) continue;
-    memberIds = ids;
-    break;
-  }
-  if (!memberIds?.length) return [];
-  const [accounts, bots, quiet] = await Promise.all([reads.accounts(memberIds), reads.bots(), reads.quiet(room)]);
-  const left = new Set([...bots, ...quiet, ...(skip ? [skip] : [])]);
-  return [...new Set(accounts)].filter((account) => !left.has(account));
 }
 
 /**

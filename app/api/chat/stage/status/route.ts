@@ -17,7 +17,7 @@ import {
   stageVideoConfig,
 } from "@/lib/chatStageVideo";
 import type { ChatRoom } from "@/lib/publicChat";
-import type { StageState } from "@/lib/chatStageLive";
+import { isStageRoom, type StageState } from "@/lib/chatStageLive";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -69,7 +69,8 @@ export async function GET(req: NextRequest) {
   const longMemory = req.nextUrl.searchParams.get("fresh") !== "1";
   if (several !== null) {
     const rooms = [...new Set(several.split(",").map(parseStageRoom))]
-      .filter((room): room is ChatRoom => !!room && canAccessChatRoom(auth.access, room))
+      // #524: a room that does not offer live video is left out: LiveKit is not asked about it.
+      .filter((room): room is ChatRoom => !!room && isStageRoom(room) && canAccessChatRoom(auth.access, room))
       .slice(0, MOST_ROOMS);
     const config = stageVideoConfig();
     const api = config && stageVideoApi(config);
@@ -109,6 +110,8 @@ export async function GET(req: NextRequest) {
   const room = parseStageRoom(req.nextUrl.searchParams.get("room"));
   if (!room) return json({ error: "invalid_room" }, 400);
   if (!canAccessChatRoom(auth.access, room)) return json({ error: "room_forbidden" }, 403);
+  // #524: a room that does not offer live video is simply off; LiveKit is not asked.
+  if (!isStageRoom(room)) return json({ state: "off", video: false });
   const config = stageVideoConfig();
   if (!config) return json({ state: "off", video: false });
   const api = stageVideoApi(config);

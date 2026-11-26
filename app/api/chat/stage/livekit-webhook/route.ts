@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isStageRoom } from "@/lib/chatStageLive";
 import { stageMayHaveChanged } from "@/lib/chatStageChange";
 import { receiveStageWebhook, stageVideoApi } from "@/lib/chatStageLiveKit";
 import { stageVideoConfig, stageWebhookChange, stageWebhookIsNew } from "@/lib/chatStageVideo";
@@ -39,7 +40,8 @@ export async function POST(req: NextRequest) {
   if (!event.id) return answer(400);
   // Another project's room, an event that means nothing here, or one already handled: accepted, ignored.
   const change = stageWebhookChange(event);
-  if (change && stageWebhookIsNew(event.id))
+  // #524: and a room that does not offer live video (a key made for it before that rule): ignored too.
+  if (change && isStageRoom(change.room) && stageWebhookIsNew(event.id))
     await stageMayHaveChanged(change.room, stageVideoApi(config), { expect: change.live ? "live" : "stopped" });
   return answer(200);
 }

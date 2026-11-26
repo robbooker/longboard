@@ -104,7 +104,7 @@ const webhook=async(event,identity,id=`EV_test_${++webhookNumber}`)=>{const body
  signer.sha256=createHash('sha256').update(body).digest('base64');
  const r=await fetch(base+'/api/chat/stage/livekit-webhook',{method:'POST',headers:{'content-type':'application/webhook+json',authorization:await signer.toJwt()},body});assert.equal(r.status,200,`webhook ${event}`);};
 const ALICE='00000000-0000-4000-8000-000000000001',BOB='00000000-0000-4000-8000-000000000002',MALLORY='00000000-0000-4000-8000-000000000003',BOT='00000000-0000-4000-8000-000000000099';
-const LIVE_TEXT='🔴 LB is live now. Watch live: https://chat.robbooker.com/chat?room=main&stage=1',ENDED_TEXT='The live video in LB has ended.';
+const LIVE_TEXT='🔴 LB is live now. Watch live: https://chat.robbooker.com/chat?room=main&stage=1',ENDED_TEXT='The live video in LB has ended. The recording will follow.';
 const notices=()=>sql("select id,body,edited_at from longboard_chat_messages where room_slug='main' and bot_slug='longboard' order by created_at,unread_seq");
 const alerted=async id=>(await sql('select account_id from chat_room_mentions where message_id=$1 order by account_id',[id])).map(r=>r.account_id);
 const until=async(check,what,ms=30000)=>{for(let waited=0;;waited+=200){const value=await check();if(value)return value;assert(waited<ms*scale,`timed out: ${what}`);await sleep(200);}};
@@ -386,6 +386,11 @@ try{
  // #510: the admin's live stage (the "Live video" card with its address and key, the empty hands
  // list, the sample panels) in a light, a dark, both Terminal and the most colourful looks, changed
  // while it plays. (Every look on an admin's stage: chat-stage-mode, -hand and -on-screen.)
+ // #524: the room's "live now" message is posted about now and slides into the stage's chat. The
+ // looks are measured once it has landed (a row caught half-way in is faded, and reads as low contrast).
+ await until(async()=>(await notices()).length,'the live message, before the looks are measured');
+ await a.waitForSelector('[data-stage-notice]',{visible:true,timeout:10000*scale}).catch(()=>null);
+ await a.evaluate(()=>Promise.all(document.getAnimations().filter(x=>Number.isFinite(x.effect?.getComputedTiming().endTime)).map(x=>x.finished.catch(()=>{}))));
  await checkStageLooks(a,{looks:LOOKS.filter(look=>['light','dark','blade-runner','terminal','paper-terminal'].includes(look.id)),each:async look=>{if(shots&&['light','paper-terminal'].includes(look.id))await a.screenshot({path:`${shots}/admin-stage-live-${look.id}.png`});}});
  assert(await a.$eval('[data-stage-video-feed]',v=>!v.hidden&&v.srcObject!==null&&!v.paused),'the video played on through every theme change');
  // #504: the admin's three columns: the same widescreen player, in a narrower column.
@@ -807,7 +812,7 @@ try{
  await sql("insert into chat_bot_accounts(account_id,allowed_rooms) values($1,array['main'])",[BOT]);
  assert.deepEqual(await sql("select public.chat_account_room_recipient_eligible($1,'main') a,public.chat_account_room_recipient_eligible($2,'main') b",[MALLORY,BOT]),[{a:true,b:true}],'both can read LB now');
  // The first broadcast ended 11 minutes ago.
- await sql("update longboard_chat_messages set edited_at=now()-interval '11 minutes' where id=$1",[notice.id]);
+ await sql("update chat_stage_broadcasts set ended_at=now()-interval '11 minutes',last_live_at=least(last_live_at,now()-interval '11 minutes') where notice_id=$1 and ended_at is not null",[notice.id]);
  lk.publishing=true;lk.startedAt=Date.now()-3000;
  await Promise.all([webhook('ingress_started'),webhook('track_published','stage-broadcast'),webhook('room_started')]);await signal(a);
  await waitPlayer(a,'live');

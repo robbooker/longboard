@@ -29,10 +29,27 @@ export function composeStageLiveNotice(roomName: string, origin: string, room: s
   return `🔴 ${stageLiveLine(roomName)} ${STAGE_WATCH_LABEL}: ${origin.replace(/\/+$/, "")}${stageWatchPath(room)}`;
 }
 
-/** What the same message says once the broadcast is over. */
-export const composeStageEndedNotice = (roomName: string) => `The live video in ${roomName} has ended.`;
+/** #524: the words in front of an ended notice's recording link, and on its player card. */
+export const STAGE_RECORDING_LABEL = "Watch the recording";
 
-const ENDED_NOTICE = /^The live video in [^\n]{1,60} has ended\.$/;
+/**
+ * What the same message says once the broadcast is over. #524: until a recording is attached it
+ * says one will follow; then it carries the recording's link (a checked YouTube or Loom address,
+ * lib/chatStageRecording.ts), which the chat also shows as a player card.
+ */
+export const composeStageEndedNotice = (roomName: string, recordingUrl?: string | null) =>
+  recordingUrl
+    ? `The live video in ${roomName} has ended. ${STAGE_RECORDING_LABEL}: ${recordingUrl}`
+    : `The live video in ${roomName} has ended. The recording will follow.`;
+
+// The first form is what the message said before #524 (those messages are still in the rooms).
+const ENDED_NOTICE = /^The live video in ([^\n]{1,60}) has ended\.(?: The recording will follow\.| Watch the recording: (https:\/\/[^\s]{1,280}))?$/;
+
+/** #524: an ended notice: the room's name and its recording link (null: none yet). null for anything else. */
+export function stageEndedNotice(body: string): { roomName: string; recordingUrl: string | null } | null {
+  const match = ENDED_NOTICE.exec(body);
+  return match ? { roomName: match[1], recordingUrl: match[2] ?? null } : null;
+}
 const LIVE_NOTICE = /^(🔴 ([^\n]{1,60}) is live now\. )Watch live: https?:\/\/[^\s/]+(\/chat\?room=([a-z0-9-]{1,40})&stage=1)$/;
 
 /**
