@@ -24,26 +24,43 @@
 //  - ended: "The broadcast has ended" with a button back to the room, and the LIVE pill goes;
 //  - set up but not broadcasting: an admin's phone waits for it with no connection (#512) and connects
 //    when it is live; a member's is just the room;
-//  - a computer still gets the computer's stage.
+//  - a computer still gets the computer's stage;
+//  - #527 Raise hand (Mallory, a second member, and Alice on a phone of her own join in; the stand-in
+//    LiveKit keeps the room's participants and their "hand" attribute, as chat-stage-hand's does):
+//    a real Raise hand button with the controls; raised, it is pressed, Mallory counts "1 hand up",
+//    and when the controls fade a "Hand up" chip stays (a touch on it brings the controls back and
+//    does not lower the hand); the count opens the list as a sheet under the picture, oldest first,
+//    read-only for a member, with Lower and Lower all for an admin; turning the phone keeps the hand
+//    and the video; on its side the list is a dark panel in the right half, and from the open chat
+//    it swaps with the chat and back; with the keyboard up the hand button stays on the strip, clear
+//    of the composer; too many presses and a lost connection are said in a line near the button that
+//    goes by itself (never a browser alert); once the broadcast stops a raised hand can still be
+//    lowered and raising is refused in words; every look is measured (stage-theme-checks.mjs).
 // CHAT_SHOT_DIR saves phone-room-live.png, phone-video.png, phone-chat-open.png, phone-keyboard.png,
-// phone-thread.png, phone-landscape-chat.png, phone-landscape-video.png, phone-ended.png.
+// phone-thread.png, phone-landscape-chat.png, phone-landscape-video.png, phone-ended.png, and #527's
+// phone-raise.png, phone-hand-up-faded.png, phone-hands-list.png, phone-hands-list-admin.png,
+// phone-landscape-hand.png, phone-landscape-hands-list.png, phone-hand-keyboard.png, phone-hand-error.png.
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import http from 'node:http';
 import {AccessToken} from 'livekit-server-sdk';
 import puppeteer from 'puppeteer';
 import {signIn} from './browser-login.mjs';
-import {checkPhoneLooks} from './stage-theme-checks.mjs';
+import {checkPhoneLooks,checkPhoneHandLooks} from './stage-theme-checks.mjs';
 const base=process.env.CHAT_TEST_URL||'http://localhost:3509',fixture=process.env.CHAT_FIXTURE_URL||'http://127.0.0.1:54509',STUB='http://127.0.0.1:54643';
 for(const url of [base,fixture,STUB])assert(['localhost','127.0.0.1'].includes(new URL(url).hostname));
 const shots=process.env.CHAT_SHOT_DIR,scale=Number(process.env.CHAT_TIMING_SCALE||1);
 const control=async(path,body={})=>{const r=await fetch(fixture+'/test/'+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}),text=await r.text();assert.equal(r.status,200,text);return JSON.parse(text);};
 const sql=(text,args=[])=>control('sql',{sql:text,args});
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const ALICE='00000000-0000-4000-8000-000000000001',BOB='00000000-0000-4000-8000-000000000002',MALLORY='00000000-0000-4000-8000-000000000003';
 const until=async(check,what,ms=30000)=>{for(let waited=0;;waited+=200){const value=await check();if(value)return value;assert(waited<ms*scale,`timed out: ${what}`);await sleep(200);}};
 
 // The stand-in LiveKit: Twirp over JSON, as livekit-server-sdk speaks it. One ingress per room.
-const lk={ingresses:new Map(),publishing:false,startedAt:Date.now()-60000};
+// #527: and the people in the room chat-main: identity -> {name, attributes}, where a raised hand lives.
+const lk={ingresses:new Map(),publishing:false,startedAt:Date.now()-60000,people:new Map(),updates:[]};
+const person=([identity,p])=>({sid:'PA_'+identity.slice(-8),identity,name:p.name,attributes:p.attributes});
+const raisedIn=()=>[...lk.people].filter(([,p])=>p.attributes.hand).map(([identity])=>identity).sort();
 const info=(room,i)=>({ingress_id:i.id,name:room,stream_key:'FAKE-STREAM-KEY-for-tests-only',url:'rtmps://fake-livekit.example.test/x',input_type:'RTMP_INPUT',room_name:room,participant_identity:'stage-broadcast',reusable:true,state:{status:lk.publishing?'ENDPOINT_PUBLISHING':'ENDPOINT_INACTIVE',room_id:'RM_fake',...(lk.publishing?{started_at:String(BigInt(lk.startedAt)*1000000n)}:{})}});
 const WEBHOOK_KEY='APIsyntheticNeverReal',WEBHOOK_SECRET='synthetic-livekit-secret-never-a-production-secret';
 let webhookNumber=0;
@@ -53,9 +70,24 @@ const webhook=async(event,identity)=>{const body=JSON.stringify({event,id:`EV_ph
 const stub=http.createServer(async(req,res)=>{
  const chunks=[];for await(const c of req)chunks.push(c);const body=chunks.length?JSON.parse(Buffer.concat(chunks).toString('utf8')||'{}'):{};
  const send=(value,status=200)=>{res.writeHead(status,{'content-type':'application/json','access-control-allow-origin':'*'});res.end(JSON.stringify(value));};
- if(req.url==='/test/state')return send({started:lk.ingresses.size>0,publishing:lk.ingresses.size>0&&lk.publishing});
+ // The page's stand-in player: join, leave, and "what is the room like now" (who has a hand up).
+ const url=new URL(req.url,STUB);
+ if(url.pathname==='/test/join'){const tab=url.searchParams.get('tab');lk.people.set(url.searchParams.get('identity'),{name:url.searchParams.get('name'),joinedAt:Date.now(),attributes:tab?{tab}:{}});return send({});}
+ if(url.pathname==='/test/leave'){lk.people.delete(url.searchParams.get('identity'));return send({});}
+ if(url.pathname==='/test/state')return send({started:lk.ingresses.size>0,publishing:lk.ingresses.size>0&&lk.publishing,
+  hands:[...lk.people].filter(([,p])=>p.attributes.hand).map(([identity,p])=>({identity,name:p.name,hand:p.attributes.hand}))});
  const call=req.url.replace('/twirp/livekit.',''),room=body.room_name??body.roomName??body.room;
  if(call==='Ingress/ListIngress')return send({items:[...lk.ingresses].filter(([name])=>!room||name===room).map(([name,i])=>info(name,i))});
+ // #522, #527: who holds a seat, everyone in the room, and the server setting or clearing a hand.
+ if(call==='RoomService/GetParticipant'){const found=room==='chat-main'?lk.people.get(body.identity):null;
+  return found?send({...person([body.identity,found]),joined_at_ms:String(found.joinedAt)}):send({code:'not_found',msg:'participant does not exist'},404);}
+ if(call==='RoomService/ListParticipants')return room==='chat-main'&&lk.ingresses.size?send({participants:[...lk.people].map(person)}):send({code:'not_found',msg:'requested room does not exist'},404);
+ if(call==='RoomService/UpdateParticipant'){const found=room==='chat-main'?lk.people.get(body.identity):null;
+  lk.updates.push({identity:body.identity,attributes:body.attributes});
+  if(!found)return send({code:'not_found',msg:'participant does not exist'},404);
+  // As LiveKit does: an attribute set to "" is removed.
+  for(const [key,value] of Object.entries(body.attributes??{})){if(value)found.attributes[key]=value;else delete found.attributes[key];}
+  return send(person([body.identity,found]));}
  if(call==='RoomService/DeleteRoom')return send({});
  return send({code:'unimplemented',msg:call},501);
 });
@@ -66,21 +98,27 @@ const goLive=async()=>{lk.ingresses.set('chat-main',{id:`IN_fake${Date.now()}`})
 const fakeFeed=stubUrl=>{
  window.__stageFeed={connects:[],closed:0};
  window.__chatStageFeedForTests=async({url,token,video,events})=>{
-  window.__stageFeed.connects.push({url,token});
+  // #527: it joins the stand-in room under the identity in its viewer token, as a player joins LiveKit.
+  const claims=JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))),identity=claims.sub;
+  window.__stageFeed.connects.push({url,token,identity});
+  const tell=path=>fetch(`${stubUrl}/test/${path}?identity=${encodeURIComponent(identity)}&name=${encodeURIComponent(claims.name??'')}&tab=${encodeURIComponent(claims.attributes?.tab??'')}`,{keepalive:true}).catch(()=>{});
+  await tell('join');
   const canvas=document.createElement('canvas');canvas.width=1280;canvas.height=720;const ctx=canvas.getContext('2d');let tick=0;
   const draw=()=>{tick++;const g=ctx.createLinearGradient(0,0,1280,720);g.addColorStop(0,'#16324f');g.addColorStop(1,'#3b1f4a');ctx.fillStyle=g;ctx.fillRect(0,0,1280,720);
    ctx.fillStyle='rgba(255,255,255,.14)';ctx.fillRect((tick*9)%1280,0,90,720);ctx.strokeStyle='#fff';ctx.lineWidth=6;ctx.strokeRect(3,3,1274,714);ctx.fillStyle='#fff';ctx.textAlign='center';ctx.font='700 64px sans-serif';ctx.fillText('TEST VIDEO',640,340);
    ctx.font='400 30px sans-serif';ctx.fillText('A drawn picture standing in for the broadcast',640,400);};
   draw();const drawing=setInterval(draw,100),stream=canvas.captureStream(10);
-  let on=false,closed=false;
+  let on=false,closed=false,told='[]';
   events.connection('connected');events.audioBlocked(true);events.viewers(3);
   const poll=setInterval(async()=>{
    const state=await fetch(stubUrl+'/test/state').then(r=>r.json()).catch(()=>null);if(closed||!state)return;
-   if(!state.started){events.video(false);events.connection('ended');clearInterval(poll);return;}
+   if(!state.started){events.hands?.([]);events.video(false);events.connection('ended');clearInterval(poll);return;}
    if(state.publishing&&!on){on=true;video.srcObject=stream;void video.play().catch(()=>{});events.video(true);}
    else if(!state.publishing&&on){on=false;video.srcObject=null;events.video(false);}
+   // Like LiveKit: told only when someone's hand changes.
+   const hands=JSON.stringify(state.hands);if(hands!==told){told=hands;events.hands?.(state.hands);}
   },250);
-  return {startAudio:async()=>{window.__stageFeed.audioStarted=true;},setVolume:v=>{window.__stageFeed.volume=v;},close:()=>{closed=true;window.__stageFeed.closed++;clearInterval(poll);clearInterval(drawing);}};
+  return {startAudio:async()=>{window.__stageFeed.audioStarted=true;},setVolume:v=>{window.__stageFeed.volume=v;},close:()=>{closed=true;window.__stageFeed.closed++;clearInterval(poll);clearInterval(drawing);void tell('leave');}};
  };
 };
 
@@ -120,6 +158,37 @@ const openRoom=async(who,path='/chat?room=main')=>{
   if(answer){await sleep(400);return JSON.parse(answer.slice(answer.indexOf('{'))).state;}
   assert(waited<90000*scale,`no status answer: ${who.stageAnswers.join(' | ')}`);await sleep(100);}};
 const shot=async(page,name)=>{if(shots)await page.screenshot({path:`${shots}/${name}.png`});};
+// #527 Raise hand. What the viewing room says about hands: the hand button and the count that are on
+// screen (over the video, or on the strip above the chat), the line for what went wrong, and the list.
+const handNow=page=>page.evaluate(()=>{const vis=e=>e.checkVisibility({visibilityProperty:true}),text=e=>e?(e.getAttribute('aria-label')||e.textContent.replace(/\s+/g,' ').trim()):null;
+ const button=[...document.querySelectorAll('[data-stage-hand]')].find(vis),count=[...document.querySelectorAll('[data-stage-hands-toggle]')].find(vis),sheet=document.querySelector('[data-stage-hands-sheet]'),note=document.querySelector('[data-stage-hand-error]');
+ return {button:text(button),pressed:button?.getAttribute('aria-pressed')??null,tag:button?.tagName??null,count:text(count)??'',expanded:count?.getAttribute('aria-expanded')??null,note:note?.textContent??'',chrome:document.querySelector('[data-stage-root]')?.dataset.stageChrome??null,
+  list:sheet&&{names:[...sheet.querySelectorAll('[data-stage-hand-name]')].map(text),ago:[...sheet.querySelectorAll('[data-stage-hand-ago]')].map(text),lowers:sheet.querySelectorAll('[data-stage-hand-lower]').length,lowerAll:!!sheet.querySelector('[data-stage-hands-lower-all]'),
+   title:text(sheet.querySelector('h2')),close:text(sheet.querySelector('[data-stage-hands-close]')),words:sheet.innerText.replace(/\s+/g,' '),focus:sheet.contains(document.activeElement)?text(document.activeElement):null}};});
+// Waits for the viewing room to say so. `awake`: faded controls are brought back on the way (the count fades with them).
+const handUntil=async(page,check,what,{awake=false,ms=20000}={})=>{const began=Date.now();let last;for(;;){if(awake)await wake(page);last=await handNow(page);if(check(last))return last;assert(Date.now()-began<ms*scale,`timed out: ${what}: ${JSON.stringify(last)}`);await sleep(100);}};
+const faded=page=>page.waitForFunction(r=>document.querySelector(r).dataset.stageChrome==='hidden',{timeout:15000*scale},ROOT);
+const drafts=page=>page.evaluate(s=>[...document.querySelectorAll(s)].map(e=>e.value).filter(Boolean),LB);
+const identityOf=page=>page.evaluate(()=>window.__stageFeed.connects.at(-1).identity);
+const hit=(a,b)=>!!a&&!!b&&a.x<b.right&&b.x<a.right&&a.y<b.bottom&&b.y<a.bottom;
+// The picture itself (16:9, contained in the video element; at its left edge while a panel is open) and its middle third.
+const middle=page=>page.evaluate(()=>{const v=document.querySelector('[data-stage-video-feed]'),r=v.getBoundingClientRect(),w=Math.min(r.width,r.height*16/9),h=w*9/16,left=getComputedStyle(v).objectPosition.startsWith('0%')?r.left:r.left+(r.width-w)/2,top=r.top+(r.height-h)/2;
+ return {x:Math.round(left+w/3),right:Math.round(left+2*w/3),y:Math.round(top+h/3),bottom:Math.round(top+2*h/3),pictureBottom:Math.round(top+h)};});
+// Where everything to do with hands is, and that it is in nobody's way: on screen, off the middle of
+// the picture, a finger wide, and not on top of "Tap for sound", Chat, its count, the video's own
+// buttons, the chat's strip or the composer. (The error line may lie over the top of the open list.)
+const HAND_PARTS={hand:'[data-stage-hand]',count:'[data-stage-hands-toggle]',note:'[data-stage-hand-error]',sheet:'[data-stage-hands-sheet]'};
+const OTHER_PARTS={chat:'[data-stage-phone-chat]',unread:'[data-stage-phone-unread]',sound:'[data-stage-sound]',mute:'[data-stage-phone-bottom] [data-stage-phone-mute]',exit:'[data-stage-exit]',close:'[data-stage-phone-chat-close]',composer:LB};
+const handLayout=async(page,what)=>{const v=page.viewport(),b={};for(const [name,selector] of Object.entries({...HAND_PARTS,...OTHER_PARTS}))b[name]=await box(page,selector);
+ const centre=await middle(page),at=`${what}: ${JSON.stringify({...b,centre})}`;
+ for(const part of Object.keys(HAND_PARTS)){const one=b[part];if(!one)continue;
+  assert(one.x>=0&&one.y>=0&&one.right<=v.width&&one.bottom<=v.height,`the ${part} is on screen, ${at}`);
+  // (The list, on its side, is the half of the screen the chat uses: it leaves the picture's centre showing.)
+  const spot={x:(centre.x+centre.right)/2,right:(centre.x+centre.right)/2+1,y:(centre.y+centre.bottom)/2,bottom:(centre.y+centre.bottom)/2+1};
+  assert(!hit(one,part==='sheet'?spot:centre),`the ${part} is off the middle of the picture, ${at}`);
+  if(part==='hand'||part==='count')assert(one.w>=44&&one.h>=44,`the ${part} is a finger wide, ${at}`);
+  for(const other of Object.keys(b))if(other!==part&&!(new Set([part,other]).has('note')&&new Set([part,other]).has('sheet')))assert(!hit(one,b[other]),`the ${part} is clear of the ${other}, ${at}`);}
+ return {...b,centre};};
 try{
  const bob=await newPage(UPRIGHT),alice=await newPage({width:1440,height:900});
  const b=bob.page,a=alice.page;
@@ -173,10 +242,10 @@ try{
  assert.equal(await b.$eval(`${ROOT} [data-stage-viewers]`,e=>e.textContent),'3 watching');
  assert(await seen(b,`${ROOT} [data-stage-live]`));
  for(const selector of ['[data-stage-column]','[data-stage-stock]','[data-stage-chapter]','[data-stage-question]','[data-stage-overlay-card]','[data-stage-broadcast]','[data-stage-key]','[data-stage-elapsed]'])assert.equal(await b.$(selector),null,`the phone's viewing room has no ${selector}`);
- {const text=await b.$eval(ROOT,r=>r.innerText);for(const made of ['Trade tape','Question queue','Chapters','Raise hand','sample','Sample','Start live video','End live video','Stream key'])assert(!text.includes(made),`no "${made}" on a phone`);}
+ {const text=await b.$eval(ROOT,r=>r.innerText);for(const made of ['Trade tape','Question queue','Chapters','sample','Sample','Start live video','End live video','Stream key'])assert(!text.includes(made),`no "${made}" on a phone`);}
  {const names=await b.$$eval(`${ROOT} button`,bs=>bs.filter(x=>x.checkVisibility({visibilityProperty:true})).map(x=>({name:(x.getAttribute('aria-label')||x.textContent).trim(),w:Math.round(x.getBoundingClientRect().width),h:Math.round(x.getBoundingClientRect().height)})));
   for(const c of names){assert(c.name);assert(c.h>=44&&c.w>=44,`"${c.name}" is ${c.w}x${c.h}`);}
-  for(const wanted of ['Back to the room','Tap for sound','Turn sound on','Full screen','Chat'])assert(names.some(c=>c.name===wanted),`a "${wanted}" control: ${names.map(c=>c.name).join(' | ')}`);}
+  for(const wanted of ['Back to the room','Tap for sound','Turn sound on','Full screen','Raise hand','Chat'])assert(names.some(c=>c.name===wanted),`a "${wanted}" control: ${names.map(c=>c.name).join(' | ')}`);}
  await shot(b,'phone-video');
  // Sound starts off, with a clear prompt.
  assert.equal(await b.evaluate(()=>window.__stageFeed.volume),0,'silent until tapped');
@@ -300,6 +369,212 @@ try{
  assert.equal(await b.$eval('[data-stage-phone-unread]',e=>e.textContent),'2');
  console.log('PASS on its side: no restart, the chat overlays the right half with its composer on screen, Close gives the screen back, new messages are counted');
 
+ // #527 Raise hand. Mallory (a member) and Alice on a phone of her own (an admin) are watching too.
+ {const mallory=await newPage(UPRIGHT),host=await newPage(UPRIGHT),m=mallory.page,h=host.page;
+  for(const who of [bob,mallory,host])who.page.on('dialog',dialog=>{who.errors.push(`a browser alert: ${dialog.message()}`);void dialog.dismiss();});
+  await sql("insert into user_tags(user_id,tag) values($1,'boardroom-cohort-1') on conflict do nothing",[MALLORY]);
+  await signIn(m,base,'mallory@example.test',{composer:LB,next:'/chat?room=main'});
+  await signIn(h,base,'alice@example.test',{composer:LB,next:'/chat?room=main'});
+  for(const who of [mallory,host]){assert.equal(await openRoom(who,'/chat?room=main&stage=1'),'live');await who.page.waitForSelector(ROOT,{timeout:90000*scale});await waitView(who.page,'live');await playing(who.page);}
+  const members=Object.fromEntries((await sql('select user_id,id,display_name from longboard_chat_members where user_id=any($1::uuid[])',[[ALICE,BOB,MALLORY]])).map(r=>[r.user_id,r]));
+  const bobName=members[BOB].display_name,malloryName=members[MALLORY].display_name;assert(bobName&&malloryName&&bobName!==malloryName);
+  const bobId=await identityOf(b),malloryId=await identityOf(m),feedBefore=await b.evaluate(()=>[window.__stageFeed.connects.length,window.__stageFeed.closed]);
+  assert.match(bobId,new RegExp(`^${members[BOB].id}#0000000[12]$`),'a phone is in the LiveKit room in one of its member\'s two seats');
+  const sameVideo=()=>b.evaluate(()=>[window.__sameVideo===document.querySelector('[data-stage-video-feed]')&&!window.__sameVideo.paused,window.__stageFeed.connects.length,window.__stageFeed.closed]);
+  const handRequests=()=>bob.stageAnswers.filter(x=>x.includes('/api/chat/stage/hand')).length;
+  assert.equal(handRequests(),0,'nothing is asked about hands until the button is pressed');
+
+  // The button, with the controls: "Tap for sound", Chat and its count of new messages are all there too.
+  await wake(b);await tap(b,'[data-stage-phone-bottom] [data-stage-phone-mute]');await b.waitForSelector('[data-stage-sound]',{visible:true});
+  {const s=await handUntil(b,s=>s.button==='Raise hand'&&s.chrome==='shown','the Raise hand button',{awake:true});
+   assert.deepEqual([s.pressed,s.tag,s.count,s.note,s.list],['false','BUTTON','','',null],JSON.stringify(s));
+   const l=await handLayout(b,'hand down');assert(l.hand&&l.chat&&l.unread&&l.sound&&l.mute,`everything is on screen together: ${JSON.stringify(l)}`);
+   assert.deepEqual(await b.$eval('[data-stage-hand-error]',e=>[e.getAttribute('role'),e.getAttribute('aria-live'),e.checkVisibility()]),['status','polite',false],'the line for what went wrong is a live region, and takes no room while it has nothing to say');
+   await shot(b,'phone-raise');}
+  // Raised: pressed, counted, and saved on Bob's own LiveKit participant.
+  await wake(b);await tap(b,'[data-stage-hand]');
+  {const s=await handUntil(b,s=>s.pressed==='true'&&s.count==='1 hand up','Bob\'s hand is up',{awake:true});assert.equal(s.button,'Lower hand');assert.equal(s.expanded,'false');}
+  await until(()=>raisedIn().length===1,'the hand reaches LiveKit');assert.deepEqual(raisedIn(),[bobId]);
+  const raisedAt=lk.people.get(bobId).attributes.hand;assert.match(raisedAt,/^\d{13}$/);
+  // The controls fade: the chip stays, and nothing else of the hand's does.
+  await faded(b);
+  {const s=await handUntil(b,s=>s.button==='Hand up'&&s.count==='','the chip stays after the controls have faded');assert.equal(s.pressed,'true');
+   assert(!(await seen(b,'[data-stage-exit]')),'the controls have faded');assert(await seen(b,'[data-stage-phone-chat]'));
+   const l=await handLayout(b,'faded, hand up');assert(l.hand.right<=390-12&&l.hand.bottom<=l.chat.y,`the chip sits in the corner, above Chat: ${JSON.stringify(l)}`);
+   assert.deepEqual(await box(b,'[data-stage-video-feed]'),{x:0,y:0,w:390,h:844,right:390,bottom:844},'the video still has the whole screen');
+   await shot(b,'phone-hand-up-faded');}
+  // A touch on the faded chip brings the controls back; it does not lower the hand.
+  await tap(b,'[data-stage-hand]');
+  {const s=await handUntil(b,s=>s.chrome==='shown'&&s.button==='Lower hand','a touch on the chip brings the controls back');assert.equal(s.pressed,'true');}
+  // Another viewer counts it.
+  {const s=await handUntil(m,s=>s.count==='1 hand up','Mallory sees the count',{awake:true});assert.deepEqual([s.button,s.pressed],['Raise hand','false']);}
+  assert.equal(lk.people.get(bobId).attributes.hand,raisedAt,'the touch on the chip left the hand as it was');assert.equal(lk.updates.length,1,JSON.stringify(lk.updates));
+  console.log('PASS raise hand: a real button with the controls, pressed and counted once raised, and a Hand up chip that stays when the controls fade');
+
+  // A second hand: the list, oldest first; a member sees names and nothing to lower with.
+  await wake(m);await tap(m,'[data-stage-hand]');
+  await until(()=>raisedIn().length===2,'Mallory\'s hand reaches LiveKit');
+  await handUntil(b,s=>s.count==='2 hands up','Bob counts two',{awake:true});
+  await tap(b,'[data-stage-hands-toggle]');
+  {const s=await handUntil(b,s=>s.list?.names.length===2,'the list opens');
+   assert.deepEqual(s.list.names,[bobName,malloryName],'oldest first, by the names they have in chat');assert.equal(s.list.title,'Hands up · 2');
+   for(const ago of s.list.ago)assert.match(ago,/^(just now|\d+ sec ago|\d+ min ago)$/);
+   assert.deepEqual([s.list.lowers,s.list.lowerAll,s.list.close],[0,false,'Close'],'read-only for a member, with a clear way out');
+   await b.waitForFunction(()=>document.activeElement?.matches('[data-stage-hands-close]'));
+   assert.equal(s.chrome,'shown');
+   const l=await handLayout(b,'list, upright'),at=JSON.stringify(l);
+   assert.deepEqual([l.sheet.x,l.sheet.right,l.sheet.bottom],[0,390,844],at);assert(l.sheet.y>=l.centre.pictureBottom,`the sheet is under the picture: ${at}`);
+   assert(l.sheet.h>=844*0.22&&l.sheet.h<=844*0.4,`about a third of the screen: ${at}`);
+   assert(l.hand&&l.chat&&l.hand.bottom<=l.sheet.y&&l.chat.bottom<=l.sheet.y&&l.hand.y>=l.centre.pictureBottom,`the hand button and Chat sit between the picture and the sheet: ${at}`);
+   assert.deepEqual(await box(b,'[data-stage-video-feed]'),{x:0,y:0,w:390,h:844,right:390,bottom:844},'the video is where it was');
+   assert.deepEqual(await sameVideo(),[true,...feedBefore],'and plays on, on the same connection');
+   await shot(b,'phone-hands-list');}
+  await tap(b,'[data-stage-hands-close]');
+  await b.waitForFunction(()=>!document.querySelector('[data-stage-hands-sheet]')&&document.activeElement?.matches('[data-stage-hands-toggle]'));
+  // An admin's list has Lower for each person, and Lower all.
+  await handUntil(h,s=>s.count==='2 hands up','the admin counts two',{awake:true});
+  await tap(h,'[data-stage-hands-toggle]');
+  {const s=await handUntil(h,s=>s.list?.names.length===2,'the admin\'s list opens');assert.deepEqual(s.list.names,[bobName,malloryName]);assert.deepEqual([s.list.lowers,s.list.lowerAll],[2,true]);
+   for(const size of await h.$$eval('[data-stage-hands-sheet] button',bs=>bs.map(x=>[x.textContent.trim(),Math.round(x.getBoundingClientRect().width),Math.round(x.getBoundingClientRect().height)])))assert(size[1]>=44&&size[2]>=44,`"${size[0]}" is ${size[1]}x${size[2]}`);
+   await handLayout(h,'admin\'s list');await shot(h,'phone-hands-list-admin');}
+  // (Bob's controls have faded meanwhile: his chip goes when his hand is lowered for him.)
+  await faded(b);
+  await tap(h,`[data-stage-hand-of="${members[BOB].id}"] [data-stage-hand-lower]`);
+  {const s=await handUntil(h,s=>s.list?.names.length===1,'Bob is off the list');assert.deepEqual(s.list.names,[malloryName]);}
+  assert.deepEqual(raisedIn(),[malloryId],'lowered in LiveKit');
+  {const s=await handUntil(b,s=>s.button===null,'Bob\'s chip goes with his hand');assert.equal(s.chrome,'hidden','with his hand down, nothing extra is on screen');}
+  {const s=await handUntil(b,s=>s.count==='1 hand up','Bob counts one',{awake:true});assert.deepEqual([s.button,s.pressed],['Raise hand','false']);}
+  // He raises it again: Mallory has waited longer now.
+  await wake(b);await tap(b,'[data-stage-hand]');
+  {const s=await handUntil(h,s=>s.list?.names.length===2,'two again');assert.deepEqual(s.list.names,[malloryName,bobName],'oldest first');}
+  await tap(h,'[data-stage-hands-lower-all]');
+  {const s=await handUntil(h,s=>s.list?.names.length===0,'Lower all');assert.match(s.list.words,/Nobody has a hand up/);}
+  assert.deepEqual(raisedIn(),[]);
+  for(const [who,page] of [['Bob',b],['Mallory',m]]){const s=await handUntil(page,s=>s.button==='Raise hand'&&s.pressed==='false'&&s.count==='',`${who}'s hand is down`,{awake:true});assert.equal(s.list,null);}
+  await tap(h,'[data-stage-hands-close]');await h.waitForFunction(()=>!document.querySelector('[data-stage-hands-sheet]'));
+  console.log('PASS hands list: a sheet under the picture, oldest first, read-only for a member; an admin lowers one hand and all of them');
+
+  // Turning the phone keeps the hand, and the video.
+  await wake(b);await tap(b,'[data-stage-hand]');await until(()=>raisedIn().length===1,'Bob\'s hand is up again');
+  await wake(m);await tap(m,'[data-stage-hand]');await until(()=>raisedIn().length===2,'and Mallory\'s');
+  await handUntil(b,s=>s.pressed==='true'&&s.count==='2 hands up','Bob counts two again',{awake:true});
+  const upAt=lk.people.get(bobId).attributes.hand,updatesBefore=lk.updates.length;
+  await b.setViewport(SIDEWAYS);
+  await until(async()=>(await box(b,'[data-stage-video-feed]'))?.w===844,'the phone is on its side');
+  assert.deepEqual(await sameVideo(),[true,...feedBefore],'turning the phone does not restart the video');
+  {const s=await handUntil(b,s=>s.pressed==='true'&&s.count==='2 hands up'&&s.button==='Lower hand','the hand is still up on its side',{awake:true});assert.equal(s.list,null);
+   const l=await handLayout(b,'on its side');assert(l.hand&&l.count&&l.chat&&l.sound,JSON.stringify(l));
+   await shot(b,'phone-landscape-hand');}
+  // Over the video the chip and the count are the same in every look.
+  await checkPhoneHandLooks(b,{where:'video',prepare:()=>wake(b)});
+  await faded(b);
+  {const s=await handUntil(b,s=>s.button==='Hand up'&&s.count==='','the chip stays on its side too');assert.equal(s.pressed,'true');
+   const l=await handLayout(b,'on its side, faded');assert(l.hand.x>=844/2&&l.hand.bottom<=l.chat.y,`the chip is in the corner, above Chat: ${JSON.stringify(l)}`);}
+  // The list is a panel in the right half, where the chat goes.
+  await handUntil(b,s=>s.count==='2 hands up','the count is back',{awake:true});
+  await tap(b,'[data-stage-hands-toggle]');
+  {const s=await handUntil(b,s=>s.list?.names.length===2,'the list opens on its side');assert.deepEqual(s.list.names,[bobName,malloryName]);assert.deepEqual([s.list.lowers,s.list.lowerAll,s.list.close],[0,false,'Close']);
+   const l=await handLayout(b,'list, on its side'),at=JSON.stringify(l);
+   assert.deepEqual([l.sheet.x,l.sheet.y,l.sheet.right,l.sheet.bottom],[422,0,844,390],`the list is the right half: ${at}`);
+   assert(l.hand&&l.hand.right<=422&&l.chat&&l.chat.right<=422,`the hand button and Chat move to the video's half: ${at}`);
+   assert.deepEqual(await box(b,'[data-stage-video-feed]'),{x:0,y:0,w:844,h:390,right:844,bottom:390},'the video keeps the whole screen');
+   assert.equal(await b.$eval('[data-stage-video-feed]',v=>getComputedStyle(v).objectPosition),'0% 50%','the picture moves left, out from under the list');
+   const look=await b.$eval('[data-stage-hands-sheet]',e=>{const c=getComputedStyle(e);return {background:c.backgroundColor,blur:c.backdropFilter||c.webkitBackdropFilter};});
+   assert.equal(look.background,'rgba(7, 9, 13, 0.84)');assert.match(look.blur,/blur/);
+   await shot(b,'phone-landscape-hands-list');
+   await checkPhoneHandLooks(b,{sideways:true,each:async look=>{if(look.id==='light')await shot(b,'phone-landscape-hands-list-light');}});}
+  // Chat takes the panel; from the chat's strip the list swaps in, with a clear way back.
+  await tap(b,'[data-stage-phone-chat]');
+  await b.waitForFunction(s=>!document.querySelector('[data-stage-hands-sheet]')&&[...document.querySelectorAll(s)].some(e=>e.checkVisibility({visibilityProperty:true})),{},LB);
+  {const s=await handUntil(b,s=>s.count==='2 hands up','the count is on the chat\'s strip');assert.deepEqual([s.button,s.pressed],['Lower hand','true']);
+   const l=await handLayout(b,'chat open, on its side'),bar=await box(b,'[data-stage-phone-chat-bar]');
+   assert(l.count.x>=bar.x&&l.count.right<=bar.right&&l.count.y>=bar.y&&l.count.bottom<=bar.bottom,`the count is on the strip: ${JSON.stringify({l,bar})}`);assert(l.hand.right<=422,'the hand button stays on the video\'s half');}
+  await (await shown(b,LB)).asElement().click();
+  await b.waitForFunction(s=>document.activeElement?.matches(s),{},LB);
+  await tap(b,'[data-stage-hands-toggle]');
+  {const s=await handUntil(b,s=>s.list?.names.length===2,'the list swaps in over the chat');assert.equal(s.list.close,'Back to chat');
+   await b.waitForFunction(()=>document.activeElement?.matches('[data-stage-hands-close]'));
+   assert(!(await seen(b,CHAT))&&!(await seen(b,LB)),'the chat is put away while the list is open: it cannot take the focus back');
+   await b.keyboard.type('x');assert.deepEqual(await drafts(b),[],'typing goes nowhere near the composer');
+   const l=await handLayout(b,'list over the chat, on its side');assert.deepEqual([l.sheet.x,l.sheet.y,l.sheet.right,l.sheet.bottom],[422,0,844,390]);}
+  await tap(b,'[data-stage-hands-close]');
+  await b.waitForFunction(s=>!document.querySelector('[data-stage-hands-sheet]')&&[...document.querySelectorAll(s)].some(e=>e.checkVisibility({visibilityProperty:true}))&&document.activeElement?.matches('[data-stage-hands-toggle]'),{},LB);
+  assert.equal(await b.$eval(ROOT,e=>e.dataset.stageChat),'open','back in the chat');
+  console.log('PASS on its side: the hand and the video survive the turn; the list is a dark panel in the right half and swaps with the chat');
+
+  // Upright with the chat open: the hand button and the count are on the strip above the chat.
+  await b.setViewport(UPRIGHT);
+  await until(async()=>(await box(b,'[data-stage-video-feed]'))?.h===219,'upright again, the video docked over the chat');
+  assert.deepEqual(await sameVideo(),[true,...feedBefore]);
+  assert.equal(lk.people.get(bobId).attributes.hand,upAt,'the hand was never lowered on the way');assert.equal(lk.updates.length,updatesBefore);
+  {const s=await handUntil(b,s=>s.count==='2 hands up'&&s.pressed==='true','the strip has the hand and the count');assert.equal(s.button,'Lower hand');
+   const l=await handLayout(b,'chat open, upright'),bar=await box(b,'[data-stage-phone-chat-bar]');
+   for(const part of ['hand','count'])assert(l[part].x>=bar.x&&l[part].right<=bar.right&&l[part].y>=bar.y&&l[part].bottom<=bar.bottom,`the ${part} is on the strip: ${JSON.stringify({l,bar})}`);
+   assert.equal(await b.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false);}
+  // Typing with the keyboard up: the hand button is still there, clear of the composer.
+  await (await shown(b,LB)).asElement().click();
+  await b.waitForFunction(s=>document.activeElement?.matches(s),{},LB);
+  await b.setViewport({...UPRIGHT,height:500});
+  await b.waitForFunction(()=>document.querySelector('main').style.getPropertyValue('--chat-visual-height')==='500px',{timeout:10000*scale});
+  await until(async()=>{const c=await box(b,LB);return c&&c.bottom<=500;},'the composer is above the keyboard');
+  await b.keyboard.type('Typing with my hand up');
+  {const s=await handNow(b);assert.deepEqual([s.button,s.pressed,s.count],['Lower hand','true','2 hands up'],'the hand is still up, and on screen, with the keyboard up');
+   const l=await handLayout(b,'keyboard up');assert(l.hand.bottom<=l.composer.y&&l.count.bottom<=l.composer.y,`above the composer: ${JSON.stringify(l)}`);
+   assert.deepEqual([await drafts(b),await b.evaluate(s=>document.activeElement?.matches(s),LB)],[['Typing with my hand up'],true],'and the composer keeps the keyboard');
+   await shot(b,'phone-hand-keyboard');}
+  // The list takes the chat's place (and the keyboard goes); back in the chat, the draft is still there.
+  await tap(b,'[data-stage-hands-toggle]');
+  {const s=await handUntil(b,s=>s.list?.names.length===2,'the list opens over the chat');assert.equal(s.list.close,'Back to chat');
+   await b.waitForFunction(()=>document.activeElement?.matches('[data-stage-hands-close]'));
+   assert(!(await seen(b,CHAT))&&!(await seen(b,LB)),'the chat is put away while the list is open');}
+  await b.setViewport(UPRIGHT);
+  await until(async()=>(await box(b,'[data-stage-video-feed]'))?.h===219&&(await box(b,'[data-stage-hands-sheet]'))?.bottom===844,'the keyboard has gone');
+  {const l=await handLayout(b,'list over the chat, upright'),bar=await box(b,'[data-stage-phone-chat-bar]'),at=JSON.stringify({l,bar});
+   assert.deepEqual([l.sheet.x,l.sheet.y,l.sheet.right,l.sheet.bottom],[0,bar.bottom,390,844],`the list takes the chat's place, under the strip: ${at}`);
+   assert(l.hand&&l.count&&l.close,`the strip keeps the hand button, the count and Close: ${at}`);
+   // In every look: the list is the look's own panel, and readable.
+   await checkPhoneHandLooks(b,{each:async look=>{if(['light','terminal'].includes(look.id))await shot(b,`phone-hands-list-chat-${look.id}`);}});}
+  await tap(b,'[data-stage-hands-close]');
+  await b.waitForFunction(s=>!document.querySelector('[data-stage-hands-sheet]')&&[...document.querySelectorAll(s)].some(e=>e.checkVisibility({visibilityProperty:true})),{},LB);
+  assert.deepEqual(await drafts(b),['Typing with my hand up'],'the draft is still in the composer');
+  await (await shown(b,LB)).asElement().click({clickCount:3});await b.keyboard.press('Backspace');
+  await until(async()=>(await drafts(b)).length===0,'the draft is cleared');
+  await tap(b,'[data-stage-phone-chat-close]');
+  await b.waitForFunction(r=>document.querySelector(r).dataset.stageChat==='closed',{},ROOT);
+  console.log('PASS with the chat: the hand button and count are on the strip, clear of the composer with the keyboard up; the list swaps with the chat and back');
+
+  // Lowering your own.
+  await wake(b);await tap(b,'[data-stage-hand]');
+  {const s=await handUntil(b,s=>s.pressed==='false'&&s.count==='1 hand up','Bob lowers his own hand',{awake:true});assert.equal(s.button,'Raise hand');}
+  await until(()=>raisedIn().length===1,'lowered in LiveKit');assert.deepEqual(raisedIn(),[malloryId]);
+  // What goes wrong is said in a line near the button, and goes by itself. Too many presses:
+  await b.setRequestInterception(true);
+  let answer={status:429,body:'{"error":"rate_limited"}'};
+  const meddle=request=>{if(!request.url().includes('/api/chat/stage/hand')||!answer)void request.continue();else if(answer==='offline')void request.abort('internetdisconnected');else void request.respond({...answer,contentType:'application/json'});};
+  b.on('request',meddle);
+  await wake(b);await tap(b,'[data-stage-hand]');
+  {const s=await handUntil(b,s=>s.note!=='','too many presses are answered in words');assert.equal(s.note,'That was a lot of hand raising. Give it a minute.');
+   assert.deepEqual([s.button,s.pressed,s.chrome],['Raise hand','false','shown'],'the hand stays down, and the controls stay to show it');
+   const l=await handLayout(b,'error line'),at=JSON.stringify(l);assert(l.note&&l.hand&&l.note.bottom<=l.hand.y&&l.hand.y-l.note.bottom<=24,`the line is just above the button: ${at}`);assert(l.note.h<=80,at);
+   await shot(b,'phone-hand-error');}
+  {const s=await handUntil(b,s=>s.note==='','the line goes by itself');assert.equal(await b.$eval('[data-stage-hand-error]',e=>e.checkVisibility()),false);assert.equal(s.pressed,'false');}
+  // The connection to the site is lost.
+  answer='offline';
+  await wake(b);await tap(b,'[data-stage-hand]');
+  {const s=await handUntil(b,s=>s.note!=='','a lost connection is answered in words');assert.equal(s.note,'Couldn’t raise your hand. Please try again.');assert.equal(s.pressed,'false');await handLayout(b,'lost connection');}
+  // Trying again clears the line at once, and works.
+  answer=null;
+  await wake(b);await tap(b,'[data-stage-hand]');
+  {const s=await handUntil(b,s=>s.pressed==='true'&&s.count==='2 hands up','raised on trying again',{awake:true});assert.equal(s.note,'');}
+  b.off('request',meddle);await b.setRequestInterception(false);
+  await wake(b);await tap(b,'[data-stage-hand]');
+  await handUntil(b,s=>s.pressed==='false'&&s.count==='1 hand up','and lowered',{awake:true});
+  await until(()=>raisedIn().length===1,'Bob\'s hand is down in LiveKit');
+  assert.deepEqual(await sameVideo(),[true,...feedBefore],'through all of it: the same video, the one connection');
+  for(const who of [mallory,host]){assert.deepEqual(who.errors,[]);const identity=await identityOf(who.page);await who.context.close();lk.people.delete(identity);}
+  await handUntil(b,s=>s.count==='','Mallory left, and her hand with her',{awake:true});
+  console.log('PASS hand errors: too many presses and a lost connection are said near the button, read out, and go by themselves; never a browser alert');}
+
  // Back to the room: the button, then the phone's own back.
  await wake(b);
  await tap(b,'[data-stage-exit]');
@@ -347,11 +622,27 @@ try{
  {const feed=()=>b.evaluate(()=>({connects:window.__stageFeed.connects.length,closed:window.__stageFeed.closed,token:window.__stageFeed.connects.at(-1)?.token}));
   // This test runs without Ably: the room's "stage" signal is sent to the page by hand.
   const signal=()=>b.evaluate(()=>{window.dispatchEvent(new CustomEvent('chat-stage-event',{detail:{room:'main'}}));});
+  // #527: Bob's hand is up when it stops.
+  await wake(b);await tap(b,'[data-stage-hand]');
+  await handUntil(b,s=>s.pressed==='true','Bob\'s hand is up before the broadcast stops',{awake:true});
+  await until(()=>raisedIn().length===1,'and in LiveKit');
   const was=await feed();
   lk.publishing=false;const stopped=Date.now();
   await webhook('participant_left','stage-broadcast');await signal();
   await waitView(b,'stopped');
   assert.match(await b.$eval('[data-stage-video-message]',e=>e.innerText),/The broadcast has stopped/);
+  // #527: not live any more. A hand that is up can still be lowered; raising one is refused, in words.
+  {const s=await handUntil(b,s=>s.button==='Lower hand','the raised hand is still there once the broadcast stops');assert.deepEqual([s.pressed,s.chrome],['true','shown']);
+   await handLayout(b,'stopped');
+   await tap(b,'[data-stage-hand]');
+   await handUntil(b,s=>s.button==='Raise hand'&&s.pressed==='false','it can still be lowered');
+   await until(()=>raisedIn().length===0,'lowered in LiveKit');
+   const asked=bob.stageAnswers.filter(x=>x.includes('/api/chat/stage/hand')).length,updates=lk.updates.length;
+   await tap(b,'[data-stage-hand]');
+   const refused=await handUntil(b,s=>s.note!=='','raising is refused in words');
+   assert.equal(refused.note,'You can raise a hand once the live video is playing.');assert.equal(refused.pressed,'false');
+   assert.deepEqual([raisedIn(),lk.updates.length,bob.stageAnswers.filter(x=>x.includes('/api/chat/stage/hand')).length],[[],updates,asked],'no hand was raised, and the server was not even asked');
+   await handLayout(b,'stopped, refused');}
   await sleep(5000);
   assert.deepEqual([(await feed()).closed,await view(b)],[was.closed,'stopped'],'a short drop is ridden out: still connected');
   await b.waitForFunction(n=>window.__stageFeed.closed===n,{timeout:60000*scale},was.closed+1);
@@ -359,6 +650,7 @@ try{
   await waitView(b,'ended');
   assert.match(await b.$eval('[data-stage-video-message]',e=>e.innerText),/The broadcast has ended\s*Back to the room/);
   assert.equal(await b.$('[data-stage-video-feed]'),null,'no video element once disconnected');
+  assert.equal((await handNow(b)).button,null,'and no hand button: there is nothing to raise a hand in');
   await signal();await b.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));await sleep(6500);
   assert.equal((await feed()).connects,was.connects,'nothing connects while the room is only waiting, not even on coming back to the page');
   assert.equal(await view(b),'ended');

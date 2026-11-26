@@ -17,6 +17,11 @@
   --sp-video-ink: #0a0d12;
   --sp-video-shade: rgba(0, 0, 0, 0.72);
   --sp-video-button: rgba(11, 14, 19, 0.86);
+  /* #527: the hands list over the video (phone on its side): its error text, its lines and the
+     tint of the first hand in the queue, on the same dark scrim in every theme. */
+  --sp-video-error: #ff8a80;
+  --sp-video-line: rgba(255, 255, 255, 0.45);
+  --sp-video-tint: rgba(245, 184, 61, 0.08);
   /* LIVE is the same red in every theme, with the word on it in white. */
   --sp-red: #d13438;
   --sp-on-red: #fff;
@@ -32,6 +37,10 @@
   --sp-text: var(--chat-text, #f2f4f7);
   --sp-text-2: var(--chat-muted, #b8c1cd);
   --sp-focus: var(--chat-palm, #f5b83d);
+  /* #527: a raised hand on the strip above the chat (the theme's filled button), and the hands list's error text. */
+  --sp-fill: var(--chat-palm-fill, #f5b83d);
+  --sp-on-fill: var(--chat-on-fill, #0a0d12);
+  --sp-error: var(--chat-error, #ff6b5e);
   /* The visible height: shorter while the keyboard is up (lib/chatMobileSend.ts sets the variable). */
   --sp-height: var(--chat-visual-height, 100dvh);
   --sp-bar: 48px;
@@ -42,6 +51,9 @@
   /* Upright with the chat open: the video docks to the top at 16:9, never more than 42% of what is
      visible, so it shrinks (and stays on screen) when the keyboard takes the lower half. */
   --sp-video: min(56.25vw, calc(var(--sp-height) * 0.42));
+  /* #527: the hands list as a bottom sheet (upright, chat closed): about a third of the screen, and
+     no taller than leaves the picture (16:9, in the middle) and the hand button above the sheet clear. */
+  --sp-sheet: max(200px, min(calc(var(--sp-height) * 0.34), calc((var(--sp-height) - 56.25vw) / 2 - 64px)));
 
   /* The room chat keeps the theme's own tokens; only its sizes are the viewing room's. */
   --chat-grid: transparent;
@@ -114,10 +126,55 @@
 /* "Tap for sound": stays until tapped (it does not fade with the controls). */
 .soundPrompt { position: absolute; top: calc(var(--sp-safe-top) + 64px); left: 50%; z-index: 3; display: flex; min-height: 44px; align-items: center; gap: 8px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--sp-video-white); color: var(--sp-video-ink); font-size: 15px; font-weight: 700; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); white-space: nowrap; transform: translateX(-50%); }
 
+/* The corner of the screen, clear of the home bar: the hand button and the count of hands, and
+   under them Chat. Only its buttons take touches: between them a tap reaches the video. */
+.corner { position: absolute; right: calc(var(--sp-safe-right) + 12px); bottom: calc(var(--sp-safe-bottom) + 10px); z-index: 3; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; pointer-events: none; }
+.handRow { display: flex; align-items: center; gap: 8px; }
+.corner button { pointer-events: auto; }
 /* The Chat button: always there, a little quieter once the controls have faded. */
-.chatButton { position: absolute; right: calc(var(--sp-safe-right) + 12px); bottom: calc(var(--sp-safe-bottom) + 10px); z-index: 3; display: flex; min-height: 44px; align-items: center; gap: 8px; padding: 0 18px 0 14px; border: 1px solid color-mix(in srgb, var(--sp-video-white) 30%, transparent); border-radius: 999px; background: var(--sp-video-button); color: var(--sp-video-white); font-size: 15px; font-weight: 600; transition: opacity 320ms ease-out; }
+.chatButton { position: relative; display: flex; min-height: 44px; align-items: center; gap: 8px; padding: 0 18px 0 14px; border: 1px solid color-mix(in srgb, var(--sp-video-white) 30%, transparent); border-radius: 999px; background: var(--sp-video-button); color: var(--sp-video-white); font-size: 15px; font-weight: 600; transition: opacity 320ms ease-out; }
 .root[data-stage-chrome="hidden"] .chatButton { opacity: 0.72; }
 .unread { position: absolute; top: -6px; right: -4px; display: grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--sp-red); color: var(--sp-on-red); font-size: 11px; font-weight: 700; line-height: 1; box-shadow: 0 0 0 2px var(--sp-page); }
+
+/* #527 Raise hand, over the video: dark in every theme, like Chat. While the hand is up the button
+   is filled (amber, dark ink) and stays when the controls fade: the "Hand up" chip. The count of
+   hands, and a hand button that is down, fade with the controls.
+   The doubled classes are there for weight, over the Terminal themes' pressed-button block. */
+.handButton, .handsCount { display: flex; flex: none; min-height: 44px; align-items: center; gap: 8px; padding: 0 16px 0 12px; border: 1px solid color-mix(in srgb, var(--sp-video-white) 30%, transparent); border-radius: 999px; background: var(--sp-video-button); color: var(--sp-video-white); font-size: 15px; font-weight: 600; white-space: nowrap; transition: opacity 180ms ease-out, visibility 0s; }
+.handsCount { padding: 0 14px; font-variant-numeric: tabular-nums; }
+.root.root .handButton.handButton[aria-pressed="true"] { border-color: transparent; background: var(--sp-video-accent); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45); color: var(--sp-video-ink); }
+.root[data-stage-chrome="hidden"] :is(.handsCount, .handButton[aria-pressed="false"]) { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 320ms ease-out, visibility 0s linear 320ms; }
+/* What went wrong with a hand: a short line just above the button, gone when it has nothing to say. */
+.handNote { position: absolute; right: calc(var(--sp-safe-right) + 12px); bottom: calc(var(--sp-safe-bottom) + 118px); z-index: 6; max-width: min(280px, calc(100% - 24px)); box-sizing: border-box; margin: 0; padding: 8px 12px; border-radius: 10px; background: var(--sp-video-button); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45); color: var(--sp-video-text); font-size: 13px; line-height: 1.35; pointer-events: none; }
+.handNote:empty { display: none; }
+
+/* #527 The hands list (StageHands, the computer stage's own): a sheet in the member's theme, like
+   the chat panel. StageHands draws itself with the stage's tokens, which are set here from the
+   viewing room's (the same mapping as StageMode.module.css). Upright with the chat closed it is the
+   bottom third of the screen; the picture, in the middle, stays clear. */
+.sheet {
+  --stage-text: var(--sp-text); --stage-text-2: var(--sp-text-2); --stage-label: var(--sp-text-2);
+  --stage-line: var(--sp-line); --stage-panel-2: var(--sp-panel-2); --stage-control: var(--sp-panel);
+  --stage-control-line: color-mix(in srgb, var(--sp-text-2) 45%, var(--sp-line));
+  --stage-accent-soft: color-mix(in srgb, var(--sp-focus) 6%, var(--sp-panel-2));
+  --stage-accent-line: color-mix(in srgb, var(--sp-focus) 55%, var(--sp-line));
+  --stage-negative: color-mix(in srgb, var(--sp-error) 75%, var(--sp-text));
+  --stage-radius: 8px;
+  --stage-font-mono: var(--font-chat-terminal), "JetBrains Mono", ui-monospace, monospace;
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 5; display: flex; height: var(--sp-sheet); box-sizing: border-box; flex-direction: column; gap: 8px; padding: 8px calc(var(--sp-safe-right) + 12px) calc(var(--sp-safe-bottom) + 12px) calc(var(--sp-safe-left) + 12px); border-top: 1px solid var(--sp-line); border-radius: 14px 14px 0 0; overflow-y: auto; overscroll-behavior: contain; background: var(--sp-panel); box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.4); color: var(--sp-text); font-size: 14px;
+}
+.sheet :is(button, a):focus-visible { outline-color: var(--sp-focus); }
+/* Fingers, not a mouse: every button in the list is 44px tall. */
+.sheet button { min-height: 44px; font-size: 14px; }
+.sheetClose { flex: none; align-self: flex-end; padding: 0 16px; border: 1px solid var(--stage-control-line); border-radius: 8px; background: var(--stage-control); color: var(--stage-text); font-weight: 600; }
+/* With the list open and the chat closed, the hand button and Chat sit in one row just above the
+   sheet, and the video's own buttons (under the sheet) are put away. */
+.root[data-stage-hands="open"] .corner .handsCount { display: none; }
+@media (orientation: portrait) {
+  .root[data-stage-hands="open"][data-stage-chat="closed"] .corner { bottom: calc(var(--sp-sheet) + 10px); flex-direction: row; align-items: center; }
+  .root[data-stage-hands="open"][data-stage-chat="closed"] .bottom { display: none; }
+  .root[data-stage-hands="open"][data-stage-chat="closed"] .handNote { bottom: calc(var(--sp-sheet) + 64px); }
+}
 
 /* The strip above the open chat: what is playing, sound, and the button that closes the chat.
    #510: upright it is a panel in the member's theme, so the room's name, the count and the buttons
@@ -126,6 +183,12 @@
 .chatBar :is(button, a):focus-visible { outline-color: var(--sp-focus); }
 .chatBar { position: absolute; z-index: 4; display: flex; align-items: center; gap: 4px; height: var(--sp-bar); padding: 0 4px 0 12px; border-bottom: 1px solid var(--sp-line); background: var(--sp-panel-2); }
 .chatBarIdentity { display: flex; flex: 1; min-width: 0; align-items: center; gap: 8px; }
+/* #527 On the strip: the count of hands (it opens the list; the watching count makes room for it)
+   and the hand button, the icon alone; while the hand is up it is filled in the theme's own colour, with a ring in the
+   theme's accent (a pale fill alone would not show on a pale strip). */
+.handsCountBar { flex: none; min-height: 44px; padding: 0 8px; border: 0; border-radius: 8px; background: none; color: var(--sp-bar-text, var(--sp-video-white)); font-size: 13px; font-variant-numeric: tabular-nums; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 55%, transparent); text-underline-offset: 3px; white-space: nowrap; }
+.chatBar:has(.handsCountBar) .viewers { display: none; }
+.root.root .chatBar .handToggle.handToggle[aria-pressed="true"] { background: var(--sp-fill); box-shadow: inset 0 0 0 2px var(--sp-focus); color: var(--sp-on-fill); }
 
 /* The room's own chat (PublicChat's section) and an open reply thread: one box, hidden until Chat. */
 .root ~ section,
@@ -160,6 +223,14 @@
 .root[data-stage-chat="open"] .screen { inset: var(--sp-safe-top) 0 auto; height: var(--sp-video); }
 .root[data-stage-chat="open"] :is(.top, .bottom) { display: none; }
 .root[data-stage-chat="open"] .soundPrompt { top: calc(var(--sp-safe-top) + 10px); }
+/* #527: the hand button is on the strip, and what went wrong is said just under it. */
+.root[data-stage-chat="open"] .corner { display: none; }
+.root[data-stage-chat="open"] .handNote { top: calc(var(--sp-safe-top) + var(--sp-video) + var(--sp-bar) + 6px); right: auto; bottom: auto; left: 8px; max-width: calc(100% - 150px); }
+/* The hands list takes the chat's place (and the chat, hidden, cannot take the focus back): the
+   same hair of margin as a closed chat, so the list is on its newest message when it returns. */
+.root[data-stage-chat="open"] .sheet { top: calc(var(--sp-safe-top) + var(--sp-video) + var(--sp-bar)); height: auto; border-top: 0; border-radius: 0; box-shadow: none; }
+:global(div[data-reply-open]) > .root[data-stage-chat="open"][data-stage-hands="open"] ~ :is(section, aside) { visibility: hidden !important; }
+.root[data-stage-hands="open"] ~ section { margin-bottom: 2px; }
 .chatBar { top: calc(var(--sp-safe-top) + var(--sp-video)); left: 0; right: 0; }
 .root ~ section,
 .root ~ aside { inset: calc(var(--sp-safe-top) + var(--sp-video) + var(--sp-bar)) 0 0 0 !important; }
@@ -167,11 +238,29 @@
 /* On its side: the video keeps the whole screen (the picture moves to the left edge, so less of it
    is under the chat) and the chat is a see-through panel over the right half. */
 @media (orientation: landscape) {
+  /* #527: the hands list is a panel in that same half, so the video gives way to it the same way. */
   .root[data-stage-chat="open"] .screen { inset: 0; height: auto; }
-  .root[data-stage-chat="open"] .video { object-position: left center; }
-  .root[data-stage-chat="open"] :is(.top, .bottom) { display: flex; right: 50%; }
-  .root[data-stage-chat="open"] .bottom { padding-right: 10px; }
-  .root[data-stage-chat="open"] .soundPrompt { top: calc(var(--sp-safe-top) + 60px); left: 25%; }
+  .root:is([data-stage-chat="open"], [data-stage-hands="open"]) .video { object-position: left center; }
+  .root:is([data-stage-chat="open"], [data-stage-hands="open"]) :is(.top, .bottom) { display: flex; right: 50%; }
+  .root:is([data-stage-chat="open"], [data-stage-hands="open"]) .bottom { padding-right: 10px; }
+  .root:is([data-stage-chat="open"], [data-stage-hands="open"]) .soundPrompt { top: calc(var(--sp-safe-top) + 60px); left: 25%; }
+  /* The hand button (and Chat under it, when the chat is closed) moves to the video's half. With the
+     chat open it is alone on the bottom edge, and the count is on the chat's strip. */
+  .root:is([data-stage-chat="open"], [data-stage-hands="open"]) .corner { right: calc(50% + 10px); bottom: calc(var(--sp-safe-bottom) + 10px); display: flex; flex-direction: column; align-items: flex-end; }
+  .root[data-stage-chat="open"] .corner .handsCount { display: none; }
+  .root[data-stage-chat="open"] .handNote { top: auto; right: calc(50% + 10px); bottom: calc(var(--sp-safe-bottom) + 64px); left: auto; max-width: min(280px, calc(50% - 20px)); }
+  .root[data-stage-hands="open"][data-stage-chat="closed"] .handNote { right: calc(50% + 10px); bottom: calc(var(--sp-safe-bottom) + 118px); }
+  .chatBar .handToggle { display: none; }
+  .root[data-stage-hands="open"] .chatBar { visibility: hidden; }
+  /* The list itself: the same dark see-through panel as the chat, light on dark in every theme. */
+  .root[data-stage-hands="open"] .sheet {
+    --stage-text: var(--sp-video-text); --stage-text-2: var(--sp-video-text-2); --stage-label: var(--sp-video-text-2);
+    --stage-line: transparent; --stage-panel-2: transparent; --stage-control: transparent;
+    --stage-control-line: var(--sp-video-line); --stage-accent-soft: var(--sp-video-tint); --stage-accent-line: var(--sp-video-line);
+    --stage-negative: var(--sp-video-error);
+    inset: 0 0 0 50%; height: auto; padding: calc(var(--sp-safe-top) + 8px) calc(var(--sp-safe-right) + 12px) calc(var(--sp-safe-bottom) + 12px) 12px; border: 0; border-radius: 0; background: var(--sp-scrim); box-shadow: none; color: var(--sp-video-text); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  }
+  .root[data-stage-hands="open"] .sheet :is(button, a):focus-visible { outline-color: var(--sp-video-accent); }
   .chatBar { --sp-bar-text: var(--sp-video-white); --sp-bar-text-2: var(--sp-video-viewers); }
   .chatBar :is(button, a):focus-visible { outline-color: var(--sp-video-accent); }
   .chatBar { top: 0; left: 50%; right: 0; padding-right: calc(var(--sp-safe-right) + 4px); border-bottom-color: color-mix(in srgb, var(--sp-video-white) 16%, transparent); background: var(--sp-scrim); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
@@ -201,5 +290,5 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .top, .bottom, .chatButton, .root[data-stage-chrome="hidden"] :is(.top, .bottom) { transition: none; }
+  .top, .bottom, .chatButton, .handButton, .handsCount, .root[data-stage-chrome="hidden"] :is(.top, .bottom, .handButton, .handsCount) { transition: none; }
 }
