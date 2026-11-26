@@ -237,6 +237,10 @@ try{
  assert((await openMenu(a)).includes('Go live (preview)'));
  assert.deepEqual(lk.calls.filter(c=>c!=='Ingress/ListIngress'&&c!=='RoomService/ListRooms'),[],'nothing is made for a room nobody has opened the stage of');
  await a.click('[data-stage-go-live]');
+ // On a machine with no time to spare the press can land while the menu is still opening and do
+ // nothing (once in 20 soak runs, under heavy load): if the stage has not appeared, it is pressed again.
+ for(let tries=0;!(await a.waitForSelector('[data-stage-root]',{timeout:15000*scale}).catch(()=>null));tries++){assert(tries<3,'Go live never opened the stage');
+  if(!(await visible(a,'[data-stage-go-live]')))await openMenu(a);await (await shown(a,'[data-stage-go-live]')).click();}
  await a.waitForSelector('[data-stage-broadcast]',{timeout:60000*scale});
  await a.waitForSelector('[data-stage-key]',{timeout:30000*scale});
  for(const gone of ['[data-stage-start]','[data-stage-end]','[data-stage-end-confirm]'])assert.equal(await a.$(gone),null,`no ${gone}`);
