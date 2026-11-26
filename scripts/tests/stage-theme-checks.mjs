@@ -201,6 +201,58 @@ export async function checkPhoneLooks(page,{looks=LOOKS,each=null,sideways=false
  return seen;
 }
 /**
+ * #527 Raise hand in the phone viewing room, in every look. `prepare()` runs after each change of
+ * look (the test brings faded controls back with it).
+ *  - `where: "video"` (the chat and the list closed): the hand button, raised, is the same amber
+ *    chip, and the count beside it the same dark pill as Chat, whatever the look;
+ *  - `where: "sheet"`, upright with the chat open: the list is a sheet in the look's own panel
+ *    colour, its names the look's text, the raised hand on the strip the look's own filled button;
+ *  - `where: "sheet"`, on its side: the list is the dark see-through scrim in every look, with
+ *    fixed light text that is readable even over a white picture, and the hand button the amber chip.
+ */
+export async function checkPhoneHandLooks(page,{looks=LOOKS,each=null,prepare=null,where='sheet',sideways=false}={}){
+ const seen={},before=await lookNow(page),SHEET='[data-stage-hands-sheet]',AMBER=['rgb(245, 184, 61)','rgb(10, 13, 18)'],PILL=['rgba(11, 14, 19, 0.86)','rgb(255, 255, 255)'];
+ for(const look of looks){
+  await setLook(page,look);if(prepare)await prepare(look);
+  const tokens=await chatTokens(page),at=`${look.id}${sideways?' (on its side)':''}, hands: `;
+  const raw=await page.evaluate(sheet=>{const style=selector=>{const e=[...document.querySelectorAll(selector)].find(x=>x.checkVisibility({visibilityProperty:true}));if(!e)return null;const c=getComputedStyle(e);return {bg:c.backgroundColor,fg:c.color,pressed:e.getAttribute('aria-pressed')};};
+   return {sheet:style(sheet),name:style(`${sheet} [data-stage-hand-name]`),ago:style(`${sheet} [data-stage-hand-ago]`),close:style(`${sheet} [data-stage-hands-close]`),hand:style('[data-stage-hand]'),count:style('[data-stage-hands-toggle]'),screen:style('[data-stage-phone-screen]')};},SHEET);
+  assert.equal(raw.screen.bg,'rgb(0, 0, 0)',at+'the screen behind the video stays black');
+  assert.equal(raw.hand?.pressed,'true',at+'the hand is up for this check');
+  for(const icon of await iconContrast(page,'[data-stage-hand]'))assert(icon.ratio>=4.5,at+`the hand button is ${icon.ratio}:1`);
+  if(where==='video'){
+   assert.equal(raw.sheet,null,at+'the list is closed for this check');
+   assert.deepEqual([raw.hand.bg,raw.hand.fg],AMBER,at+'a raised hand over the video is the same amber chip in every look');
+   assert.deepEqual([raw.count.bg,raw.count.fg],PILL,at+'the count over the video is the same dark pill in every look');
+   const hard=await hardToRead(page,'[data-stage-phone-corner]');assert.deepEqual(hard,[],at+`text over the video under 4.5:1, even over a white picture: ${JSON.stringify(hard)}`);
+   assert(await readable(page,'[data-stage-phone-corner]')>=3,at+'the hand button, the count and Chat are there to measure');
+  }else{
+   assert(raw.sheet&&raw.name&&raw.ago,at+'the list is open, with someone on it');
+   if(sideways){
+    assert.equal(raw.sheet.bg,SCRIM,at+'over the video the list is the same dark scrim as the chat');
+    assert.deepEqual([raw.name.fg,raw.close.fg],['rgb(242, 244, 247)','rgb(242, 244, 247)'],at+'its names and buttons are the same light text in every look');
+    assert.deepEqual([raw.hand.bg,raw.hand.fg],AMBER,at+'the hand button beside it is the amber chip');
+   }else{
+    assert.equal(raw.sheet.bg,tokens['--chat-panel'],at+'the list is the theme\'s panel');
+    assert.equal(raw.name.fg,tokens['--chat-text'],at+'a name is the theme\'s text colour');
+    assert.equal(raw.ago.fg,tokens['--chat-muted'],at+'how long ago is the theme\'s quieter text colour');
+    assert.deepEqual([raw.hand.bg,raw.hand.fg],[tokens['--chat-palm-fill'],tokens['--chat-on-fill']],at+'a raised hand on the strip is the theme\'s filled button');
+    assert.equal(raw.count.fg,tokens['--chat-text'],at+'the count on the strip is the theme\'s text colour');
+   }
+   // Everything the list writes (measured over white where it is see-through), and its buttons' ring.
+   const hard=await hardToRead(page,SHEET);assert.deepEqual(hard,[],at+`list text under 4.5:1: ${JSON.stringify(hard)}`);
+   assert(await readable(page,SHEET)>=6,at+'the list has text to measure');
+   const ring=await focusRing(page,`${SHEET} [data-stage-hands-close]`);
+   assert(ring.visible&&ring.style==='solid'&&ring.width>=2&&ring.ratio>=3,at+`the focus ring in the list: ${JSON.stringify(ring)}`);
+   seen[look.id]={page:raw.sheet.bg,text:raw.name.fg};
+  }
+  if(each)await each(look);
+ }
+ if(where==='sheet'&&!sideways)for(const look of looks){const light=LIGHT_LOOKS.has(look.id);assert.equal(lumOf(seen[look.id].page)>0.5,light,`${look.id}: a ${light?'light':'dark'} hands list (${seen[look.id].page})`);assert.equal(lumOf(seen[look.id].text)<0.2,light,`${look.id}: ${light?'dark':'light'} names`);}
+ await setLook(page,before);
+ return seen;
+}
+/**
  * A card that is only a room's live video (Dual, Quad, Six), in every look. Not live: the card is
  * the look's own panel and its note is readable. Live: the player covers it, dark in every look.
  */
