@@ -1,23 +1,37 @@
 /* #509 Stage mode on a phone: the viewing room. Loaded with StagePhone itself, so the ordinary room
    carries none of it. Every rule is scoped to an open viewing room: PublicChat marks the page with
    data-stage and draws StagePhone's root (.root) first inside the room's shell; the rules below make
-   that shell one dark screen and lay the room's own chat (the section after .root) out as the
-   panel the Chat button opens. Many rules carry !important: the phone layout they replace is
+   that shell one screen, dark behind the video, and lay the room's own chat (the section after
+   .root) out as the panel the Chat button opens. Many rules carry !important: the phone layout they replace is
    written with more specific selectors (.shell[data-phone] > .chat). */
 
 :global(main[data-stage]):has(.root) {
+  /* #510: the video, its full-screen background and everything drawn over the picture keep one
+     dark look in every theme, so the picture reads well and the controls have contrast over it. */
   --sp-page: #000;
-  --sp-panel: #0b0e13;
-  --sp-panel-2: #131922;
-  --sp-line: #232c39;
-  --sp-text: #f2f4f7;
-  --sp-text-2: #b8c1cd;
+  --sp-video-text: #f2f4f7;
+  --sp-video-text-2: #b8c1cd;
+  --sp-video-white: #fff;
+  --sp-video-viewers: #e3e8ee;
+  --sp-video-accent: #f5b83d;
+  --sp-video-ink: #0a0d12;
+  --sp-video-shade: rgba(0, 0, 0, 0.72);
+  --sp-video-button: rgba(11, 14, 19, 0.86);
+  /* LIVE is the same red in every theme, with the word on it in white. */
   --sp-red: #d13438;
-  --sp-amber: #f5b83d;
-  --sp-ink: #0a0d12;
-  /* The see-through chat over the video (phone on its side). With the blur, text keeps 4.5:1 or
-     better even over a white picture: #b8c1cd on 84% #07090d over white is 6.0:1. */
+  --sp-on-red: #fff;
+  /* The see-through chat over the video (phone on its side) is dark in every theme too. With the
+     blur, text keeps 4.5:1 or better even over a white picture: #b8c1cd on 84% #07090d over white is 6.0:1. */
   --sp-scrim: rgba(7, 9, 13, 0.84);
+  /* #510: the chat panel and the strip above it (phone upright) follow the member's theme: these
+     are the chat's own theme tokens, set on this same element from its data-theme and data-palette.
+     The fallbacks are the viewing room's first dark look. */
+  --sp-panel: var(--chat-panel, #0b0e13);
+  --sp-panel-2: var(--chat-panel-raised, #131922);
+  --sp-line: var(--chat-line, #232c39);
+  --sp-text: var(--chat-text, #f2f4f7);
+  --sp-text-2: var(--chat-muted, #b8c1cd);
+  --sp-focus: var(--chat-palm, #f5b83d);
   /* The visible height: shorter while the keyboard is up (lib/chatMobileSend.ts sets the variable). */
   --sp-height: var(--chat-visual-height, 100dvh);
   --sp-bar: 48px;
@@ -29,22 +43,8 @@
      visible, so it shrinks (and stays on screen) when the keyboard takes the lower half. */
   --sp-video: min(56.25vw, calc(var(--sp-height) * 0.42));
 
-  /* The room chat follows the viewing room's dark look through the chat's own tokens. */
-  --chat-bg: var(--sp-panel);
-  --chat-panel: var(--sp-panel);
-  --chat-panel-raised: var(--sp-panel-2);
-  --chat-line: var(--sp-line);
-  --chat-text: var(--sp-text);
-  --chat-muted: var(--sp-text-2);
-  --chat-dim: var(--sp-text-2);
-  --chat-palm: var(--sp-amber);
-  --chat-palm-fill: var(--sp-amber);
-  --chat-palm-soft: rgba(245, 184, 61, 0.14);
-  --chat-header: var(--sp-panel-2);
-  --chat-composer: var(--sp-panel);
+  /* The room chat keeps the theme's own tokens; only its sizes are the viewing room's. */
   --chat-grid: transparent;
-  --chat-shadow: transparent;
-  --chat-on-fill: var(--sp-ink);
   --ui-text-body: 15px;
   --ui-text-name: 14px;
   --ui-text-small: 12px;
@@ -56,9 +56,10 @@
   overflow: hidden;
   overflow: clip;
   background: var(--sp-page);
-  color: var(--sp-text);
+  color: var(--sp-video-text);
 }
-:global(main[data-stage]) > div:has(> .root) {
+/* [data-theme] is there for weight: the themes style the room's shell too, and this must win. */
+:global(main[data-stage][data-theme]) > div:has(> .root) {
   position: relative;
   display: block;
   width: 100%;
@@ -80,41 +81,49 @@
 .root ~ section > header,
 .root ~ section > [class*="_phoneEdge__"] { display: none !important; }
 
-.root { position: absolute; inset: 0; z-index: 1; font: 400 14px/1.4 var(--chat-font-ui); color: var(--sp-text); -webkit-tap-highlight-color: transparent; }
+.root { position: absolute; inset: 0; z-index: 1; font: 400 14px/1.4 var(--chat-font-ui); color: var(--sp-video-text); -webkit-tap-highlight-color: transparent; }
 .root button { font-family: inherit; cursor: pointer; }
-.root :is(button, a):focus-visible { outline: 2px solid var(--sp-amber); outline-offset: 2px; }
+.root :is(button, a):focus-visible { outline: 2px solid var(--sp-video-accent); outline-offset: 2px; }
 .root button:disabled { opacity: 0.45; cursor: default; }
 
 /* The video: the whole screen, the picture contained (never cropped). */
 .screen { position: absolute; inset: 0; background: var(--sp-page); }
 .video { position: absolute; inset: 0; width: 100%; height: 100%; background: var(--sp-page); object-fit: contain; }
 .screen:fullscreen .video { object-position: center !important; }
-.message { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; color: var(--sp-text-2); text-align: center; }
-.message strong { color: var(--sp-text); font-size: 17px; font-weight: 600; }
-.action { min-height: 44px; padding: 0 20px; border: 0; border-radius: 999px; background: var(--sp-amber); color: var(--sp-ink); font-size: 15px; font-weight: 700; }
-.playButton { position: absolute; top: 50%; left: 50%; display: grid; place-items: center; width: 72px; height: 72px; border: 0; border-radius: 50%; background: rgba(0, 0, 0, 0.6); color: #fff; transform: translate(-50%, -50%); }
+.message { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; color: var(--sp-video-text-2); text-align: center; }
+.message strong { color: var(--sp-video-text); font-size: 17px; font-weight: 600; }
+.action { min-height: 44px; padding: 0 20px; border: 0; border-radius: 999px; background: var(--sp-video-accent); color: var(--sp-video-ink); font-size: 15px; font-weight: 700; }
+.playButton { position: absolute; top: 50%; left: 50%; display: grid; place-items: center; width: 72px; height: 72px; border: 0; border-radius: 50%; background: var(--sp-video-shade); color: var(--sp-video-white); transform: translate(-50%, -50%); }
 
 /* The controls, over the top and bottom edges of the video, clear of the notch and home bar. */
 .top, .bottom { position: absolute; left: 0; right: 0; z-index: 2; display: flex; align-items: center; gap: 8px; transition: opacity 180ms ease-out, visibility 0s; }
-.top { top: 0; padding: calc(var(--sp-safe-top) + 6px) calc(var(--sp-safe-right) + 10px) 22px calc(var(--sp-safe-left) + 6px); background: linear-gradient(rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0)); }
-.bottom { bottom: 0; padding: 22px calc(var(--sp-safe-right) + 122px) calc(var(--sp-safe-bottom) + 10px) calc(var(--sp-safe-left) + 6px); background: linear-gradient(rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.72)); }
+.top { top: 0; padding: calc(var(--sp-safe-top) + 6px) calc(var(--sp-safe-right) + 10px) 22px calc(var(--sp-safe-left) + 6px); background: linear-gradient(var(--sp-video-shade), transparent); }
+.bottom { bottom: 0; padding: 22px calc(var(--sp-safe-right) + 122px) calc(var(--sp-safe-bottom) + 10px) calc(var(--sp-safe-left) + 6px); background: linear-gradient(transparent, var(--sp-video-shade)); }
 .root[data-stage-chrome="hidden"] :is(.top, .bottom) { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 320ms ease-out, visibility 0s linear 320ms; }
-.iconButton { display: grid; flex: none; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: #fff; }
-.iconButton:active { background: rgba(255, 255, 255, 0.14); }
-.liveBadge { display: inline-flex; flex: none; align-items: center; gap: 5px; padding: 4px 8px; border-radius: 5px; background: var(--sp-red); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; line-height: 1; }
-.liveBadge i { width: 6px; height: 6px; border-radius: 50%; background: #fff; }
-.roomName { min-width: 0; overflow: hidden; color: #fff; font-size: 15px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.viewers { flex: none; color: #e3e8ee; font-size: 12px; font-variant-numeric: tabular-nums; }
+.iconButton { display: grid; flex: none; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--sp-bar-text, var(--sp-video-white)); }
+.iconButton:active { background: color-mix(in srgb, currentColor 14%, transparent); }
+/* #510: the Terminal themes draw every pressed button as a block in the theme's colour (a pale one
+   on Paper Terminal). Not over the video: the sound button there stays a white icon on the picture.
+   The doubled classes are there for weight, over that rule. */
+.root.root :is(.top, .bottom) .iconButton.iconButton[aria-pressed="true"] { background: transparent; box-shadow: none; color: var(--sp-video-white); }
+.liveBadge { display: inline-flex; flex: none; align-items: center; gap: 5px; padding: 4px 8px; border-radius: 5px; background: var(--sp-red); color: var(--sp-on-red); font-size: 11px; font-weight: 700; letter-spacing: 0.05em; line-height: 1; }
+.liveBadge i { width: 6px; height: 6px; border-radius: 50%; background: var(--sp-on-red); }
+.roomName { min-width: 0; overflow: hidden; color: var(--sp-bar-text, var(--sp-video-white)); font-size: 15px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.viewers { flex: none; color: var(--sp-bar-text-2, var(--sp-video-viewers)); font-size: 12px; font-variant-numeric: tabular-nums; }
 
 /* "Tap for sound": stays until tapped (it does not fade with the controls). */
-.soundPrompt { position: absolute; top: calc(var(--sp-safe-top) + 64px); left: 50%; z-index: 3; display: flex; min-height: 44px; align-items: center; gap: 8px; padding: 0 18px; border: 0; border-radius: 999px; background: #fff; color: var(--sp-ink); font-size: 15px; font-weight: 700; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); white-space: nowrap; transform: translateX(-50%); }
+.soundPrompt { position: absolute; top: calc(var(--sp-safe-top) + 64px); left: 50%; z-index: 3; display: flex; min-height: 44px; align-items: center; gap: 8px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--sp-video-white); color: var(--sp-video-ink); font-size: 15px; font-weight: 700; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); white-space: nowrap; transform: translateX(-50%); }
 
 /* The Chat button: always there, a little quieter once the controls have faded. */
-.chatButton { position: absolute; right: calc(var(--sp-safe-right) + 12px); bottom: calc(var(--sp-safe-bottom) + 10px); z-index: 3; display: flex; min-height: 44px; align-items: center; gap: 8px; padding: 0 18px 0 14px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 999px; background: rgba(11, 14, 19, 0.86); color: #fff; font-size: 15px; font-weight: 600; transition: opacity 320ms ease-out; }
+.chatButton { position: absolute; right: calc(var(--sp-safe-right) + 12px); bottom: calc(var(--sp-safe-bottom) + 10px); z-index: 3; display: flex; min-height: 44px; align-items: center; gap: 8px; padding: 0 18px 0 14px; border: 1px solid color-mix(in srgb, var(--sp-video-white) 30%, transparent); border-radius: 999px; background: var(--sp-video-button); color: var(--sp-video-white); font-size: 15px; font-weight: 600; transition: opacity 320ms ease-out; }
 .root[data-stage-chrome="hidden"] .chatButton { opacity: 0.72; }
-.unread { position: absolute; top: -6px; right: -4px; display: grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--sp-red); color: #fff; font-size: 11px; font-weight: 700; line-height: 1; box-shadow: 0 0 0 2px var(--sp-page); }
+.unread { position: absolute; top: -6px; right: -4px; display: grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--sp-red); color: var(--sp-on-red); font-size: 11px; font-weight: 700; line-height: 1; box-shadow: 0 0 0 2px var(--sp-page); }
 
-/* The strip above the open chat: what is playing, sound, and the button that closes the chat. */
+/* The strip above the open chat: what is playing, sound, and the button that closes the chat.
+   #510: upright it is a panel in the member's theme, so the room's name, the count and the buttons
+   on it take the theme's text colours (--sp-bar-*) and its focus ring. */
+.chatBar { --sp-bar-text: var(--sp-text); --sp-bar-text-2: var(--sp-text-2); }
+.chatBar :is(button, a):focus-visible { outline-color: var(--sp-focus); }
 .chatBar { position: absolute; z-index: 4; display: flex; align-items: center; gap: 4px; height: var(--sp-bar); padding: 0 4px 0 12px; border-bottom: 1px solid var(--sp-line); background: var(--sp-panel-2); }
 .chatBarIdentity { display: flex; flex: 1; min-width: 0; align-items: center; gap: 8px; }
 
@@ -163,10 +172,27 @@
   .root[data-stage-chat="open"] :is(.top, .bottom) { display: flex; right: 50%; }
   .root[data-stage-chat="open"] .bottom { padding-right: 10px; }
   .root[data-stage-chat="open"] .soundPrompt { top: calc(var(--sp-safe-top) + 60px); left: 25%; }
-  .chatBar { top: 0; left: 50%; right: 0; padding-right: calc(var(--sp-safe-right) + 4px); border-bottom-color: rgba(255, 255, 255, 0.16); background: var(--sp-scrim); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+  .chatBar { --sp-bar-text: var(--sp-video-white); --sp-bar-text-2: var(--sp-video-viewers); }
+  .chatBar :is(button, a):focus-visible { outline-color: var(--sp-video-accent); }
+  .chatBar { top: 0; left: 50%; right: 0; padding-right: calc(var(--sp-safe-right) + 4px); border-bottom-color: color-mix(in srgb, var(--sp-video-white) 16%, transparent); background: var(--sp-scrim); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
   /* LIVE, the room and the sound button are still on the video beside it. */
   .chatBar :is(.viewers, .roomName, .liveBadge, [data-stage-phone-mute]) { display: none; }
-  .chatBar .chatBarIdentity::after { content: "Room chat"; color: var(--sp-text); font-size: 14px; font-weight: 600; }
+  .chatBar .chatBarIdentity::after { content: "Room chat"; color: var(--sp-video-text); font-size: 14px; font-weight: 600; }
+  /* #510: over the video the panel is the dark scrim in every theme, so the chat inside it takes
+     these fixed light-on-dark colours through the chat's own tokens, whatever the member's theme. */
+  .root ~ section,
+  .root ~ aside {
+    --chat-bg: #0b0e13; --chat-panel: #0b0e13; --chat-panel-raised: #131922; --chat-line: #232c39;
+    --chat-text: var(--sp-video-text); --chat-muted: var(--sp-video-text-2); --chat-dim: var(--sp-video-text-2);
+    --chat-palm: var(--sp-video-accent); --chat-palm-fill: var(--sp-video-accent); --chat-palm-soft: rgba(245, 184, 61, 0.14); --chat-accent: var(--sp-video-accent);
+    --chat-on-fill: var(--sp-video-ink); --chat-success: #3dd68c; --chat-error: #ff8a80; --chat-draft: #f0b45a;
+    --chat-header: #131922; --chat-composer: #0b0e13; --chat-shadow: transparent; --chat-term-select: #232c39;
+    /* The room's own shorthand for those tokens was worked out on the page, from the theme: again here. */
+    --ui-bg: var(--chat-bg); --ui-surface: var(--chat-panel); --ui-surface-raised: var(--chat-panel-raised); --ui-line: var(--chat-line);
+    --ui-ink: var(--chat-text); --ui-ink-2: var(--chat-muted); --ui-accent: var(--chat-palm); --ui-accent-soft: var(--chat-palm-soft);
+    --ui-selection: var(--chat-palm-soft); --ui-success: var(--chat-success); --ui-danger: var(--chat-error);
+    color: var(--chat-text);
+  }
   .root ~ section,
   .root ~ aside { inset: var(--sp-bar) 0 0 50% !important; padding-right: var(--sp-safe-right); background: var(--sp-scrim) !important; -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
   /* The pieces inside let the scrim show through. */

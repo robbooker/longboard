@@ -68,6 +68,7 @@ import http from 'node:http';
 import {AccessToken} from 'livekit-server-sdk';
 import puppeteer from 'puppeteer';
 import {signIn} from './browser-login.mjs';
+import {LOOKS,checkStageLooks} from './stage-theme-checks.mjs';
 const base=process.env.CHAT_TEST_URL||'http://localhost:3503',fixture=process.env.CHAT_FIXTURE_URL||'http://127.0.0.1:54503',STUB='http://127.0.0.1:54633';
 for(const url of [base,fixture,STUB])assert(['localhost','127.0.0.1'].includes(new URL(url).hostname));
 const shots=process.env.CHAT_SHOT_DIR,scale=Number(process.env.CHAT_TIMING_SCALE||1);
@@ -343,6 +344,11 @@ try{
  assert.equal(await a.$eval('[data-stage-overlay]',e=>e.childElementCount),0,'#507: nothing sits on top of the picture, for an admin either');
  assert.match(await a.$eval('[data-stage-column="trades"]',e=>e.textContent),/Trade tape · sample.*Question queue · sample/s);
  if(shots){await a.evaluate(()=>document.querySelector('[data-stage-column="stage"]').scrollTo(0,0));await a.waitForFunction(()=>document.querySelector('[data-stage-video-feed]').videoWidth>0);await a.screenshot({path:`${shots}/admin-stage-live.png`});}
+ // #510: the admin's live stage (the "Live video" card with its address and key, the empty hands
+ // list, the sample panels) in a light, a dark, both Terminal and the most colourful looks, changed
+ // while it plays. (Every look on an admin's stage: chat-stage-mode, -hand and -on-screen.)
+ await checkStageLooks(a,{looks:LOOKS.filter(look=>['light','dark','blade-runner','terminal','paper-terminal'].includes(look.id)),each:async look=>{if(shots&&['light','paper-terminal'].includes(look.id))await a.screenshot({path:`${shots}/admin-stage-live-${look.id}.png`});}});
+ assert(await a.$eval('[data-stage-video-feed]',v=>!v.hidden&&v.srcObject!==null&&!v.paused),'the video played on through every theme change');
  // #504: the admin's three columns: the same widescreen player, in a narrower column.
  await a.waitForFunction(()=>document.querySelector('[data-stage-video-feed]').videoWidth>0);
  for(const size of STAGE_SIZES)await playerSize(a,'admin',size);
@@ -493,6 +499,12 @@ try{
  await send(s,'Watching from the stage.');
  assert(await saved(s,'Watching from the stage.'),'a message from the stage is a real room message');
  if(shots)await s.screenshot({path:`${shots}/member-stage.png`});
+ // #510: the member's stage, in the tab Watch live opened, in every theme and colour combination:
+ // the columns and the room chat take the theme, the player and its frame stay dark, LIVE stays red.
+ {const connects=await s.evaluate(()=>window.__stageFeed.connects.length);
+  await checkStageLooks(s,{each:async look=>{if(shots)await s.screenshot({path:`${shots}/member-stage-${look.id}.png`});}});
+  assert.equal(await s.evaluate(()=>window.__stageFeed.connects.length),connects,'a theme change opens no new video connection');
+  assert(await s.$eval('[data-stage-video-feed]',v=>!v.hidden&&!v.paused),'the video plays on through every theme change');}
  // A 1280px laptop keeps the two columns; narrower stacks video over chat.
  await s.setViewport({width:1280,height:800});await sleep(300);
  {const l=await layout();assert.equal(l.stage.right+1,l.chat.x);assert.equal(l.chat.right,1280);assert(!l.sideways);}

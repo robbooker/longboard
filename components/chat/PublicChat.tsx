@@ -2682,9 +2682,10 @@ function PublicChatContent({
       data-reaction-bar-layer
       data-pane={!!pane}
       data-popout={popout}
-      // #501: the stage has its own dark look, whatever theme the viewer uses.
-      data-theme={stageOpen ? "dark" : theme}
-      data-palette={stageOpen ? undefined : palette}
+      // #510: the stage follows the member's theme and colours like the rest of the chat (its
+      // stylesheets map their colours onto these theme tokens); only the video's surround stays dark.
+      data-theme={theme}
+      data-palette={palette}
       data-stage={stageOpen || undefined}
       data-room={shortScoutRoom ? "shortscout" : room}
       data-chat-view={viewId}

@@ -33,6 +33,7 @@ import http from 'node:http';
 import {AccessToken} from 'livekit-server-sdk';
 import puppeteer from 'puppeteer';
 import {signIn} from './browser-login.mjs';
+import {checkPhoneLooks} from './stage-theme-checks.mjs';
 const base=process.env.CHAT_TEST_URL||'http://localhost:3509',fixture=process.env.CHAT_FIXTURE_URL||'http://127.0.0.1:54509',STUB='http://127.0.0.1:54643';
 for(const url of [base,fixture,STUB])assert(['localhost','127.0.0.1'].includes(new URL(url).hostname));
 const shots=process.env.CHAT_SHOT_DIR,scale=Number(process.env.CHAT_TIMING_SCALE||1);
@@ -229,6 +230,10 @@ try{
   assert.equal(clear,true,`the typing line does not cover the newest message: ${clear}`);}
  await b.evaluate(()=>document.activeElement?.blur());await sleep(300);
  await shot(b,'phone-chat-open');
+ // #510: upright with the chat open, in every theme and colour combination: the chat panel and the
+ // strip above it take the theme, the video's background stays black, and the video plays on.
+ await checkPhoneLooks(b,{each:async look=>shot(b,`phone-chat-open-${look.id}`)});
+ assert.deepEqual(await b.evaluate(()=>[window.__stageFeed.connects.length,window.__stageFeed.closed,window.__sameVideo===document.querySelector('[data-stage-video-feed]')&&!window.__sameVideo.paused]),[1,0,true],'a theme change leaves the one connection and the playing video alone');
  // The keyboard (the visible part of the screen gets shorter while the composer has focus).
  await (await shown(b,LB)).asElement().click();
  await b.setViewport({...UPRIGHT,height:500});
@@ -278,6 +283,8 @@ try{
  await typeAndSend(b,'And sideways.');
  await b.evaluate(()=>document.activeElement?.blur());await sleep(300);
  await shot(b,'phone-landscape-chat');
+ // #510: on its side the chat is the same dark scrim over the video in every look, with light text.
+ await checkPhoneLooks(b,{sideways:true,each:async look=>{if(['light','paper-terminal'].includes(look.id))await shot(b,`phone-landscape-chat-${look.id}`);}});
  await tap(b,'[data-stage-phone-chat-close]');
  await b.waitForFunction(r=>document.querySelector(r).dataset.stageChat==='closed',{},ROOT);
  assert(!(await seen(b,CHAT)));assert(!(await seen(b,LB)));

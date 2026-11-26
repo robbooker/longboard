@@ -26,6 +26,7 @@ import msgpack from '@ably/msgpack-js';
 import {AccessToken} from 'livekit-server-sdk';
 import puppeteer from 'puppeteer';
 import {signIn} from './browser-login.mjs';
+import {checkStageLooks,contrastOf} from './stage-theme-checks.mjs';
 const base=process.env.CHAT_TEST_URL||'http://localhost:3507',fixture=process.env.CHAT_FIXTURE_URL||'http://127.0.0.1:54707',STUB='http://127.0.0.1:54633';
 for(const url of [base,fixture,STUB])assert(['localhost','127.0.0.1'].includes(new URL(url).hostname));
 const shots=process.env.CHAT_SHOT_DIR,scale=Number(process.env.CHAT_TIMING_SCALE||1);
@@ -243,6 +244,12 @@ try{
   assert.equal(await a.$eval('[data-stage-on-screen-input]',i=>i.value),'','the box is emptied once it is set');
   assert.match(await a.$eval('[data-stage-on-screen-control]',e=>e.textContent),/AEHL is on screen for everyone/);}
  await shot(a,'admin-set-ticker');await shot(b,'member-on-screen');
+ // #510: the "On screen" chip (dark on the theme's accent), the admin's box for setting the stock and
+ // the member's stock panel, in every theme and colour combination.
+ await checkStageLooks(a,{each:async look=>{const chip=await contrastOf(a,'[data-stage-chip="AEHL"] span');assert(chip!==null,`${look.id}: the On screen chip is showing`);assert(chip>=4.5,`${look.id}: the On screen chip is ${chip}:1`);
+  const hint=await contrastOf(a,'[data-stage-on-screen-input]','::placeholder');if(hint!==null)assert(hint>=4.5,`${look.id}: the ticker box's placeholder is ${hint}:1`);
+  if(shots&&look.id==='light'){await a.evaluate(()=>document.querySelector('[data-stage-stock]').scrollIntoView({block:'end'}));await a.screenshot({path:`${shots}/admin-set-ticker-light.png`});}}});
+ await checkStageLooks(b);
  // Someone who opens the stage afterwards reads it from the room's status.
  await openStage(mallory);
  {const p=await until(m,x=>x.host==='AEHL','a member joining afterwards sees it');
