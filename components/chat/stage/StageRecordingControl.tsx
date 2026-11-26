@@ -53,7 +53,7 @@ export default function StageRecordingControl({ room, messageId, recordingUrl }:
           type="url"
           inputMode="url"
           value={link}
-          onChange={(event) => setLink(event.target.value)}
+          onChange={(event) => (setLink(event.target.value), setProblem(""))}
           placeholder="YouTube or Loom link"
           aria-label="Recording link (YouTube or Loom)"
           autoFocus

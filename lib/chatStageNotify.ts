@@ -140,7 +140,8 @@ export async function tellStageLive(
     const verdict = stageBroadcastVerdict(known, { now, startedAt });
     if (verdict === "new") return null;
     if (verdict === "resume") return (await store.reopen(room, known.id, body)) ? "resumed" : "already";
-    await store.seen(known.id, now, STAGE_SEEN_GAP_MS);
+    // At most once a minute, and nothing is sent to the database in between.
+    if (now - known.lastLiveAt >= STAGE_SEEN_GAP_MS) await store.seen(known.id, now, STAGE_SEEN_GAP_MS);
     // The message is there and its bell entries are not all written: the call that posted it was cut off.
     if (known.notifiedAt === null && now - known.createdAt >= STAGE_BELLS_RETRY_MS) await writeStageBells(store, known.id, room);
     return "already";

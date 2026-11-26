@@ -92,7 +92,7 @@ const webhook=async(event,identity,id=`EV_test_${++webhookNumber}`)=>{const body
  signer.sha256=createHash('sha256').update(body).digest('base64');
  const r=await fetch(base+'/api/chat/stage/livekit-webhook',{method:'POST',headers:{'content-type':'application/webhook+json',authorization:await signer.toJwt()},body});assert.equal(r.status,200,`webhook ${event}`);};
 const ALICE='00000000-0000-4000-8000-000000000001',BOB='00000000-0000-4000-8000-000000000002',MALLORY='00000000-0000-4000-8000-000000000003',BOT='00000000-0000-4000-8000-000000000099';
-const LIVE_TEXT='🔴 LB is live now. Watch live: https://chat.robbooker.com/chat?room=main&stage=1',ENDED_TEXT='The live video in LB has ended.';
+const LIVE_TEXT='🔴 LB is live now. Watch live: https://chat.robbooker.com/chat?room=main&stage=1',ENDED_TEXT='The live video in LB has ended. The recording will follow.';
 const notices=()=>sql("select id,body,edited_at from longboard_chat_messages where room_slug='main' and bot_slug='longboard' order by created_at,unread_seq");
 const alerted=async id=>(await sql('select account_id from chat_room_mentions where message_id=$1 order by account_id',[id])).map(r=>r.account_id);
 const until=async(check,what,ms=30000)=>{for(let waited=0;;waited+=200){const value=await check();if(value)return value;assert(waited<ms*scale,`timed out: ${what}`);await sleep(200);}};
@@ -757,7 +757,7 @@ try{
  await sql("insert into chat_bot_accounts(account_id,allowed_rooms) values($1,array['main'])",[BOT]);
  assert.deepEqual(await sql("select public.chat_account_room_recipient_eligible($1,'main') a,public.chat_account_room_recipient_eligible($2,'main') b",[MALLORY,BOT]),[{a:true,b:true}],'both can read LB now');
  // The first broadcast ended 11 minutes ago.
- await sql("update longboard_chat_messages set edited_at=now()-interval '11 minutes' where id=$1",[notice.id]);
+ await sql("update chat_stage_broadcasts set ended_at=now()-interval '11 minutes',last_live_at=least(last_live_at,now()-interval '11 minutes') where notice_id=$1 and ended_at is not null",[notice.id]);
  lk.publishing=true;lk.startedAt=Date.now()-3000;
  await Promise.all([webhook('ingress_started'),webhook('track_published','stage-broadcast'),webhook('room_started')]);await signal(a);
  await waitPlayer(a,'live');
