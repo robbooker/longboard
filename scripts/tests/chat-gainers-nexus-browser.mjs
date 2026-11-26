@@ -27,7 +27,8 @@ let source=1;
 const ago=s=>new Date(Date.now()-s*1000).toISOString();
 const alert=(sym,secondsAgo,vol)=>sql(`select public.ingest_chat_gainers_alert('-100',$1,$2::timestamptz,$3)`,[source++,ago(secondsAgo),`🚨 ${sym} (+${(40+source).toFixed(1)}%)\nPrice: $2.50\nVolume: ${vol.toLocaleString('en-US')}\nMarket Cap: 12.5M`]);
 const etMinutes=(()=>{const p=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'numeric',minute:'numeric',hourCycle:'h23'}).formatToParts(new Date()).map(x=>[x.type,x.value]));return Number(p.hour)*60+Number(p.minute);})();
-assert(etMinutes>=15,'run this test at least 15 minutes after midnight in New York');
+// #525: run-browser-tests.mjs pins this test to 9:00 AM New York (clock in browser-manifest.mjs), so this only ever stops a run by hand.
+assert(etMinutes>=15,'run by hand, without run-browser-tests.mjs and its 9:00 AM New York clock: at least 15 minutes after midnight in New York');
 
 await alert('AIMD',60,900000);
 await alert('USCO',120,500000);
