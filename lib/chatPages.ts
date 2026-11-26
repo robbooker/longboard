@@ -3,7 +3,8 @@
 // list each trader keeps ("my-links"). This file is shared by the routes and the browser, so it
 // holds only plain validation and types.
 
-export type ChatPageKind = "embed" | "links" | "my-links";
+/** #529: "video-picks" is Booker Tube, a built-in page (never one a member adds or suggests). */
+export type ChatPageKind = "embed" | "links" | "my-links" | "video-picks";
 
 export type ChatPage = {
   id: string;
