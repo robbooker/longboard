@@ -9,6 +9,7 @@
 // for the rest. Nothing in the panel says where a number comes from (the owner's rule).
 import { useEffect, useState } from "react";
 import type { GainersTableData, GainersTableRow } from "@/lib/chatGainersFacts";
+import type { ChatRoom } from "@/lib/publicChat";
 import { parseRowNewsData, rowNewsTime, ROW_NEWS_EMPTY, type GainersRowNewsItem } from "@/lib/chatGainersRowNews";
 import { parseStageLookup, stagePanelView, type StageLookup } from "@/lib/chatStageMode";
 import StageOnScreenControl, { type StageHostControls } from "./StageOnScreenControl";
@@ -17,20 +18,33 @@ import styles from "./StageMode.module.css";
 const READ_EVERY_MS = 15_000;
 /** #512: the server said this account is asking too often (429): the next lookup waits this long. */
 const LOOKUP_BACKOFF_MS = 60_000;
+/** #523: the server does not (yet) have that stock as the one on screen (409): asked again this soon. */
+const LOOKUP_NOT_YET_MS = 5_000;
+/** #523: signed out, or not allowed to read it: asking again every 15 seconds would change nothing. */
+const refused = (status: number) => status === 401 || status === 403;
 
-/** Today's Gainers Table rows (null while it can't be read), and whether the first read has answered. */
-function useGainersRows() {
+/**
+ * Today's Gainers Table rows (null while it can't be read), and whether the first read has answered.
+ * #523: nothing is asked for a member who cannot read the Gainers data (`allowed` false), and the
+ * reads stop for good once the server refuses one (401 or 403).
+ */
+function useGainersRows(allowed: boolean) {
   const [rows, setRows] = useState<GainersTableRow[] | null>(null);
   const [answered, setAnswered] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
+    if (!allowed) return setAnswered(true);
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let stopped = false;
     const read = () => {
       clearTimeout(timer);
-      if (document.visibilityState === "hidden") return;
+      if (stopped || document.visibilityState === "hidden") return;
       fetch("/api/chat/gainers/table", { cache: "no-store", signal: controller.signal })
-        .then((response) => (response.ok ? response.json() : Promise.reject(new Error(String(response.status)))))
+        .then((response) => {
+          if (refused(response.status)) stopped = true;
+          return response.ok ? response.json() : Promise.reject(new Error(String(response.status)));
+        })
         .then((body: GainersTableData) => {
           if (controller.signal.aborted || !Array.isArray(body?.rows)) return;
           setNow(Date.now());
@@ -40,7 +54,7 @@ function useGainersRows() {
         .finally(() => {
           if (controller.signal.aborted) return;
           setAnswered(true);
-          timer = setTimeout(read, READ_EVERY_MS);
+          if (!stopped) timer = setTimeout(read, READ_EVERY_MS);
         });
     };
     read();
@@ -53,7 +67,7 @@ function useGainersRows() {
       clearTimeout(timer);
       document.removeEventListener("visibilitychange", shown);
     };
-  }, []);
+  }, [allowed]);
   return { rows, now, answered };
 }
 
@@ -84,21 +98,26 @@ function usePressReleases(sym: string, real: boolean) {
 /**
  * #507: Polygon's numbers for a stock that is not on today's table, read like the table itself
  * (every 15 seconds while the tab is shown). Nothing is asked while `sym` is null.
+ * #523: asked for the room's stage (the server answers only for the stock on screen there), and
+ * the reads stop for good once the server refuses one (401 or 403).
  */
-function useStockLookup(sym: string | null) {
+function useStockLookup(room: ChatRoom, sym: string | null) {
   const [found, setFound] = useState<{ sym: string; lookup: StageLookup } | null>(null);
   useEffect(() => {
     if (!sym) return;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let stopped = false;
     const read = () => {
       clearTimeout(timer);
-      if (document.visibilityState === "hidden") return;
+      if (stopped || document.visibilityState === "hidden") return;
       let wait = READ_EVERY_MS;
-      fetch(`/api/chat/stage/stock?ticker=${encodeURIComponent(sym)}`, { cache: "no-store", signal: controller.signal })
+      fetch(`/api/chat/stage/stock?room=${encodeURIComponent(room)}&ticker=${encodeURIComponent(sym)}`, { cache: "no-store", signal: controller.signal })
         .then((response) => {
           // Refused (too many lookups) or failed: the panel keeps what it has, or shows dashes.
           if (response.status === 429) wait = LOOKUP_BACKOFF_MS;
+          else if (response.status === 409) wait = LOOKUP_NOT_YET_MS;
+          else if (refused(response.status)) stopped = true;
           return response.ok ? response.json() : null;
         })
         .then((body: unknown) => {
@@ -107,7 +126,7 @@ function useStockLookup(sym: string | null) {
         })
         .catch(() => undefined)
         .finally(() => {
-          if (!controller.signal.aborted) timer = setTimeout(read, wait);
+          if (!controller.signal.aborted && !stopped) timer = setTimeout(read, wait);
         });
     };
     read();
@@ -120,17 +139,23 @@ function useStockLookup(sym: string | null) {
       clearTimeout(timer);
       document.removeEventListener("visibilitychange", shown);
     };
-  }, [sym]);
+  }, [room, sym]);
   return sym && found?.sym === sym ? found.lookup : null;
 }
 
 export default function StageStockPanel({
+  room,
+  gainers,
   host,
   picked,
   onPick,
   samples,
   controls,
 }: {
+  /** The room whose stage this is. */
+  room: ChatRoom;
+  /** #523: this member can read the Gainers data. Without it nothing is asked of the table or the lookup. */
+  gainers: boolean;
   /** #507: the stock the host put on screen for everyone (null: none). */
   host: string | null;
   /** This viewer's own choice of chip (null: whatever is on screen). Never leaves this device. */
@@ -141,10 +166,10 @@ export default function StageStockPanel({
   /** #507: admins only: a click on a chip, and the typed box, set the stock for everyone. */
   controls?: StageHostControls;
 }) {
-  const { rows, now, answered } = useGainersRows();
+  const { rows, now, answered } = useGainersRows(gainers);
   const none = !rows?.length;
   const offTable = !!host && answered && !rows?.some((row) => row.sym === host);
-  const lookup = useStockLookup(offTable && (!picked || picked === host) ? host : null);
+  const lookup = useStockLookup(room, gainers && offTable && (!picked || picked === host) ? host : null);
   const view = stagePanelView({ rows, now, host, picked, samples, lookup });
   const stock = view.stock;
   const real = !!stock && (stock.source === "table" || stock.source === "lookup");

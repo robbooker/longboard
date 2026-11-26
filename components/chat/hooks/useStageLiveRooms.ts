@@ -8,7 +8,14 @@
 //  - one for all of them when the tab comes back after a while.
 // Requests wanted at the same moment go out as one. With live video not set up on the server
 // (`rooms` null) nothing is asked at all.
-import { useEffect, useMemo, useRef, useState } from "react";
+// #523:
+//  - the video-only cards (LiveVideoCard) read their room's state from this same reader, through
+//    StageRoomsContext, instead of each asking for itself;
+//  - a signal that only carries the stock on screen asks nothing; a burst of signals for a room
+//    asks once, and once more a few seconds after the last;
+//  - a read caused by something (a signal, a card's player, coming back to the tab) says so with
+//    `fresh=1`, so the server never answers it from its half-minute memory of "waiting".
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { CHAT_STAGE_EVENT, parseStageState, type ChatStageEventDetail, type StageState } from "@/lib/chatStageLive";
 import type { ChatRoom } from "@/lib/publicChat";
 
@@ -20,13 +27,30 @@ const TOGETHER_MS = 50;
 const SETTLE_MS = 5_000;
 /** An answer older than this is asked again when the tab comes back, or the room returns to a card. */
 const STALE_MS = 30_000;
+/** #523: signals for one room closer together than this are one change. */
+const SIGNAL_BURST_MS = 1_000;
 
 const NONE: ReadonlySet<ChatRoom> = new Set();
 
-export function useStageLiveRooms(rooms: readonly ChatRoom[] | null): ReadonlySet<ChatRoom> {
+export type StageRooms = {
+  /** The rooms that are live now. */
+  live: ReadonlySet<ChatRoom>;
+  /** One room's state as last answered ("off" until it is), and whether it has been answered. */
+  of: (room: ChatRoom) => { state: StageState; answered: boolean };
+  /** Ask about one room again now (a card's player saw the broadcast arrive, drop or refuse it). */
+  refresh: (room: ChatRoom) => void;
+};
+const NOTHING: StageRooms = { live: NONE, of: () => ({ state: "off", answered: false }), refresh: () => undefined };
+
+/** #523: the page's one reader, for the cards inside it (a video-only card reads its room here). */
+export const StageRoomsContext = createContext<StageRooms>(NOTHING);
+export const useStageRoomsContext = () => useContext(StageRoomsContext);
+
+export function useStageLiveRooms(rooms: readonly ChatRoom[] | null): StageRooms {
   const key = rooms ? [...new Set(rooms)].sort().join(",") : "";
   const known = useRef(new Map<string, { state: StageState; at: number }>());
   const [version, setVersion] = useState(0);
+  const ask = useRef<(room: string) => void>(() => undefined);
   useEffect(() => {
     if (!key) return;
     const shown = key.split(",");
@@ -38,14 +62,18 @@ export function useStageLiveRooms(rooms: readonly ChatRoom[] | null): ReadonlySe
         run();
       }, ms);
       timers.add(timer);
+      return timer;
     };
     const wanted = new Set<string>();
-    const ask = () => {
+    let wantedFresh = false;
+    const send = () => {
       const asking = [...wanted];
+      const fresh = wantedFresh;
       wanted.clear();
+      wantedFresh = false;
       if (!asking.length) return;
       const at = Date.now();
-      fetch(`/api/chat/stage/status?rooms=${asking.map(encodeURIComponent).join(",")}`, { cache: "no-store", signal: controller.signal })
+      fetch(`/api/chat/stage/status?rooms=${asking.map(encodeURIComponent).join(",")}${fresh ? "&fresh=1" : ""}`, { cache: "no-store", signal: controller.signal })
         .then((response) => (response.ok ? response.json() : null))
         .then((body: { states?: Record<string, unknown> } | null) => {
           if (controller.signal.aborted || !body?.states) return;
@@ -53,44 +81,69 @@ export function useStageLiveRooms(rooms: readonly ChatRoom[] | null): ReadonlySe
           for (const room of asking) {
             // A room left out of the answer is one this member cannot read: never live here.
             const state = parseStageState(body.states[room]);
-            if (known.current.get(room)?.state !== state) changed = true;
+            const before = known.current.get(room);
+            if (!before || before.state !== state) changed = true;
             known.current.set(room, { state, at });
           }
           if (changed) setVersion((value) => value + 1);
         })
         .catch(() => undefined);
     };
-    const want = (list: readonly string[], wait = TOGETHER_MS) => {
+    const want = (list: readonly string[], fresh: boolean, wait = TOGETHER_MS) => {
       if (!list.length) return;
       const first = wanted.size === 0;
       list.forEach((room) => wanted.add(room));
-      if (first) later(ask, wait);
+      wantedFresh ||= fresh;
+      if (first) later(send, wait);
     };
     const old = (room: string) => Date.now() - (known.current.get(room)?.at ?? 0) > STALE_MS;
-    want(shown.filter(old), AFTER_OPEN_MS);
+    want(shown.filter(old), false, AFTER_OPEN_MS);
+    ask.current = (room) => {
+      if (shown.includes(room)) want([room], true);
+    };
+    const signalled = new Map<string, { at: number; settle?: ReturnType<typeof setTimeout> }>();
     const signal = (event: Event) => {
-      const room = (event as CustomEvent<ChatStageEventDetail>).detail?.room;
-      if (!room) return;
+      const detail = (event as CustomEvent<ChatStageEventDetail>).detail;
+      const room = detail?.room;
+      // #523: the stock on screen says nothing about the broadcast (and a card does not show it).
+      if (!room || detail.onScreen) return;
       // A room on no card: what was known about it is out of date now.
       if (!shown.includes(room)) return void known.current.delete(room);
-      want([room]);
-      later(() => want([room]), SETTLE_MS);
+      // #523: one read for a burst of signals, and one settle read after the last of them.
+      const now = Date.now();
+      const last = signalled.get(room);
+      if (!last || now - last.at > SIGNAL_BURST_MS) want([room], true);
+      if (last?.settle) {
+        clearTimeout(last.settle);
+        timers.delete(last.settle);
+      }
+      signalled.set(room, { at: now, settle: later(() => want([room], true), SETTLE_MS) });
     };
     const back = () => {
-      if (document.visibilityState === "visible") want(shown.filter(old));
+      if (document.visibilityState === "visible") want(shown.filter(old), true);
     };
     window.addEventListener(CHAT_STAGE_EVENT, signal);
     document.addEventListener("visibilitychange", back);
     return () => {
       controller.abort();
       timers.forEach(clearTimeout);
+      ask.current = () => undefined;
       window.removeEventListener(CHAT_STAGE_EVENT, signal);
       document.removeEventListener("visibilitychange", back);
     };
   }, [key]);
   return useMemo(() => {
     void version;
-    const live = key.split(",").filter((room) => known.current.get(room)?.state === "live") as ChatRoom[];
-    return live.length ? new Set(live) : NONE;
+    if (!key) return NOTHING;
+    const shown = key.split(",");
+    const live = shown.filter((room) => known.current.get(room)?.state === "live") as ChatRoom[];
+    return {
+      live: live.length ? new Set(live) : NONE,
+      of: (room) => {
+        const answer = shown.includes(room) ? known.current.get(room) : undefined;
+        return { state: answer?.state ?? "off", answered: !!answer };
+      },
+      refresh: (room) => ask.current(room),
+    };
   }, [key, version]);
 }

@@ -9,10 +9,11 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import type { ChatRoom } from "@/lib/publicChat";
 import { CHAT_STAGE_EVENT, type ChatStageEventDetail, type StageState } from "@/lib/chatStageLive";
-import { STAGE_LINK_IDLE, holdStageConnection, stageLinkStep } from "@/lib/chatStageLink";
+import { STAGE_HEALTHY_MS, STAGE_LINK_IDLE, holdStageConnection, stageAutoRetry, stageLinkStep, type StageLost } from "@/lib/chatStageLink";
 import { stageFeedConnect, type StageFeed } from "./stageFeed";
 
-export type StageLink = "idle" | "connecting" | "connected" | "reconnecting" | "ended" | "failed";
+/** #522 "replaced": another of the member's own screens took this player's seat (two per room). */
+export type StageLink = "idle" | "connecting" | "connected" | "reconnecting" | "ended" | "failed" | "replaced";
 
 /** #512: refused a token because the server does not (yet) say "live": asked again this much later, if the room is live. */
 const STAGE_REFUSED_RETRY_MS = 5_000;
@@ -29,6 +30,7 @@ export function useStageLink({
   listening,
   pip,
   resume = false,
+  seat = 1,
 }: {
   roomId: ChatRoom;
   /** Live video is set up on the server. */
@@ -52,6 +54,12 @@ export function useStageLink({
    * live must not be left looking at "ended".
    */
   resume?: boolean;
+  /**
+   * #522: which of the member's two seats in the room this player asks for first (the server
+   * decides). A stage tab asks for 1; a video card and a phone ask for 2, so the usual pairs of
+   * screens never pick the same one.
+   */
+  seat?: number;
 }) {
   const feed = useRef<StageFeed | null>(null);
   const [link, setLink] = useState<StageLink>("idle");
@@ -63,6 +71,13 @@ export function useStageLink({
   refresh.current = onStageRefresh;
   const volumeNow = useRef(volume);
   volumeNow.current = volume;
+  const stateNow = useRef(stageState);
+  stateNow.current = stageState;
+  // #522: this player's own name for itself, sent with each token request, so the server can tell
+  // "this player reconnecting" (same seat again) from another of the member's screens.
+  const tab = useRef("");
+  // #522: automatic retries since a connection last stayed up (lib/chatStageLink.ts stageAutoRetry).
+  const autoTries = useRef(0);
 
   // #511: connected only while there is something to watch (lib/chatStageLink.ts has the rule).
   // A connection begins when the room is live and rides out a short drop. #512: an admin's too: a
@@ -77,7 +92,7 @@ export function useStageLink({
     return () => document.removeEventListener("visibilitychange", seenOrNot);
   }, []);
   const watching = pip || (picture && listening && !audioBlocked);
-  const dead = link === "failed" || link === "ended";
+  const dead = link === "failed" || link === "ended" || link === "replaced";
   const linkMemory = useRef(STAGE_LINK_IDLE);
   const signalled = useRef(false);
   const [hold, setHold] = useState<{ open: boolean; gone: boolean }>({ open: false, gone: false });
@@ -104,8 +119,9 @@ export function useStageLink({
     linkMemory.current = memory;
     const gone = memory.closed === "gone";
     setHold((current) => (current.open === memory.open && current.gone === gone ? current : { open: memory.open, gone }));
-    // Let go because nothing is playing: the room's status has probably changed.
-    if (gone && before.closed !== "gone") refresh.current();
+    // Let go because nothing is playing: the room's status has probably changed. (#522: not when
+    // the server closed the connection of a room already known not to be live: nothing to ask.)
+    if (gone && before.closed !== "gone" && !dead) refresh.current();
     if (wake === null) return;
     const timer = setTimeout(() => setTick((n) => n + 1), Math.max(0, wake - Date.now()) + 20);
     return () => clearTimeout(timer);
@@ -140,15 +156,22 @@ export function useStageLink({
     if (!videoEl || !audioEl) return;
     setLink("connecting");
     setRefusedAt(null);
+    tab.current ||= Math.random().toString(36).slice(2, 12).padEnd(8, "0");
+    let connectedAt: number | null = null;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
     // Let go of at any point (holdStageConnection): before the token, while connecting, or after.
     const close = holdStageConnection(
       async (signal) => {
         const open = () => !signal.aborted;
+        // #522: the player's code first, the token last. The token lasts a minute, and on a slow
+        // phone the download is the slow part; this way the minute only has to cover connecting.
+        const connect = await stageFeedConnect();
+        if (!open()) return null;
         const response = await fetch("/api/chat/stage/token", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           cache: "no-store",
-          body: JSON.stringify({ room: roomId }),
+          body: JSON.stringify({ room: roomId, tab: tab.current, seat }),
           signal,
         });
         if (!open()) return null;
@@ -161,7 +184,6 @@ export function useStageLink({
         }
         if (!response.ok) throw new Error("token");
         const { url, token } = (await response.json()) as { url: string; token: string };
-        const connect = await stageFeedConnect();
         if (!open()) return null;
         return connect({
           url,
@@ -174,14 +196,31 @@ export function useStageLink({
               if (!open()) return;
               setPicture(on);
               // The broadcast arrived or dropped: the room's status has changed (or is about to).
-              refresh.current();
+              // #523: asked again only when this page's status does not already say so (a picture
+              // arriving in a room it knows is live is no news, and was one request per viewer).
+              if (on !== (stateNow.current === "live")) refresh.current();
             },
             viewers: (count) => open() && setViewers(count),
             audioBlocked: (blocked) => open() && setAudioBlocked(blocked),
             connection: (state) => {
               if (!open()) return;
-              setLink(state);
-              if (state === "ended" || state === "failed") refresh.current();
+              if (state === "connected" || state === "reconnecting") {
+                connectedAt ??= Date.now();
+                return setLink(state);
+              }
+              // #522: lost for good. The room's status is asked again only if this page still
+              // believes it is live (when the server closes an ended room, everyone already knows).
+              if (stateNow.current === "live") refresh.current();
+              if (state === "ended") return setLink("ended");
+              const lost: StageLost = state;
+              const held = connectedAt === null ? null : Date.now() - connectedAt;
+              if (held !== null && held >= STAGE_HEALTHY_MS) autoTries.current = 0;
+              const wait = stageAutoRetry(lost, held, autoTries.current);
+              if (wait === null) return setLink(lost === "removed" ? "ended" : lost);
+              // One fresh attempt by itself (a new token, so the member's access is checked again).
+              autoTries.current += 1;
+              setLink("connecting");
+              retryTimer = setTimeout(() => setAttempt((n) => n + 1), wait + Math.floor(Math.random() * 500));
             },
           },
         });
@@ -204,6 +243,7 @@ export function useStageLink({
     window.addEventListener("pagehide", leaving);
     window.addEventListener("pageshow", returned);
     return () => {
+      clearTimeout(retryTimer);
       window.removeEventListener("pagehide", leaving);
       window.removeEventListener("pageshow", returned);
       feed.current = null;
@@ -213,19 +253,28 @@ export function useStageLink({
       setAudioBlocked(false);
       setLink("idle");
     };
-  }, [wanted, roomId, attempt, videoRef, audioRef]);
+  }, [wanted, roomId, attempt, seat, videoRef, audioRef]);
 
   useEffect(() => feed.current?.setVolume(volume), [volume, link]);
 
-  // #509: back on a phone's page (see `resume`).
+  // #509: back on a phone's page (see `resume`). #523: a computer's player too, so a laptop that
+  // wakes from sleep reconnects by itself. It runs only on the browser's own events (the page is
+  // shown again, the network is back), never on anything this hook does, so it cannot loop; and the
+  // new attempt replaces this player's own connection (the old one is closed first, and the server
+  // gives the same seat back), so it never adds one.
   const linkNow = useRef(link);
   linkNow.current = link;
   useEffect(() => {
     if (!resume) return;
-    const back = () => {
+    const back = (event: Event) => {
       if (document.visibilityState !== "visible") return;
       refresh.current();
-      if (linkNow.current === "failed") setAttempt((n) => n + 1);
+      // A seat taken by another screen is asked for again only when the viewer comes back to this
+      // one (not when the network returns, which every screen hears at once).
+      if (linkNow.current === "failed" || (linkNow.current === "replaced" && event.type === "visibilitychange")) {
+        autoTries.current = 0;
+        setAttempt((n) => n + 1);
+      }
       signalled.current = true;
       setTick((n) => n + 1);
     };
@@ -245,7 +294,10 @@ export function useStageLink({
       .catch(() => undefined);
   }, []);
   /** A new connection attempt after a failed one. */
-  const retry = useCallback(() => setAttempt((n) => n + 1), []);
+  const retry = useCallback(() => {
+    autoTries.current = 0;
+    setAttempt((n) => n + 1);
+  }, []);
   return {
     /** Holding (or making) a connection now: the player draws its video element while this is true. */
     wanted,

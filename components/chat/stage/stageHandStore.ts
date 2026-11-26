@@ -37,7 +37,7 @@ export function stageTokenViewer(token: string): { videoRoom: string; identity: 
 /**
  * The same connection, also keeping the room's raised hands in the store: from the moment it is
  * connected until it is closed, ends or fails. A connection made afterwards is a new participant
- * with a new identity, so it always starts with the hand down.
+ * (#522: possibly in the same seat, so with the same identity), and always starts with the hand down.
  */
 export const withStageHands = (connect: StageFeedConnect): StageFeedConnect => async (options) => {
   const viewer = stageTokenViewer(options.token);
@@ -64,10 +64,16 @@ export const withStageHands = (connect: StageFeedConnect): StageFeedConnect => a
       events: {
         ...options.events,
         connection: (state) => {
-          if (state === "ended" || state === "failed") clear();
+          if (state === "ended" || state === "failed" || state === "removed" || state === "replaced") clear();
           options.events.connection(state);
         },
         hands: (next) => {
+          // #523: told again with nothing changed (LiveKit says so each time anyone joins or leaves):
+          // nobody is notified, so a full room coming and going does not redraw every viewer's stage.
+          const same =
+            next.length === participants.length &&
+            next.every((p, i) => p.identity === participants[i].identity && p.name === participants[i].name && p.hand === participants[i].hand);
+          if (same) return void options.events.hands?.(next);
           participants = next;
           // Before the connection is made, only remembered: the store says "connected" once it is.
           if (rooms.get(viewer.videoRoom)?.owner === owner) publish();

@@ -147,7 +147,8 @@ export const TESTS = [
   // #502: live video in stage mode, open to members; LiveKit is a stand-in inside the test, and the stock panel reads the Gainers Table through the same fake Polygon.
   // #509: the phone's viewing room for a live room (video, and the room chat on a button); LiveKit is a stand-in inside the test.
   { name: 'chat-stage-phone', env: ['livekitPhone'], timeout: 540, weight: 150 },
-  { name: 'chat-stage-video', preload: 'chat-gainers-table-preload.mjs', env: ['livekit', 'gainersLookup', 'polygon'], timeout: 600 },
+  // #522: longer since the test also waits out the half minute before the server closes an ended room, twice.
+  { name: 'chat-stage-video', preload: 'chat-gainers-table-preload.mjs', env: ['livekit', 'gainersLookup', 'polygon'], timeout: 900 },
   // #507: the host sets the stock on screen for everyone; LiveKit, Ably and Polygon are all stand-ins (its own preload has the last two).
   { name: 'chat-stage-on-screen', env: ['ably', 'livekit', 'gainersLookup', 'polygon'], timeout: 360 },
   // #508: Raise hand for everyone watching; LiveKit (the room's participants and their attributes) is a stand-in inside the test.

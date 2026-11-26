@@ -20,7 +20,7 @@ import ChatAppControls from "./ChatAppControls";
 import ChatRadio from "./ChatRadio";
 import ChatActivityBell from "./ChatActivityBell";
 import { ChatActivityProvider, useSharedChatActivity } from "./ChatActivityContext";
-import { useStageLiveRooms } from "./hooks/useStageLiveRooms";
+import { StageRoomsContext, useStageLiveRooms } from "./hooks/useStageLiveRooms";
 import StageWatchLive from "./StageWatchLive";
 import { useDmSound } from "./hooks/useDmSound";
 import { CARD_COMPONENTS } from "./cards/cardComponents";
@@ -470,9 +470,15 @@ function SixContents(props: PublicChatProps) {
   const cardRooms = layout.flatMap((slot) =>
     slot?.type === "room" && allowedRooms.includes(slot.source as ChatRoom) ? [slot.source as ChatRoom] : [],
   );
-  const liveRooms = useStageLiveRooms(props.stageVideo && !mobile ? cardRooms : null);
+  // #523: the video-only cards read their room's state from the same reader (on a phone too).
+  const videoRooms = layout.flatMap((slot) =>
+    slot?.type === "video" && allowedRooms.includes(slot.source as ChatRoom) ? [slot.source as ChatRoom] : [],
+  );
+  const stageRooms = useStageLiveRooms([...(props.stageVideo && !mobile ? cardRooms : []), ...videoRooms]);
+  const liveRooms = stageRooms.live;
   return (
     <ChatActivityProvider memberId={member?.id}>
+    <StageRoomsContext.Provider value={stageRooms}>
     <div
       className={`${publicStyles.themeScope} ${quad.page} ${styles.page}`}
       data-theme={theme}
@@ -675,6 +681,7 @@ function SixContents(props: PublicChatProps) {
         </div>
       )}
     </div>
+    </StageRoomsContext.Provider>
     </ChatActivityProvider>
   );
 }
