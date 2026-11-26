@@ -3,7 +3,10 @@ import UnreadStart from "./UnreadStart";
 import { useChatDisplayName, useChatSelfName } from "./ChatUpdates";
 import type { ChatMember } from "@/lib/chatDirectMessages";
 import { memo, useMemo, useRef, type PointerEvent as ReactPointerEvent } from "react";
-import { stageNoticeAuthor } from "@/lib/chatStageNotice";
+import dynamic from "next/dynamic";
+import { STAGE_NOTICE_BOT, stageEndedNotice, stageNoticeAuthor } from "@/lib/chatStageNotice";
+import { isStageRoom } from "@/lib/chatStageLive";
+import { stageRecordingVideos } from "@/lib/chatStageRecording";
 import { messageRepliesOff } from "@/lib/publicChat";
 import type { ChatRoom, PublicChatMessage } from "@/lib/publicChat";
 import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
@@ -68,6 +71,8 @@ export type RoomMessageRowProps = {
   onRetrySend?: (message: PublicChatMessage) => void;
   onDiscardSend?: (messageId: string) => void;
 };
+// #524: an admin's "Add recording link" under an ended live-video notice; nobody else downloads it.
+const StageRecordingControl = dynamic(() => import("./stage/StageRecordingControl"), { ssr: false });
 // Counts/permissions can change independently of message text and media tokenization.
 const MessageBody = memo(ChatMessageBody);
 // #419: a Gainers alert shows its date as well as its time, today's included.
@@ -122,7 +127,16 @@ const RoomMessageRow = memo(function RoomMessageRow({
   // screen reader says it once. Gainers is broadcast only: no sending, editing or deleting states.
   const alert = room === "gainers";
   // #513: in the recordings rooms (only there) a YouTube or Loom link gets a player card.
-  const videos = useMemo(() => recordingVideosFromText(room, original.body), [room, original.body]);
+  // #524: and the ended live-video notice of a room, once it carries a recording (Longboard Bot's
+  // notice only; nothing else posted in an ordinary room gets a player).
+  const videos = useMemo(() => {
+    const posted = recordingVideosFromText(room, original.body);
+    return posted.length ? posted : stageRecordingVideos(original.bot_slug, original.body);
+  }, [room, original.body, original.bot_slug]);
+  const endedNotice = useMemo(
+    () => (isAdmin && original.bot_slug === STAGE_NOTICE_BOT && !original.deleted_at && isStageRoom(room) ? stageEndedNotice(original.body) : null),
+    [isAdmin, room, original.bot_slug, original.body, original.deleted_at],
+  );
   const stampInBody = alert && continued && !original.deleted_at && !isPollBody(original.body);
   // #439: a sent message's tags are stored with the person they point to (not yet while it is sending).
   const tagMessageId = message.pending ? undefined : message.id;
@@ -421,6 +435,7 @@ const RoomMessageRow = memo(function RoomMessageRow({
       {!message.deleted_at && (
         <>
           {videos.length > 0 && <ChatRecordingVideos videos={videos} />}
+          {endedNotice && <StageRecordingControl room={room} messageId={original.id} recordingUrl={endedNotice.recordingUrl} />}
           <ChatAttachments ids={message.attachment_ids} room={room} media={message.attachment_media} />
           <BuddyStatus status={message.buddy_status} />
           {alert && message.gainers_news && (
