@@ -150,17 +150,26 @@ export function useChatAvatar(memberId: string | null | undefined, fallback?: st
     ? (identity.member.avatar_path ?? null)
     : (fallback ?? null);
 }
-export function useChatNameRefresh(refresh: () => void) {
+/**
+ * Runs `refresh` when a name this page shows may have changed. `changesOnly` (#520) leaves out the
+ * first time this page learns who the reader is: nothing changed then, and a list loaded a moment
+ * earlier would only be dropped and loaded again.
+ */
+export function useChatNameRefresh(refresh: () => void, changesOnly = false) {
   const identity = useChatIdentity(),
     callback = useRef(refresh),
-    seen = useRef(identity?.version ?? 0);
+    seen = useRef(identity?.version ?? 0),
+    known = useRef(!!identity?.member);
   callback.current = refresh;
   useEffect(() => {
-    if (identity && seen.current !== identity.version) {
+    if (!identity) return;
+    const first = !known.current;
+    known.current = !!identity.member;
+    if (seen.current !== identity.version) {
       seen.current = identity.version;
-      callback.current();
+      if (!(changesOnly && first)) callback.current();
     }
-  }, [identity]);
+  }, [identity, changesOnly]);
 }
 const Context = createContext<ChatUpdateCoordinator | null>(null);
 const AccessContext = createContext<ChatAccessUpdate | null>(null);

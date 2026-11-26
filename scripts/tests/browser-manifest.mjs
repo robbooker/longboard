@@ -154,6 +154,8 @@ export const TESTS = [
   { name: 'chat-latest-grayed', fixture: 'none' },
   { name: 'chat-list-anchor' },
   // #473: Earlier/Newer messages leave the reader's message where it is (room, DM, thread; phone and computer).
+  // #520: Latest stays usable after another request takes over from it; Show sent message retries by itself.
+  { name: 'chat-latest-stuck' },
   { name: 'chat-load-keeps-place', timeout: 360 },
   { name: 'chat-membership-alignment' },
   { name: 'chat-membership-badges', fixture: 'none' },
