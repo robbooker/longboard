@@ -73,6 +73,10 @@
       "schedule": "20 4 * * *"
     },
     {
+      "path": "/api/cron/video-picks",
+      "schedule": "40 9 * * *"
+    },
+    {
       "path": "/api/cron/shortscout-sync",
       "schedule": "0 8 * * *"
     }
