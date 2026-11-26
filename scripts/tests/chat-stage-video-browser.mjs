@@ -212,6 +212,8 @@ const mark=page=>page.evaluate(()=>{window.__samePage=true;});
 const where=page=>page.evaluate(()=>{const list=[...document.querySelectorAll('article[id^="chat-message-"]')].find(a=>a.checkVisibility());let scroller=list?.parentElement;
  while(scroller&&!(scroller.scrollHeight>scroller.clientHeight+4&&/auto|scroll/.test(getComputedStyle(scroller).overflowY)))scroller=scroller.parentElement;
  return {url:location.href,room:[...document.querySelectorAll('main[data-chat-view]')].find(e=>e.checkVisibility())?.dataset.room??null,samePage:window.__samePage===true,stage:!!document.querySelector('[data-stage-root]'),scroll:scroller?Math.round(scroller.scrollTop):null,composer:!!document.querySelector('textarea[aria-label="Message LB"]')};});
+// Waits until the room on screen has stopped moving: its place the same for a second and a half.
+const settled=async page=>{let last,same=0;for(const began=Date.now();same<3;){const now=(await where(page)).scroll;same=now===last?same+1:0;last=now;assert(Date.now()-began<30000*scale,'the room never settled');await sleep(500);}};
 try{
  const bob=await newPage(),alice=await newPage();
  // Not started: nothing at all for a member.
@@ -372,7 +374,7 @@ try{
  if(shots)await b.screenshot({path:`${shots}/bell.png`});
  // #505: the bell entry is a link that opens the stage in a tab of its own; Bob's room is untouched.
  assert.deepEqual(await b.$eval(`${bellPanel} [data-stage-notice-alert] a`,a=>[a.getAttribute('href'),a.target]),['/chat?room=main&stage=1','stage-main']);
- await mark(b);
+ await settled(b);await mark(b);
  const bellBefore=await where(b);
  const stage=await opensStageTab(bob,()=>b.click(`${bellPanel} [data-stage-notice-alert] a`)),s=stage.tab;
  await waitPlayer(s,'live');
@@ -512,7 +514,7 @@ try{
  await b.bringToFront();
  assert.deepEqual(await (await shown(b,'[data-stage-notice-watch]')).evaluate(a=>[a.getAttribute('href'),a.target]),['/chat?room=main&stage=1','stage-main']);
  await (await shown(b,'[data-stage-notice-watch]')).evaluate(a=>a.scrollIntoView({block:'center'}));await sleep(600);
- await mark(b);
+ await settled(b);await mark(b);
  const noticeBefore=await where(b),tabsNow=(await bob.context.pages()).length;
  await (await shown(b,'[data-stage-notice-watch]')).click();
  await s.waitForSelector('[data-stage-root="main"]',{timeout:60000*scale});
@@ -665,6 +667,11 @@ try{
  // #505: an admin's Watch live opens a tab of its own as well (the admin's stage: three columns).
  {const a2=await alice.context.newPage();await a2.setViewport({width:1440,height:900});
   await a2.goto(base+'/chat?room=main');await a2.waitForSelector('[data-stage-watch-live="main"]',{visible:true,timeout:60000*scale});await ready(a2);
+  // A room that has just opened is still settling (it keeps itself at the newest message while
+  // late rows and pictures arrive), so "as it was" is measured once it has stopped moving: its
+  // place has been the same for a second and a half. (Taken too early, the place it settled at a
+  // moment later read as the tab having moved: 59px, twice in ten runs.)
+  await settled(a2);
   await mark(a2);const before=await where(a2),had=new Set(await alice.context.pages());
   await a2.click('[data-stage-watch-live="main"]');
   const tab=await until(async()=>(await alice.context.pages()).find(p=>!had.has(p)&&/[?&]room=main&stage=1/.test(p.url())),'the admin\'s stage tab');
