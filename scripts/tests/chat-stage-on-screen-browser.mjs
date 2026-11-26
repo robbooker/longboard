@@ -195,6 +195,11 @@ try{
  // hears from LiveKit's webhook, through the room's signal, and connects then.
  await waitPlayer(a,'waiting');await attached('alice');
  assert.equal(await a.$('[data-stage-root] video'),null,'the admin holds no connection while nothing is broadcasting');
+ // The room getting its key was itself a "stage" signal, and a page that hears one asks the status
+ // again about 5 seconds later (useStageStatus). That second look must be over before the broadcast
+ // starts here, or it finds the room live and the admin connects before "the room is told" below.
+ {let last=Date.now();const seen=r=>{if(r.url().includes('/api/chat/stage/status'))last=Date.now();};a.on('request',seen);
+  last=Date.now();while(Date.now()-last<6500)await sleep(100);a.off('request',seen);}
  lk.publishing=true;
  await sleep(1500);
  assert.equal(await a.$('[data-stage-root] video'),null,'and still none until the room is told');
