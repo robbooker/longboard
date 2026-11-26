@@ -65,6 +65,8 @@ function fakeStore(members: string[] = ["acct-bob", "acct-cara"]) {
       await tick();
       state.opens++;
       if (rows.has(id)) return false;
+      // Another server announced this room's broadcast within the last minute under another id: nothing is posted.
+      if ([...rows.values()].some((row) => row.room === room && row.endedAt === null && state.clock - row.createdAt < 60_000)) return false;
       // One transaction: the stale open broadcast is closed, then the new one is written.
       for (const row of rows.values())
         if (row.room === room && row.endedAt === null) {
@@ -242,6 +244,19 @@ describe("once per broadcast", () => {
     expect(await db.live("main", T0 + 15 * MIN, T0 + 15 * MIN)).toBe("already");
     db.store.open = open;
     expect(db.rows.size).toBe(1);
+  });
+  it("#524: without a start time, two servers either side of a ten-minute line ask for different ids and still make one notice", async () => {
+    const db = fakeStore();
+    const line = Math.ceil(T0 / STAGE_NOTICE_SLOT_MS) * STAGE_NOTICE_SLOT_MS;
+    // The second read "no broadcast" before the first one's was written (a stale answer), then asks for its own slot's id.
+    const latest = db.store.latest;
+    expect(await db.live("main", line - 50, null)).toBe("announced");
+    db.store.latest = async () => null;
+    expect(await db.live("main", line + 50, null)).toBe("already");
+    db.store.latest = latest;
+    expect(db.rows.size).toBe(1);
+    expect(db.bodies()).toEqual([LIVE]);
+    expect(db.state.bellWrites).toHaveLength(2);
   });
   it("rooms are separate: each is told about its own broadcast", async () => {
     const db = fakeStore();

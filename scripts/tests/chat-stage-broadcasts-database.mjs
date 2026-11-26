@@ -90,6 +90,15 @@ const seenAt=(await row(n1)).last_live_at;
 // A new broadcast while the old one's end was never seen: the stale one is marked ended (as of when
 // it was last seen live), its message says so, its bells go; the new one is announced.
 await notify(n1);assert((await bells(n1)).length>0);
+// (A minute or more old: a younger open broadcast is the same one, announced by another server
+// under another id a moment ago, and nothing is posted or closed.)
+assert.deepEqual(await open(n2,'main','LB'),{posted:false},'a broadcast announced within the last minute is this one');
+assert.equal(await message(n2),undefined,'no second message');assert.equal((await message(n1)).body,LIVE('LB'));
+// The same race lost a moment later (the other server's row committed while this call was at work):
+// the one-open-broadcast rule refuses the row, and the message posted with it is undone.
+await assert.rejects(db.exec(`begin;select post_chat_longboard_announcement('${n2}','main','x');insert into chat_stage_broadcasts(notice_id,room_slug,started_at,last_live_at) values('${n2}','main',now(),now());commit;`),/chat_stage_broadcasts_open/);
+await db.exec('rollback').catch(()=>{});assert.equal(await message(n2),undefined);
+await db.query(`update chat_stage_broadcasts set created_at=now()-interval '2 hours' where notice_id=$1`,[n1]);
 assert.deepEqual(await open(n2,'main','LB'),{posted:true,closed:1});
 assert.equal((await message(n1)).body,ENDED('LB'));
 assert.equal((await message(n1)).revision,1);

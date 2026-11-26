@@ -83,19 +83,29 @@ end $$;
 --  from before this table existed, which gets its row now, ended or live as its words say).
 -- Before a new open row is written, an open broadcast the room still has (its end was never seen)
 -- is marked ended: its message says so (p_stale_body) and its bells are taken back.
+-- Two servers announcing the same broadcast under different ids at the same moment end with one
+-- notice: the second finds the first (posted false) or is refused by the one-open-broadcast rule
+-- (unique_violation; its message is undone with it).
 create function public.chat_stage_broadcast_open(p_id uuid,p_room text,p_body text,p_started_at timestamptz,p_stale_body text) returns jsonb
 language plpgsql security invoker set search_path='' as $$
 declare posted boolean; stale record; closed integer:=0; legacy public.longboard_chat_messages; live boolean:=true;
 begin
  if p_id is null or p_room is null or p_started_at is null then raise exception 'invalid_stage_notice'; end if;
  if exists(select 1 from public.chat_stage_broadcasts where notice_id=p_id) then return jsonb_build_object('posted',false); end if;
+ -- Another server announced this room's broadcast within the last minute under another id (the two
+ -- stood either side of a ten-minute line): that is this broadcast. Nothing is posted.
+ if exists(select 1 from public.chat_stage_broadcasts where room_slug=p_room and ended_at is null and created_at>now()-interval '1 minute')
+ then return jsonb_build_object('posted',false); end if;
  posted:=coalesce((public.post_chat_longboard_announcement(p_id,p_room,p_body)->>'posted')::boolean,false);
  if not posted then
   select * into legacy from public.longboard_chat_messages where id=p_id;
   live:=legacy.body is not distinct from btrim(p_body) and legacy.deleted_at is null;
  end if;
  if live then
-  for stale in select notice_id from public.chat_stage_broadcasts where room_slug=p_room and ended_at is null and notice_id<>p_id for update loop
+  -- (Only one older than a minute is stale. A newer one, committed while this call was at work, is
+  -- left alone: the one-open-broadcast rule then refuses this call's row and all of it is undone.)
+  for stale in select notice_id from public.chat_stage_broadcasts where room_slug=p_room and ended_at is null and notice_id<>p_id
+   and created_at<=now()-interval '1 minute' for update loop
    update public.chat_stage_broadcasts set ended_at=greatest(last_live_at,started_at) where notice_id=stale.notice_id;
    perform public.chat_stage_notice_rewrite(stale.notice_id,p_stale_body);
    delete from public.chat_room_mentions where message_id=stale.notice_id;
@@ -215,8 +225,8 @@ declare parent public.longboard_chat_messages;
 begin
  -- #524: the one bot post in the club whose words may change: Longboard Bot's live-video notice (a
  -- row of chat_stage_broadcasts for the club), rewritten by public.chat_stage_notice_rewrite, which
- -- names it in a setting for its own transaction. Only body, edited_at and revision may differ
- -- (and what the room's own triggers keep: the search text and the event numbers).
+ -- names it in a setting for its own transaction. Its words change; who posted it, where, when,
+ -- under what name, as a reply to what, with what files, and whether it is deleted may not.
  if tg_op='UPDATE' and old.room_slug='club' and new.room_slug='club' and old.guest_id is null
   and old.bot_slug='longboard' and coalesce(current_setting('chat.stage_notice',true),'')=old.id::text
   and exists(select 1 from public.chat_stage_broadcasts b where b.notice_id=old.id and b.room_slug='club')
@@ -224,8 +234,6 @@ begin
   and new.bot_slug='longboard' and new.author_label=old.author_label
   and new.reply_to_id is not distinct from old.reply_to_id and new.attachment_ids=old.attachment_ids
   and new.created_at=old.created_at and new.deleted_at is not distinct from old.deleted_at
-  and new.client_id is not distinct from old.client_id and new.removed is not distinct from old.removed
-  and new.answered_id is not distinct from old.answered_id and new.buddy_status is not distinct from old.buddy_status
  then return new; end if;
  -- Nothing moves into or out of the club, and a bot's post there never changes.
  if tg_op='UPDATE' and (old.room_slug='club' or new.room_slug='club')

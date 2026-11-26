@@ -19,7 +19,7 @@
 //    notice show "Watch the recording" by itself; a second link does not replace it; a link posted
 //    in SS Recordings is not LB's.
 // CHAT_SHOT_DIR saves club-live-notice.png, ended-recording-will-follow.png, admin-add-recording.png,
-// ended-with-recording.png, phone-ended-with-recording.png.
+// ended-with-recording.png, member-ended-with-recording.png, phone-ended-with-recording.png.
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import http from 'node:http';
@@ -212,6 +212,7 @@ try{
  await b.goto(`${base}/chat?room=club`);await ready(b);
  await b.waitForSelector(card,{visible:true,timeout:30000*scale});
  assert.equal(await b.$('[data-stage-recording-control]'),null);
+ if(shots){await b.evaluate(sel=>document.querySelector(sel).scrollIntoView({block:'center'}),card);await sleep(300);await b.screenshot({path:`${shots}/member-ended-with-recording.png`});}
  {const phone=await newPage({width:390,height:844,isMobile:true,hasTouch:true});
   await signIn(phone.page,base,'bob@example.test',{composer:composer('LB'),next:'/chat?room=main'});
   await phone.page.goto(`${base}/chat?room=club`);
