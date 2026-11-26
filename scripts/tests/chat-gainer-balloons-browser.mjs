@@ -302,7 +302,14 @@ try{
   await page.setViewport({width:1600,height:900});
   await page.goto(`${base}/chat/quad`);await put(3,'app:balloons');
   await card('Quad','card-quad.png');
-  for(let i=0;i<10;i++){await put(3,'');await page.waitForSelector(SEL.card,{hidden:true});await put(3,'app:balloons');await drawn(page,SEL.card);}
+  // Each time the card closes, its graphics context must be handed back (browsers allow about 16 at once):
+  // the old canvas is told its context is gone, and is taken out of the page.
+  await page.evaluate(()=>{window.__released=0;});
+  for(let i=0;i<10;i++){
+   await page.$eval(`${SEL.card} canvas[data-balloons-canvas]`,c=>c.addEventListener('webglcontextlost',()=>{window.__released++;}));
+   await put(3,'');await page.waitForSelector(SEL.card,{hidden:true});await put(3,'app:balloons');await drawn(page,SEL.card);
+  }
+  await page.waitForFunction(()=>window.__released===10,{timeout:10000}).catch(async()=>assert.fail(`every closed card gave its context back (${await page.evaluate(()=>window.__released)} of 10)`));
   await picture(page,SEL.card,'Quad after 10 switches');
   assert.equal((await scene(page,SEL.card)).contextLost,false);
   assert.equal(await page.$$eval('canvas[data-balloons-canvas]',c=>c.length),1,'the old canvases are gone');
