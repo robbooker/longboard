@@ -167,7 +167,11 @@ async function fetchOk(url, ms) { try { await fetch(url, { signal: AbortSignal.t
 
 function appEnv(t, dbPort, appPort, preload) {
   const env = { NEXT_PUBLIC_SITE_URL: `http://localhost:${appPort}`, NEXT_PUBLIC_SUPABASE_URL: `http://127.0.0.1:${dbPort}`,
-    NEXT_PUBLIC_SUPABASE_ANON_KEY: 'test-anon', SUPABASE_SERVICE_ROLE_KEY: 'test-service-role', NEXT_TELEMETRY_DISABLED: '1' };
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: 'test-anon', SUPABASE_SERVICE_ROLE_KEY: 'test-service-role', NEXT_TELEMETRY_DISABLED: '1',
+    // #489: these tests change roles, tags and ShortScout levels straight in the fixture database
+    // and expect the next request to see it. In production such outside changes take up to 30 s
+    // (lib/chatSessionCache.ts); the cache itself is covered by its unit tests.
+    CHAT_SESSION_CACHE: 'off' };
   const node = [];
   const presets = [...(t.env ?? [])];
   if (preload) {

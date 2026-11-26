@@ -10,11 +10,17 @@ export type QuadChoice = {
   app?: ChatAppId;
   conversationId?: string;
   otherId?: string;
+  /** #506: just this room's live video (the webinar), keyed "video:<room>". No chat. */
+  video?: ChatRoom;
 };
+/** #506: the name of a room's live video choice, in the pickers and on the card. */
+export const liveVideoLabel = (roomLabel: string) => `${roomLabel} live video`;
 export function quadChoices(
   rooms: ChatRoom[],
   conversations: DirectConversation[],
   apps: readonly string[] = [],
+  /** #506: live video is set up on the server: each room the member can read also offers its video. */
+  liveVideo = false,
 ): QuadChoice[] {
   return [
     ...CHAT_ROOMS.filter((r) => rooms.includes(r.slug)).map((r) => ({
@@ -26,6 +32,11 @@ export function quadChoices(
       .filter((c) => !c.system && !c.unavailable && !c.blockedByMe && c.status !== "declined")
       .map((c) => ({ key: `dm:${c.id}`, label: c.otherName, conversationId: c.id, otherId: c.otherId })),
     ...chatAppsIn(apps).map((app) => ({ key: `app:${app.id}`, label: app.label, app: app.id })),
+    ...(liveVideo ? CHAT_ROOMS.filter((r) => rooms.includes(r.slug)) : []).map((r) => ({
+      key: `video:${r.slug}`,
+      label: liveVideoLabel(r.label),
+      video: r.slug,
+    })),
   ];
 }
 /** #492: Dual view uses the same layout with two panes. */

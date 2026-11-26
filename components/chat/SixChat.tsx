@@ -20,6 +20,8 @@ import ChatAppControls from "./ChatAppControls";
 import ChatRadio from "./ChatRadio";
 import ChatActivityBell from "./ChatActivityBell";
 import { ChatActivityProvider, useSharedChatActivity } from "./ChatActivityContext";
+import { useStageLiveRooms } from "./hooks/useStageLiveRooms";
+import StageWatchLive from "./StageWatchLive";
 import { useDmSound } from "./hooks/useDmSound";
 import { CARD_COMPONENTS } from "./cards/cardComponents";
 import { isChatAppId } from "@/lib/chatApps";
@@ -150,7 +152,7 @@ function CardPicker({
         </fieldset>
         {definition.hasSource && (
           <label className={styles.sourceLabel}>
-            {type === "room" ? "Room" : type === "dm" ? "Conversation" : type === "app" ? "App" : "Show"}
+            {type === "room" || type === "video" ? "Room" : type === "dm" ? "Conversation" : type === "app" ? "App" : "Show"}
             <select value={source} onChange={(e) => setSource(e.target.value)}>
               {!chosen && <option value="">Choose…</option>}
               {sources.map((s) => (
@@ -290,6 +292,8 @@ function SixContents(props: PublicChatProps) {
           conversations: DirectConversation[];
           gainersTable?: boolean;
           apps?: string[];
+          /** #506: live video is set up, so a card may show a room's live video. */
+          stageVideo?: boolean;
         };
         if (cancelled) return;
         if (data.accountId !== props.accountId) {
@@ -312,6 +316,7 @@ function SixContents(props: PublicChatProps) {
           conversations,
           gainersTable: !!data.gainersTable,
           apps: (data.apps ?? []).filter(isChatAppId),
+          stageVideo: !!data.stageVideo,
         };
         observe(conversations);
         if (!restored.current) {
@@ -460,6 +465,12 @@ function SixContents(props: PublicChatProps) {
   }, []);
 
   const allowedRooms = options?.rooms ?? [];
+  // #505: which cards' rooms have live video: one shared check for the page (never one per card),
+  // only where live video is set up, and not on a phone-sized screen (no stage there yet).
+  const cardRooms = layout.flatMap((slot) =>
+    slot?.type === "room" && allowedRooms.includes(slot.source as ChatRoom) ? [slot.source as ChatRoom] : [],
+  );
+  const liveRooms = useStageLiveRooms(props.stageVideo && !mobile ? cardRooms : null);
   return (
     <ChatActivityProvider memberId={member?.id}>
     <div
@@ -575,6 +586,10 @@ function SixContents(props: PublicChatProps) {
                         )}
                         {title}
                       </h2>
+                      {/* #505: this card's room is live: Watch live opens the stage in a tab of its own. */}
+                      {slot?.type === "room" && !mobile && liveRooms.has(slot.source as ChatRoom) && (
+                        <StageWatchLive room={slot.source} roomLabel={title} compact />
+                      )}
                       {slot?.type === "room" && slot.source === "gainers" && <ChatRadio room shape="pane" />}
                       {component?.skipLatest && (
                         <SkipLatestButton

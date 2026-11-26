@@ -3,7 +3,7 @@ import {NextRequest} from 'next/server';
 const mocks=vi.hoisted(()=>({auth:vi.fn(),origin:vi.fn(),rpc:vi.fn(),from:vi.fn(),find:vi.fn(),room:vi.fn(),summaries:vi.fn()}));
 vi.mock('@/lib/chatAuth',()=>({requireChatUser:mocks.auth}));
 vi.mock('@/lib/chatAdmin',()=>({requestOriginAllowed:mocks.origin,createChatAdminClient:()=>({rpc:mocks.rpc,from:mocks.from}),readPublicRoomState:mocks.room}));
-vi.mock('@/lib/chatMembers',()=>({findChatMember:mocks.find,CHAT_UUID:/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i}));
+vi.mock('@/lib/chatMembers',()=>({findChatMember:mocks.find,findChatMemberForSession:async(db:unknown,id:string)=>({member:await mocks.find(db,id),cached:false}),CHAT_UUID:/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i}));
 vi.mock('@/lib/chatRoomSummary',()=>({SUMMARY_THREAD:'room-summaries',summaryConversation:mocks.summaries}));
 import {POST} from '@/app/api/chat/updates/route';
 import {forgetRecentActivity} from '@/lib/chatReads/activity';
