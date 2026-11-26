@@ -12,6 +12,9 @@ import { CHAT_STAGE_EVENT, type ChatStageEventDetail, type StageState } from "@/
 import { STAGE_HEALTHY_MS, STAGE_LINK_IDLE, holdStageConnection, stageAutoRetry, stageLinkStep, type StageLost } from "@/lib/chatStageLink";
 import { stageFeedConnect, type StageFeed } from "./stageFeed";
 
+/** #521: after letting go of a stopped broadcast, the status is asked once more this much later. */
+export const STAGE_GONE_RECHECK_MS = 30_000;
+
 /** #522 "replaced": another of the member's own screens took this player's seat (two per room). */
 export type StageLink = "idle" | "connecting" | "connected" | "reconnecting" | "ended" | "failed" | "replaced";
 
@@ -127,6 +130,14 @@ export function useStageLink({
     return () => clearTimeout(timer);
   }, [video, stageState, picture, dead, hidden, watching, tick]);
   const wanted = hold.open;
+  // #521: having let go because the broadcast stopped, one more look at the room's status a while
+  // later. Nothing else would ask again from this page, and it is the server's status answer that
+  // gets the room's "live now" message marked ended when LiveKit's own word was missed.
+  useEffect(() => {
+    if (!hold.gone) return;
+    const timer = setTimeout(() => refresh.current(), STAGE_GONE_RECHECK_MS);
+    return () => clearTimeout(timer);
+  }, [hold.gone]);
   // #512: an admin's stage waits with no connection, so what it knows is the room's status: asked
   // once more as the stage opens, in case a signal was missed while it was shut.
   useEffect(() => {

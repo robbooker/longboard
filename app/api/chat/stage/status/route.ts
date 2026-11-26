@@ -12,6 +12,7 @@ import {
   sharedStageOnScreen,
   sharedStageState,
   stageNoticeCheckDue,
+  stageNoticeFollowUpDue,
   stageStopSeen,
   stageVideoConfig,
 } from "@/lib/chatStageVideo";
@@ -37,6 +38,8 @@ const json = (body: unknown, status = 200) =>
  * starting) is missed, this is what notices: an answer freshly read from LiveKit that differs from
  * this server's last one (and otherwise once a minute per room) has the room's "live now" message
  * checked against LiveKit after the response, and if that changes the message, the room is told.
+ * #521: that check can be lost (it runs after the response), so one that has not reported back is
+ * run again by the room's next status answer; see lib/chatStageVideo.ts.
  *
  * #505: Dual, Quad and Six view ask for all the rooms on their cards in one request
  * (`?rooms=main,gainers`, answered as `states`, with no `onScreen`: a card only shows the button);
@@ -94,6 +97,13 @@ export async function GET(req: NextRequest) {
           : "off";
       }),
     );
+    // #521: a look that never reported back is run again, within the same one-per-request limit.
+    if (api)
+      for (const room of rooms)
+        if (checks < MOST_NOTICE_CHECKS && stageNoticeFollowUpDue(room)) {
+          checks += 1;
+          stageNoticeAfterResponse(room, api, null, { tellRoom: true });
+        }
     return json({ states, video: !!config });
   }
   const room = parseStageRoom(req.nextUrl.searchParams.get("room"));
@@ -102,11 +112,15 @@ export async function GET(req: NextRequest) {
   const config = stageVideoConfig();
   if (!config) return json({ state: "off", video: false });
   const api = stageVideoApi(config);
+  let looked = false;
   const state = await sharedStageState(
     room,
     async () => {
       const read = await readStageState(api, room);
-      if (stageNoticeCheckDue(room, read)) stageNoticeAfterResponse(room, api, null, { tellRoom: true });
+      if (stageNoticeCheckDue(room, read)) {
+        looked = true;
+        stageNoticeAfterResponse(room, api, null, { tellRoom: true });
+      }
       // #522 (kept apart from the message's check above): a stop this server saw closes the room.
       if (stageStopSeen(room, read)) stageCloseAfterResponse(room, api);
       return read;
@@ -114,6 +128,10 @@ export async function GET(req: NextRequest) {
     undefined,
     { longMemory },
   );
+  // #521: a look at the message that never reported back (it runs after the response and can be
+  // lost) is run again here, whether this answer was read from LiveKit or remembered. (#523: that
+  // includes an answer from the half-minute memory of "waiting": an owed look never waits for it.)
+  if (!looked && stageNoticeFollowUpDue(room)) stageNoticeAfterResponse(room, api, null, { tellRoom: true });
   // #523: only while live: nobody else is shown it, so a room at rest costs a member's page one
   // LiveKit call per memory window, not two. An admin (whose stage is open before the broadcast, and
   // who may put a stock on screen then) is still told while the room waits, from the long memory.

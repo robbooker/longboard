@@ -101,7 +101,15 @@ import { POST as webhook } from "@/app/api/chat/stage/livekit-webhook/route";
 import { POST as onScreenPost } from "@/app/api/chat/stage/on-screen/route";
 import { GET as stockGet } from "@/app/api/chat/stage/stock/route";
 import { forgetStageChanges, stageChangeTiming } from "@/lib/chatStageChange";
-import { STAGE_SETTLED_MEMORY_MS, STAGE_STATE_MEMORY_MS, forgetStageState, forgetStageWebhooks } from "@/lib/chatStageVideo";
+import {
+  STAGE_NOTICE_FOLLOW_UP_GAP_MS,
+  STAGE_SETTLED_MEMORY_MS,
+  STAGE_STATE_MEMORY_MS,
+  forgetStageState,
+  forgetStageWebhooks,
+  stageNoticeLookDone,
+  stageNoticeLookStarted,
+} from "@/lib/chatStageVideo";
 
 const access = { longboard: true, boardroom: true, shortscout: false, admin: false };
 const member = (over: Record<string, unknown> = {}) => ({ ok: true, user: { id: "acct-bob", email: "bob@example.test", role: "user" }, access, serverSession: false, ...over });
@@ -361,6 +369,95 @@ describe("GET /api/chat/stage/status", () => {
     mocks.lk.fail = true;
     expect(await ask()).toBe("off");
     expect(mocks.notice).toHaveBeenCalledTimes(3);
+  });
+  it("#521: a look that never reported back is run again by the next status answer, remembered or fresh, and by nothing else", async () => {
+    const ask = async (path = "/api/chat/stage/status?room=main") => (await status(get(path))).json();
+    mocks.lk.ingresses = live(true);
+    expect((await ask()).state).toBe("live");
+    expect(mocks.notice).toHaveBeenCalledTimes(1);
+    // (The real look remembers itself; here it is a stand-in, so the test does that part.) The
+    // broadcast stops, the look is started and never reports back: its page had gone.
+    const began = Date.now();
+    vi.useFakeTimers({ now: began, toFake: ["Date"] });
+    try {
+      stageNoticeLookStarted("main", 25_000, began);
+      // In time: nothing more is run, and no LiveKit read is made to decide (the answer is remembered).
+      vi.setSystemTime(began + 2_000);
+      const calls = mocks.lk.calls.length;
+      expect((await ask()).state).toBe("live");
+      expect(mocks.notice).toHaveBeenCalledTimes(1);
+      expect(mocks.lk.calls.length).toBe(calls);
+      // Time is up: the next answer runs it again, once, however many ask in the same moments.
+      mocks.lk.ingresses = live(false);
+      vi.setSystemTime(began + 26_000);
+      forgetStageState("main");
+      expect((await ask()).state).toBe("waiting"); // a fresh read that saw the change: its own look, counted once
+      expect(mocks.notice).toHaveBeenCalledTimes(2);
+      stageNoticeLookStarted("main", 25_000, began + 26_000);
+      vi.setSystemTime(began + 27_000);
+      await Promise.all(Array.from({ length: 8 }, () => ask()));
+      expect(mocks.notice).toHaveBeenCalledTimes(2);
+      vi.setSystemTime(began + 26_000 + 25_000);
+      const before = mocks.lk.calls.filter((call) => call.startsWith("list:")).length;
+      forgetStageState("main");
+      await ask(); // fresh, same state, inside the minute: only the look that is owed
+      expect(mocks.notice).toHaveBeenCalledTimes(3);
+      expect(mocks.notice).toHaveBeenLastCalledWith("main", expect.anything(), null, { tellRoom: true });
+      expect(mocks.lk.calls.filter((call) => call.startsWith("list:")).length).toBe(before + 1);
+      await Promise.all(Array.from({ length: 8 }, () => ask())); // remembered answers, inside the gap
+      expect(mocks.notice).toHaveBeenCalledTimes(3);
+      // The cards' several-rooms read runs it too, within its one look per request.
+      vi.setSystemTime(began + 26_000 + 25_000 + STAGE_NOTICE_FOLLOW_UP_GAP_MS);
+      await ask("/api/chat/stage/status?rooms=main,gainers");
+      expect(mocks.notice).toHaveBeenCalledTimes(4);
+      // It reports back: nothing is owed.
+      stageNoticeLookDone("main");
+      vi.setSystemTime(began + 26_000 + 25_000 + 3 * STAGE_NOTICE_FOLLOW_UP_GAP_MS);
+      await ask();
+      expect(mocks.notice).toHaveBeenCalledTimes(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it("#521 with #523: an owed look is run by an ordinary status answer served from the half-minute memory of waiting, with no LiveKit read to decide; a player's later read is never answered from that memory", async () => {
+    const began = Date.now();
+    vi.useFakeTimers({ now: began, toFake: ["Date"] });
+    try {
+      stageChangeTiming.wait = () => new Promise<void>(() => undefined);
+      mocks.lk.ingresses = live(false);
+      const plain = async () => (await (await status(get("/api/chat/stage/status?room=main"))).json()).state;
+      const caused = async () => (await (await status(get("/api/chat/stage/status?room=main&fresh=1"))).json()).state;
+      expect(await plain()).toBe("waiting");
+      expect(mocks.notice).toHaveBeenCalledTimes(1);
+      // That look never reports back (the stand-in does not, so the test starts it as the real one does).
+      stageNoticeLookStarted("main", 22_000, began);
+      const reads = mocks.lk.calls.length;
+      // Not yet due: an ordinary answer from the long memory runs nothing.
+      vi.setSystemTime(began + 21_000);
+      expect(await plain()).toBe("waiting");
+      expect(mocks.notice).toHaveBeenCalledTimes(1);
+      // Due, and the answer is still the remembered "waiting" (24 s old, far past the few seconds):
+      // the look is run again all the same, and the status itself asks LiveKit nothing.
+      vi.setSystemTime(began + 24_000);
+      expect(await plain()).toBe("waiting");
+      expect(mocks.notice).toHaveBeenCalledTimes(2);
+      expect(mocks.notice).toHaveBeenLastCalledWith("main", expect.anything(), null, { tellRoom: true });
+      expect(mocks.lk.calls.length).toBe(reads);
+      // The player that let go asks once more half a minute later, saying it was caused: that read
+      // is made of LiveKit (never the long memory), so a broadcast that came back, or an end nobody
+      // reported, is seen then; and it too runs a look that is still owed.
+      stageNoticeLookStarted("main", 22_000, began + 24_000);
+      mocks.lk.ingresses = live(true);
+      vi.setSystemTime(began + 29_000);
+      expect(await plain()).toBe("waiting");
+      expect(await caused()).toBe("live");
+      // And a remembered "live" is only ever a few seconds old, so that read cannot be told a stale "live".
+      mocks.lk.ingresses = live(false);
+      vi.setSystemTime(began + 29_000 + STAGE_STATE_MEMORY_MS);
+      expect(await caused()).toBe("waiting");
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it("#507: carries the stock on screen for a set-up room, and asks LiveKit nothing more for a room that is off", async () => {
     mocks.lk.metadata.set("chat-main", '{"onScreen":"APUS","at":1700000000000}');

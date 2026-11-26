@@ -172,8 +172,14 @@ export const forgetStageOnScreen = (room: ChatRoom) => onScreenMemory.forget(roo
 export function forgetStageState(room?: ChatRoom) {
   stateMemory.forget(room);
   onScreenMemory.forget(room);
+  // #521: since when the broadcast has been stopped is only trusted while nothing else has happened.
+  if (room) stoppedSince.delete(room);
   // (The once-a-minute look at a room's message keeps its own time; only "forget everything" resets it.)
-  if (!room) noticeChecks.clear();
+  if (!room) {
+    noticeChecks.clear();
+    stoppedSince.clear();
+    noticeFollowUps.clear();
+  }
   // #522/#523: likewise what this server last told the room and last read (for tests).
   if (!room) {
     toldStates.clear();
@@ -219,12 +225,59 @@ const noticeChecks = new Map<ChatRoom, { at: number; state: StageState }>();
  */
 export function stageNoticeCheckDue(room: ChatRoom, state: StageState, now = Date.now()): boolean {
   const last = noticeChecks.get(room);
+  // #521: when this server itself saw the broadcast stop (live, then not), it knows since when.
+  if (state !== "waiting") stoppedSince.delete(room);
+  else if (last?.state === "live" && !stoppedSince.has(room)) stoppedSince.set(room, now);
   // #523: a room that has simply been waiting all along (its resting state between broadcasts) is
   // not looked at again every minute. The first sight of it by this server still is, once.
   if (last && last.state === "waiting" && state === "waiting") return false;
   if (last && last.state === state && now >= last.at && now - last.at < STAGE_NOTICE_CHECK_MS) return false;
   noticeChecks.set(room, { at: now, state });
   return state !== "off" || (!!last && last.state !== "off");
+}
+
+// #521: a look at a room's message runs after the response, and can be lost: the function is
+// recycled while it waits out the grace, or the page that asked had already gone (closed tab,
+// navigation) by the time the look was queued, and then it never starts. The once-a-minute rule
+// above had already counted it as done, and players that have let go ask the status nothing more,
+// so the message could say "live" for as long as nobody caused another look. So each look is
+// remembered here until it reports back; one that has not reported back in time is run again by the
+// next status answer for that room (fresh or remembered: no extra LiveKit read to decide).
+const stoppedSince = new Map<ChatRoom, number>();
+const noticeFollowUps = new Map<ChatRoom, { dueAt: number; tries: number }>();
+/** A look that was run again and still has not reported back is tried again this much later... */
+export const STAGE_NOTICE_FOLLOW_UP_GAP_MS = 10_000;
+/** ...this many times at most. After that the once-a-minute look is all there is, as before. */
+export const STAGE_NOTICE_FOLLOW_UP_TRIES = 6;
+
+/**
+ * A look at the room's message is starting: if none has reported back `within` ms from now, one is
+ * due again. (A look started while another is still owed takes over its time, so two never run a
+ * moment apart; the count of tries is kept.)
+ */
+export function stageNoticeLookStarted(room: ChatRoom, within: number, now = Date.now()) {
+  noticeFollowUps.set(room, { dueAt: now + within, tries: noticeFollowUps.get(room)?.tries ?? 0 });
+}
+/** A look reported back (whatever it found): nothing is owed any more. */
+export function stageNoticeLookDone(room: ChatRoom) {
+  noticeFollowUps.delete(room);
+}
+/** True when a look for this room never reported back and should be run again now. Bounded: see above. */
+export function stageNoticeFollowUpDue(room: ChatRoom, now = Date.now()): boolean {
+  const owed = noticeFollowUps.get(room);
+  if (!owed || now < owed.dueAt) return false;
+  if (owed.tries >= STAGE_NOTICE_FOLLOW_UP_TRIES) {
+    noticeFollowUps.delete(room);
+    return false;
+  }
+  // (The look this starts sets its own time when it begins: stageNoticeLookStarted.)
+  noticeFollowUps.set(room, { dueAt: now + STAGE_NOTICE_FOLLOW_UP_GAP_MS, tries: owed.tries + 1 });
+  return true;
+}
+/** How long ago this server saw the room's broadcast stop (ms), or null when it did not see it. */
+export function stageStoppedFor(room: ChatRoom, now = Date.now()): number | null {
+  const since = stoppedSince.get(room);
+  return since === undefined || now < since ? null : now - since;
 }
 
 /** One read of a room's state from LiveKit. */

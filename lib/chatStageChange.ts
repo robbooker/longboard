@@ -8,7 +8,7 @@ import { after } from "next/server";
 import { publishRoomEventAfterResponse } from "./chatRealtimePublish";
 import { STAGE_GRACE_MS } from "./chatStageLink";
 import { stageNoticeAfterResponse } from "./chatStageNotifyServer";
-import { forgetStageState, readStageState, sharedStageState, stageStateNews, stageVideoRoom, type StageVideoApi } from "./chatStageVideo";
+import { forgetStageOnScreen, forgetStageState, readStageState, sharedStageState, stageStateNews, stageVideoRoom, type StageVideoApi } from "./chatStageVideo";
 import type { StageState } from "./chatStageLive";
 import type { ChatRoom } from "./publicChat";
 
@@ -59,8 +59,9 @@ export async function closeStageRoom(room: ChatRoom, api: StageVideoApi, graceMs
       if ((await readStageState(api, room)) === "live") return "live";
     }
     await api.closeRoom(stageVideoRoom(room));
-    // What this server remembered about the room (the stock on screen) went with it.
-    forgetStageState(room);
+    // What this server remembered of the stock on screen went with the room. (Only that: since when
+    // the broadcast has been stopped, which the room's message uses, is left as it is.)
+    forgetStageOnScreen(room);
     return "closed";
   } catch {
     // Never a key or an address in the log.
