@@ -29,6 +29,7 @@ import {join} from 'node:path';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import puppeteer from 'puppeteer';
+import {checkVideoCardLooks} from './stage-theme-checks.mjs';
 const shots=process.env.CHAT_SHOT_DIR,scale=Number(process.env.CHAT_TIMING_SCALE||1);
 const root=new URL('../../',import.meta.url).pathname,dir=await mkdtemp(join(tmpdir(),'video-card-test-'));
 const member={id:'11111111-1111-4111-8111-111111111111',display_name:'Alice',accepts_requests:true};
@@ -157,6 +158,9 @@ try{
  assert.deepEqual(tokens,[],'no viewer token is asked for while the room is not live');
  assert.deepEqual(await feed(),{connects:0,closed:0,open:0,audioStarted:0,volume:null},'no video connection while the room is not live');
  await noSideScroll();await shot('card-not-live');
+ // #510: the waiting card in every theme and colour combination: the theme's own panel and text.
+ await checkVideoCardLooks(p,`${pane(1)} [data-card-live-video]`,{live:false,each:async look=>{if(look.id==='light')await shot('card-not-live-light');}});
+ assert.deepEqual(statusReads,['main'],'a theme change reads no status');
  console.log('PASS Quad: live video is offered for readable rooms only; not live = one status read, no player, no connection');
 
  // The broadcast begins: the player appears by itself.
@@ -171,6 +175,9 @@ try{
  assert.equal((await feed()).volume,0,'it starts with the sound off');
  assert.match(await p.$eval(`${pane(1)} [data-stage-sound]`,e=>e.textContent),/Tap for sound/);
  await shot('quad-video-card');
+ // #510: playing, the card is all video: dark in every theme, with one connection throughout.
+ await checkVideoCardLooks(p,`${pane(1)} [data-card-live-video]`,{live:true,each:async look=>{if(look.id==='light')await shot('quad-video-card-light');}});
+ assert((await feed()).connects===1&&(await feed()).open===1,'still the one connection after every theme change');
  await p.click(`${pane(1)} [data-stage-sound]`);
  await p.waitForFunction(()=>window.__stageFeed.volume===1&&window.__stageFeed.audioStarted===1,T);
  assert.equal(await p.$(`${pane(1)} [data-stage-sound]`),null,'the prompt goes once sound is on');
