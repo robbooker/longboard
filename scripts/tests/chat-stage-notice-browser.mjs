@@ -76,6 +76,8 @@ await sql("update profiles set role='user' where email='bob@example.test'");
 // One phone of Bob's (a made-up endpoint; nothing is sent, the test has no push keys).
 await sql("insert into chat_push_subscriptions(account_id,endpoint,p256dh,auth) values($1,'https://fcm.googleapis.com/fcm/send/synthetic-bob','k','a')",[BOB]);
 const browser=await puppeteer.launch({headless:true,executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',args:['--no-sandbox','--autoplay-policy=no-user-gesture-required']});
+// A picture of the page as a member has it (the dev server's own corner badge is not part of the app).
+const shot=async(page,name)=>{if(!shots)return;await page.addStyleTag({content:'nextjs-portal{display:none!important}'});await page.screenshot({path:`${shots}/${name}.png`});};
 const composer=name=>`textarea[aria-label="Message ${name}"]`;
 const shown=(page,selector)=>page.evaluateHandle(s=>[...document.querySelectorAll(s)].find(e=>e.checkVisibility())??null,selector);
 const ready=page=>page.waitForFunction(()=>{const b=[...document.querySelectorAll('button[aria-label="Chat settings"]')].find(e=>e.checkVisibility());return b&&Object.keys(b).some(k=>k.startsWith('__reactProps$'));},{timeout:60000*scale});
@@ -148,7 +150,7 @@ try{
  await (await shown(b,'button[aria-label^="Chat notifications,"]')).click();
  await b.waitForSelector('section[aria-label="Chat notifications"] [data-stage-notice-alert="club"]',{visible:true,timeout:30000*scale});
  assert.equal(await b.$eval('section[aria-label="Chat notifications"] [data-stage-notice-alert] strong',e=>e.textContent),'Booker Stock Club – Live Video');
- if(shots)await b.screenshot({path:`${shots}/club-live-notice.png`});
+ await shot(b,'club-live-notice');
  await b.keyboard.press('Escape');
  console.log('PASS Booker Stock Club goes live: one message, the bell, one queued phone notification');
 
@@ -162,7 +164,7 @@ try{
  assert.match(await rowText(b,'has ended.'),/Live Video/,'still shown as Live Video');
  assert.equal(await b.$('[data-stage-notice-watch]'),null,'no Watch live once it has ended');
  assert.equal(await b.$('[data-recording-video]'),null,'no player without a recording');
- if(shots)await b.screenshot({path:`${shots}/ended-recording-will-follow.png`});
+ await shot(b,'ended-recording-will-follow');
  // A member has no control, and the server refuses him.
  assert.equal(await b.$('[data-stage-recording-control]'),null,'a member has no Add recording link');
  assert(!(await b.evaluate(()=>performance.getEntriesByType('resource').some(e=>/StageRecordingControl/i.test(e.name)))),'and downloads no code for it');
@@ -183,7 +185,7 @@ try{
  assert.equal(alice.asked.filter(x=>x.includes('/recording')).length,0,'a link that is plainly not a video is not even sent');
  assert.equal(await body('club'),WILL_FOLLOW('Booker Stock Club'));
  await a.click('[data-stage-recording-form] input',{clickCount:3});await a.type('[data-stage-recording-form] input',`https://youtu.be/${YT_ID}?si=tracking`);
- if(shots)await a.screenshot({path:`${shots}/admin-add-recording.png`});
+ await shot(a,'admin-add-recording');
  await a.click('[data-stage-recording-form] button[type="submit"]');
  await until(async()=>(await body('club'))===RECORDED('Booker Stock Club',YT),'the notice carries the recording');
  await a.waitForSelector('[data-stage-recording-form]',{hidden:true,timeout:15000*scale});
@@ -200,7 +202,7 @@ try{
  assert.deepEqual(alice.frames,[],'nothing is asked of YouTube until play is pressed');
  await a.waitForSelector('[data-stage-recording-control] button',{visible:true});
  assert.deepEqual(await a.$$eval('[data-stage-recording-control] button',bs=>bs.map(x=>x.textContent.trim())),['Change','Remove']);
- if(shots){await a.evaluate(sel=>document.querySelector(sel).scrollIntoView({block:'center'}),card);await sleep(300);await a.screenshot({path:`${shots}/ended-with-recording.png`});}
+ if(shots){await a.evaluate(sel=>document.querySelector(sel).scrollIntoView({block:'center'}),card);await sleep(300);await shot(a,'ended-with-recording');}
  await a.click(card+' button');
  await a.waitForSelector(card+' iframe',{timeout:15000*scale});
  assert.equal(await a.$eval(card+' iframe',f=>f.getAttribute('src')),YT_PLAYER,'the player\'s address');
@@ -212,7 +214,7 @@ try{
  await b.goto(`${base}/chat?room=club`);await ready(b);
  await b.waitForSelector(card,{visible:true,timeout:30000*scale});
  assert.equal(await b.$('[data-stage-recording-control]'),null);
- if(shots){await b.evaluate(sel=>document.querySelector(sel).scrollIntoView({block:'center'}),card);await sleep(300);await b.screenshot({path:`${shots}/member-ended-with-recording.png`});}
+ if(shots){await b.evaluate(sel=>document.querySelector(sel).scrollIntoView({block:'center'}),card);await sleep(300);await shot(b,'member-ended-with-recording');}
  {const phone=await newPage({width:390,height:844,isMobile:true,hasTouch:true});
   await signIn(phone.page,base,'bob@example.test',{composer:composer('LB'),next:'/chat?room=main'});
   await phone.page.goto(`${base}/chat?room=club`);
@@ -220,7 +222,7 @@ try{
   const fit=await phone.page.$eval(card,e=>{const r=e.getBoundingClientRect();return {left:r.left,right:r.right,width:r.width,height:r.height,sideways:document.documentElement.scrollWidth>window.innerWidth};});
   assert(fit.left>=0&&fit.right<=390.5&&!fit.sideways,`the card fits a phone: ${JSON.stringify(fit)}`);
   assert(Math.abs(fit.width-fit.height*16/9)<=2,`and is 16:9: ${JSON.stringify(fit)}`);
-  if(shots){await phone.page.evaluate(sel=>document.querySelector(sel).scrollIntoView({block:'center'}),card);await sleep(300);await phone.page.screenshot({path:`${shots}/phone-ended-with-recording.png`});}
+  if(shots){await phone.page.evaluate(sel=>document.querySelector(sel).scrollIntoView({block:'center'}),card);await sleep(300);await shot(phone.page,'phone-ended-with-recording');}
   await phone.page.tap(card+' button');await phone.page.waitForSelector(card+' iframe',{timeout:15000*scale});
   assert.equal(await phone.page.$eval(card+' iframe',f=>f.getAttribute('src')),YT_PLAYER);
   assert.deepEqual(phone.errors,[]);await phone.context.close();}
@@ -269,5 +271,10 @@ try{
  await open(alice,'lb-recordings','LB Recordings');
  await a.waitForSelector('[data-recording-video="youtube"]',{visible:true,timeout:30000*scale});
  assert.deepEqual(alice.errors,[]);assert.deepEqual(bob.errors,[]);
+ // Only when asked (CHAT_REAL_PLAYER=1, for a picture; never on CI): the real player, from YouTube itself.
+ if(shots&&process.env.CHAT_REAL_PLAYER==='1')try{const real=await bob.context.newPage();await real.setViewport({width:1440,height:900});
+  await real.goto(`${base}/chat?room=main`);await real.waitForSelector(card,{visible:true,timeout:60000*scale});await real.click(card+' button');
+  await real.waitForSelector(card+' iframe',{timeout:15000});await sleep(9000);
+  await real.evaluate(sel=>document.querySelector(sel).scrollIntoView({block:'center'}),card);await shot(real,'ended-recording-playing');}catch(error){console.log(`(no picture of the real player: ${error.message})`);}
  console.log('PASS LB: a link posted in LB Recordings appears on LB\'s ended notice by itself; the first link wins; SS Recordings is not LB\'s');
 }finally{await browser.close();stub.close();}
