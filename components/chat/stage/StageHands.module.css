@@ -3,29 +3,29 @@
 .hands { display: flex; flex: none; flex-direction: column; gap: 8px; }
 .head { display: flex; min-height: 28px; align-items: center; justify-content: space-between; gap: 10px; }
 .title { margin: 0; color: var(--stage-label); font: 400 11px/1.4 var(--chat-font-ui); letter-spacing: 0.08em; text-transform: uppercase; }
-.list { display: flex; flex-direction: column; gap: 1px; max-height: 264px; margin: 0; padding: 0; border: 1px solid var(--stage-amber-line); border-radius: var(--stage-radius); overflow-y: auto; background: var(--stage-line); list-style: none; }
+.list { display: flex; flex-direction: column; gap: 1px; max-height: 264px; margin: 0; padding: 0; border: 1px solid var(--stage-accent-line); border-radius: var(--stage-radius); overflow-y: auto; background: var(--stage-line); list-style: none; }
 .row { display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 10px; background: var(--stage-panel-2); }
-.row:first-child { background: var(--stage-amber-soft); }
+.row:first-child { background: var(--stage-accent-soft); }
 .place { flex: none; width: 18px; color: var(--stage-label); font-family: var(--stage-font-mono); font-size: 12px; text-align: right; }
 .who { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 1px; }
 .name { overflow: hidden; color: var(--stage-text); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .who small { color: var(--stage-text-2); font-size: 11px; }
 .lower { flex: none; min-width: 44px; min-height: 36px; padding: 6px 12px; border: 1px solid var(--stage-control-line); border-radius: 8px; background: var(--stage-control); color: var(--stage-text); font-size: 12px; }
 .lower:hover { border-color: var(--stage-label); }
-.lower:disabled { opacity: 0.5; }
+.lower:disabled { background: transparent; color: var(--stage-text-2); }
 .empty { margin: 0; padding: 10px; border: 1px dashed var(--stage-line); border-radius: var(--stage-radius); color: var(--stage-text-2); font-size: 12px; }
-.error { margin: 0; color: var(--stage-red); font-size: 12px; }
+.error { margin: 0; color: var(--stage-negative); font-size: 12px; }
 
 /* The top bar: how many hands are up, and what went wrong with your own. */
-.count { color: var(--stage-amber-text); font-family: var(--stage-font-mono); font-size: 12px; font-variant-numeric: tabular-nums; }
-.barError { color: var(--stage-red); font-size: 12px; }
+.count { color: var(--stage-accent); font-family: var(--stage-font-mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+.barError { color: var(--stage-negative); font-size: 12px; }
 /* A member's list: opened from the count, it drops from the right end of the top bar. That end sits
    over the room chat column (340px wide), so the list never covers the video, and being laid over
    the chat rather than in the page's flow it moves nothing when it opens or changes. */
 .anchor { position: relative; }
-.countButton { display: inline-flex; min-height: 44px; align-items: center; gap: 6px; padding: 10px 8px; border: 0; border-radius: 8px; background: none; color: inherit; font: inherit; text-decoration: underline; text-decoration-color: var(--stage-amber-line); text-underline-offset: 3px; }
-.countButton:hover { background: rgba(255, 255, 255, 0.06); }
-.panel { position: absolute; top: 100%; right: 8px; z-index: 30; display: flex; width: min(324px, calc(100vw - 16px)); max-height: min(420px, 70dvh); box-sizing: border-box; flex-direction: column; gap: 8px; margin-top: 4px; padding: 12px; border: 1px solid var(--stage-control-line); border-radius: var(--stage-radius); overflow-y: auto; background: var(--stage-card); box-shadow: 0 18px 48px rgba(0, 0, 0, 0.6); }
+.countButton { display: inline-flex; min-height: 44px; align-items: center; gap: 6px; padding: 10px 8px; border: 0; border-radius: 8px; background: none; color: inherit; font: inherit; text-decoration: underline; text-decoration-color: var(--stage-accent-line); text-underline-offset: 3px; }
+.countButton:hover { background: var(--stage-accent-soft); }
+.panel { position: absolute; top: 100%; right: 8px; z-index: 30; display: flex; width: min(324px, calc(100vw - 16px)); max-height: min(420px, 70dvh); box-sizing: border-box; flex-direction: column; gap: 8px; margin-top: 4px; padding: 12px; border: 1px solid var(--stage-control-line); border-radius: var(--stage-radius); overflow-y: auto; background: var(--stage-card); box-shadow: 0 18px 48px var(--stage-shadow); }
 .close { align-self: flex-end; min-height: 36px; padding: 6px 12px; border: 1px solid var(--stage-control-line); border-radius: 8px; background: var(--stage-control); color: var(--stage-text); font-size: 12px; }
 .close:hover { border-color: var(--stage-label); }
 @media (prefers-reduced-motion: no-preference) {
