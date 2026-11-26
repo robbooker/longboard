@@ -1,0 +1,355 @@
+{
+ "_comment": "#529 Booker Tube browser test: a small set of public videos from ten of the seeded channels, with ages in hours instead of dates so the test works on any day. Served as fake channel feeds by chat-video-picks-preload.mjs; no real network is used.",
+ "channels": {
+  "UCfO2yCpx6_XU-xovhpJuaYw": {
+   "name": "Bear Bull Traders",
+   "videos": [
+    {
+     "id": "o_gopli83F8",
+     "title": "AI STOCKS SELLOFF 🚨 $NVDA $ANT AT RISK | Live Trading Stock Market Today",
+     "description": "Bear Bull Traders Live Trading Show airs on market days from 8:30 AM to 12:00 PM ET on YouTube. Join us to get your questions answered on the show! Get Free Bear Bull Traders Strategy Crash Courses & Stock Market…",
+     "ageHours": 30
+    },
+    {
+     "id": "pRkFVCrnCuM",
+     "title": "NVDA Pulls Back, AI Stocks Falls After Monday’s Rally | Live Trading Stock Market Today",
+     "description": "Bear Bull Traders Live Trading Show airs on market days from 8:30 AM to 12:00 PM ET on YouTube. Join us to get your questions answered on the show! Get Free Bear Bull Traders Strategy Crash Courses & Stock Market…",
+     "ageHours": 53
+    },
+    {
+     "id": "xCTBz5TpKhw",
+     "title": "JENSEN HUANG BACK TO NVDA 🔥 Stock Market Bounce Live Trading",
+     "description": "Bear Bull Traders Live Trading Show airs on market days from 8:30 AM to 12:00 PM ET on YouTube. Join us to get your questions answered on the show! Get Free Bear Bull Traders Strategy Crash Courses & Stock Market…",
+     "ageHours": 78
+    },
+    {
+     "id": "lkHo3Bjof5g",
+     "title": "Stock Market Crash 🚨 Anthropic IPO Triggers AI Selloff | Live Trading Stock Market Today",
+     "description": "Bear Bull Traders Live Trading Show airs on market days from 8:30 AM to 12:00 PM ET on YouTube. Join us to get your questions answered on the show! Get Free Bear Bull Traders Strategy Crash Courses & Stock Market…",
+     "ageHours": 150
+    },
+    {
+     "id": "KSfP_8IPOT4",
+     "title": "Anthropic IPO Live Trading 🚨 AI Stocks Crashed! Stock Market Today",
+     "description": "Bear Bull Traders Live Trading Show airs on market days from 8:30 AM to 12:00 PM ET on YouTube. Join us to get your questions answered on the show! Get Free Bear Bull Traders Strategy Crash Courses & Stock Market…",
+     "ageHours": 170
+    }
+   ]
+  },
+  "UCLJiSMXJ9K-1AOTqIqdXJgQ": {
+   "name": "tastylive",
+   "videos": [
+    {
+     "id": "JDymJkoGQaE",
+     "title": "$12 Million of Dell Calls Hit the Tape and the Bounce Came Within Hours",
+     "description": "Management raised its own earnings forecast by more than 16% and several analysts cut their valuation anyway, so investors are paying less for more earnings. Chris Vecchio walks the $12.1 million of call premium that…",
+     "ageHours": 4
+    },
+    {
+     "id": "Ag_H9VMIq-Y",
+     "title": "The Truth About Micron's Massive Call Buying",
+     "description": "Micron is down 53% from its June record and the call buyers will not stop. Roughly $13.9 million of bullish flagged activity hit over two sessions, 78% of it in just two contracts, after $14.6 million the Friday…",
+     "ageHours": 5
+    },
+    {
+     "id": "ohngQXQmP3M",
+     "title": "Market Measures: What Actually Happens to Your Options When VIX Rises",
+     "description": "The finding worth internalising: higher volatility does not make you win more often, it makes each win pay more. Across every VIX environment the win rate on 45 day 16 delta SPY strikes stays between 76 and 82%, while…",
+     "ageHours": 6
+    },
+    {
+     "id": "e-AaD3vYnK0",
+     "title": "Ed Yardeni Says the Bottom Might Be In, Then Cut His Target Again",
+     "description": "Yardeni says the bottom might be in and cut his year end target in the same breath, from 7,900 to 7,500. Jermal Chandler checks the math: the $425 earnings number never moved. The entire cut came from the multiple…",
+     "ageHours": 20
+    },
+    {
+     "id": "RiTZElBIvis",
+     "title": "It Has Only Happened Twice Before, and Both Were March 2020",
+     "description": "The VIX looks like it is pushing higher this week, and part of that is an artifact. It is a calendar day calculation, so Thanksgiving, the half session and the weekend get pulled out, four days gone, and the number…",
+     "ageHours": 21
+    }
+   ]
+  },
+  "UCld68syR8Wi-GY_n4CaoJGA": {
+   "name": "Brodie Robertson",
+   "videos": [
+    {
+     "id": "txm4wvxKeG0",
+     "title": "What Keeps Linux Mint So Popular",
+     "description": "Linux Mint remains a popular Linux distro sitting at 4th place on the Steam Hardware Survey, but why, it's not a distro anyone usually recommends for gaming. ==========Support The Channel========== ► Patreon: ► Paypal…",
+     "ageHours": 6
+    },
+    {
+     "id": "_I5yJtZGCXc",
+     "title": "KDE's New Terminal Has Arrived And It's...",
+     "description": "There's a million different Linux terminals out there and KDE Plasma now has a new one to replace Konsole known as Kwi, is it good, well let's take a look ==========Support The Channel========== ► Patreon: ► Paypal: ►…",
+     "ageHours": 30
+    },
+    {
+     "id": "5lH6DjXpiVE",
+     "title": "CachyOS Is Ready For EACv2 To Drop",
+     "description": "Following the announcement of EAC v2 a few weeks back CachyOS announced that they were working on support for it and that support has now arrived. ==========Support The Channel========== ► Patreon: ► Paypal: ►…",
+     "ageHours": 54
+    },
+    {
+     "id": "2OeoqXv5NzE",
+     "title": "Flathub Is \"Unsafe\"",
+     "description": "Flathub to this day still calls apps \"potentially unsafe\" for simply having permissions that are not completed locked down and all this does is leads to literally every app being called unsafe. ==========Support The…",
+     "ageHours": 78
+    },
+    {
+     "id": "DAD88aeew6g",
+     "title": "Mate Has Another Wayland Compositor In The Works",
+     "description": "The Mate desktop is working hard on supporting Wayland, it's slow progress but it's coming along. ==========Support The Channel========== ► Patreon: ► Paypal: ► Liberapay: ► Amazon USA: ==========Resources==========…",
+     "ageHours": 102
+    }
+   ]
+  },
+  "UC_x36zCEGilGpB1m-V4gmjg": {
+   "name": "IndyDevDan",
+   "videos": [
+    {
+     "id": "PuHDu3Kn8sQ",
+     "title": "The Meta Software Factory: Advanced Agentic Engineering",
+     "description": "If you are still the human IN the loop every time your system needs an update, YOU are the bottleneck. 🔥 In the age of agents, the winning software is liquid software that adapts at the speed of agents. With a meta…",
+     "ageHours": 81
+    },
+    {
+     "id": "hYIymEMB9x4",
+     "title": "Fable 5.2 is CRACKED but THIS goes BEYOND THE MODEL",
+     "description": "Fable 5.2 just dropped and most engineers DON'T need it. Everyone has access to the same frontier intelligence. The model is NOT your edge. The system you build around the model is. One super agent that does everything…",
+     "ageHours": 249
+    },
+    {
+     "id": "GRlcm3wmOqs",
+     "title": "ZERO to RUNNING Software Factory In 16 Minutes (LIQUID Software)",
+     "description": "Stop waiting for the next model. It will not save you. Neither will the next tool or harness. YOU are the bottleneck. 🔥 Every minute you spend prompting back and forth is a minute your agents sit idle waiting on you.…",
+     "ageHours": 417
+    },
+    {
+     "id": "1v7ldJiyH-Y",
+     "title": "Tiny Software Factories: Agentic Engineering DONE WRONG",
+     "description": "What's up Engineers, here's a SNEAK PEEK of the upcoming Phase 3 Agentic Engineering Course: Tiny Software Factories Phase 3 PRESALE IS LIVE (What if your agents never stopped?) Today you'll learn agentic engineering…",
+     "ageHours": 585
+    },
+    {
+     "id": "52JX83rGPLc",
+     "title": "ELITE Agentic Engineers Are LEAVING THE LOOP... Here’s why",
+     "description": "If your AI agent is already a better programmer inside the loop than you are on your best day, why are you still sitting in it? 🔥 🎥 VIDEO REFERENCES • IA3 Phase 3 Presale Deal Is Live: • Proactive Durable News Agent…",
+     "ageHours": 754
+    }
+   ]
+  },
+  "UCIhJnsJ0IHlVNnYfp-gw_5Q": {
+   "name": "Cal Newport",
+   "videos": [
+    {
+     "id": "zvszr6hecXw",
+     "title": "Noah Kahan’s Lesson About Creating a Deep Life",
+     "description": "The singer/songwriter Noah Kahan recently gave an emotional speech to his audience after being snubbed by the Grammy Awards. Cal invites Brad Stulberg to help him extract the hidden lessons in this event about what it…",
+     "ageHours": 12
+    },
+    {
+     "id": "2vjOr7T6wAc",
+     "title": "How to Design Systems to Achieve Your Goals",
+     "description": "If you struggle to make progress on your goals it have little to do with discipline and everything to do with building the right systems. In this video, Cal is joined by Ben Meer, author of the #1 New York Times…",
+     "ageHours": 84
+    },
+    {
+     "id": "JWcdlrr9Cro",
+     "title": "Is Tech News Bringing You Down? This is the Cure.",
+     "description": "I’m known for writing books about technology, so why is my new book – The Deep Life – not about technology at all? Answering this question reveals an important insight into our struggle for human flourishing in a…",
+     "ageHours": 180
+    },
+    {
+     "id": "7vUO9XqpRPA",
+     "title": "Google is Holding Schools Hostage. (This is Not Okay)",
+     "description": "Last week, Google announced that, in response to pressure from parents and educators, it would allow schools to turn off AI tools in their widely used education apps. Cal Newport analyzes this announcement and provides…",
+     "ageHours": 348
+    },
+    {
+     "id": "SD3AI0r88aA",
+     "title": "Why Are Harvard Students Lining Up for This “Brutal” Class?",
+     "description": "Two years ago, The Atlantic featured a distressing story about elite college students who could no longer read books. Last week, The Wall Street Journal offered some hope that things are getting better. An article by…",
+     "ageHours": 516
+    }
+   ]
+  },
+  "UCcefcZRL2oaA_uBNeo5UOWg": {
+   "name": "Y Combinator",
+   "videos": [
+    {
+     "id": "-ieJwYq4j-o",
+     "title": "How To Build A Jet Engine From Scratch",
+     "description": "On November 21, 2026, Boom Supersonic (YC W16) fired its prototype engine core for the first time. In this episode of Hard Tech, YC’s Jared Friedman goes inside Boom’s Colorado Superpower Superfactory with founder and…",
+     "ageHours": 56
+    },
+    {
+     "id": "lwfewYL7X0o",
+     "title": "Jacob Coxon vs. Robin Hanson: Should We Slow Down AI?",
+     "description": "Should governments intervene to substantially slow the progress of frontier AI? In the inaugural YC debate, Jacob Coxon, an ex-Anthropic and OpenAI researcher, faces off against Robin Hanson, an economist at GMU, about…",
+     "ageHours": 176
+    },
+    {
+     "id": "0Hvs6-XODgU",
+     "title": "Ramp’s Bet on the 100x Employee",
+     "description": "Ramp started with a simple promise: help companies save time and money. Seven years later, it’s a $60 billion platform running the financial operations of tens of thousands of businesses, with more than $2 billion in…",
+     "ageHours": 200
+    },
+    {
+     "id": "y1-9yeYLJUo",
+     "title": "The Rise Of AI Coworkers",
+     "description": "At SpaceXSI, Lauren Tan and Roman Ugarte are on the core team that took Grok Bot from first line of code to launch in seven weeks. It lets you spin up AI teammates with their own identities and logins, and they just…",
+     "ageHours": 287
+    },
+    {
+     "id": "iXWSYlAX5Lg",
+     "title": "The Whistleblower Who Took on Theranos",
+     "description": "With Theranos and Elizabeth Holmes back in the conversation, we’re revisiting one of the most remarkable firsthand accounts of what actually happened inside the company. Tyler Shultz joined Theranos fresh out of…",
+     "ageHours": 363
+    }
+   ]
+  },
+  "UCEtxsMx4qsoitFwjBdLU_gA": {
+   "name": "Gregory B. Sadler",
+   "videos": [
+    {
+     "id": "4oC3ABhPPek",
+     "title": "Thomas Hobbes, Leviathan | Liberty, Sovereign, and Commonwealth | Philosophy Core Concepts",
+     "description": "Check out my Substack - Request personal videos on Cameo - Get Thomas Hobbes' Leviathan - Support my work here - or Philosophy tutorials - Take classes with me - This is a video in my new Core Concepts series…",
+     "ageHours": 4
+    },
+    {
+     "id": "HRmCW5O1NYM",
+     "title": "Thomas Hobbes, Leviathan | Liberty And Necessity | Philosophy Core Concepts",
+     "description": "Check out my Substack - Request personal videos on Cameo - Get Thomas Hobbes' Leviathan - Support my work here - or Philosophy tutorials - Take classes with me - This is a video in my new Core Concepts series…",
+     "ageHours": 25
+    },
+    {
+     "id": "imW6kopK44I",
+     "title": "Sadler Telling Stories 116 | Taking The Party Bus To Alpine Valley & Seeing Rage Against The Machine",
+     "description": "Check out my Substack - Request personal videos on Cameo - Support my work here - or Buy Me A Coffee - This is the one hundred and sixteenth in a series of videos in which I engage in some storytelling about my own…",
+     "ageHours": 43
+    },
+    {
+     "id": "Ck55SkXrWqo",
+     "title": "Musonius Rufus, Lectures  | Lecture 17 The Best Provision For Old Age | Philosophy Core Concepts",
+     "description": "Check out my Substack - Request personal videos on Cameo - Get Musonius Rufus' Lectures - Support my work here - or here Philosophy tutorials - Take classes with me - This is a video in my Core Concepts series…",
+     "ageHours": 74
+    },
+    {
+     "id": "cT5DDh-ymsI",
+     "title": "Musonius Rufus, Lectures | Lecture 16: Obedience To Parents | Philosophy Core Concepts",
+     "description": "Check out my Substack - Request personal videos on Cameo - Get Musonius Rufus' Lectures - Support my work here - or here Philosophy tutorials - Take classes with me - This is a video in my Core Concepts series…",
+     "ageHours": 102
+    }
+   ]
+  },
+  "UCRhV1rWIpm_pU19bBm_2RXw": {
+   "name": "Sean Carroll",
+   "videos": [
+    {
+     "id": "jdIDwwWr8ps",
+     "title": "Karen Lutfey Spencer on Dying and How to Prepare For It | Mindscape 375",
+     "description": "Blog post with audio player, show notes, and transcript: It is one thing to recognize, in an intellectual and abstract sense, that each of us will one day die. It is another to be practical about it, facing up to the…",
+     "ageHours": 83
+    },
+    {
+     "id": "sHO1w3eV41A",
+     "title": "Lindsey Fitzharris on Forensic Pathology, Reconstructive Surgery, & Sherlock Holmes | Mindscape 374",
+     "description": "Blog post with audio player, show notes, and transcript: The history of science is always fascinating, and the history of medicine surely has some of the best stories. In this episode we talk to writer Lindsey…",
+     "ageHours": 251
+    },
+    {
+     "id": "3u1ktqkzFR4",
+     "title": "Mindscape Ask Me Anything, Sean Carroll | November 2026",
+     "description": "Blog post with audio player, show notes, and transcript: Welcome to the November 2026 Ask Me Anything episode of Mindscape! These monthly excursions are funded by Patreon supporters (who are also the ones asking the…",
+     "ageHours": 419
+    },
+    {
+     "id": "YH6CHGClJZ8",
+     "title": "Colin Camerer on the Neuroscience of Economic Thinking | Mindscape 373",
+     "description": "Blog post with audio player, show notes, and transcript: Economics often starts with an assumption that people are rational maximizers of their own self-interest; but it doesn't stop there. Economists do understand…",
+     "ageHours": 587
+    },
+    {
+     "id": "3ggjfwIty9g",
+     "title": "Erik Winfree on DNA Robots and Computers | Mindscape 372",
+     "description": "Blog post with audio player, show notes, and transcript: When we think of computers, we think of machines running on some kind of silicon chips. But the idea is more general: at heart, a computer is any object that…",
+     "ageHours": 755
+    }
+   ]
+  },
+  "UCoeJKtPJLoIBqWq4o8TDLpA": {
+   "name": "Satori Graphics",
+   "videos": [
+    {
+     "id": "VXgtWwG21uo",
+     "title": "The MOST Underrated Graphic Design Tools You Need To Know!",
+     "description": "These free graphic design tools deserve far more attention. From animating your logo to creating your own fonts and editing layered Photoshop files in your browser, there’s a lot here to explore. In this video, I test…",
+     "ageHours": 60
+    },
+    {
+     "id": "9U0W6FRNI7E",
+     "title": "NEW Layout Techniques That Feel Like Cheating!",
+     "description": "These layout design hacks or tweak, literally feel like cheating once you know them! Try Abacus AI for yourself: Move a date, break a grid, or change a crop, and suddenly the whole design reads differently. In this…",
+     "ageHours": 227
+    },
+    {
+     "id": "UORet_kKeg0",
+     "title": "I Designed A Brand Book And Dropped It Into Magnific's NEW AI!",
+     "description": "Can Magnific One turn an existing brand book into a campaign that actually feels like the brand? Try Magnific here: Magnific landing page: I’m putting it to the test with an identity I designed, using Brand Kit to…",
+     "ageHours": 323
+    },
+    {
+     "id": "CuPsuVO0vIQ",
+     "title": "The ONLY Colour Guide That Will Give You An Unfair Advantage!",
+     "description": "A colour guide for graphic designers, and one you will not be disappointed with! 👉 A NEW design system for 2027: Learn how to use colour with confidence in this comprehensive colour theory guide for graphic designers.…",
+     "ageHours": 395
+    },
+    {
+     "id": "QcT9a8gcG74",
+     "title": "The ONLY Grid System Video You’ll Ever Need As A Designer",
+     "description": "One graphic design video, one graphic design grid system that actually works! 👉🍋 A total design system strategy for 2027: What makes three completely different designs feel like they belong to the same campaign? In…",
+     "ageHours": 515
+    }
+   ]
+  },
+  "UChWX1yxVym2kNXMBD1oKo8Q": {
+   "name": "Media Death Cult",
+   "videos": [
+    {
+     "id": "7VVPUd76fwU",
+     "title": "Top 100 Science Fiction Books - Ender's Game and Speaker for the Dead",
+     "description": "The first of a brand new ongoing series where I build the ultimate Top 100 Science Fiction Books. SUPPORT THE CHANNEL BUY ME A COFFEE - AWESOME MERCH - #sciencefiction #scifi #sf",
+     "ageHours": 177
+    },
+    {
+     "id": "4-ArquzdwfE",
+     "title": "Banana Fish - The Shojo Manga that changed everything, apparantly",
+     "description": "MANGA AMAZON WISH LIST SUPPORT THE CHANNEL BUY ME A COFFEE - AWESOME MERCH - #sciencefiction #scifi #manga",
+     "ageHours": 558
+    },
+    {
+     "id": "Os3o4DvXI78",
+     "title": "The most brutal sci-fi book I've ever read",
+     "description": "SUPPORT THE CHANNEL BUY ME A COFFEE - AWESOME MERCH - #sciencefiction #scifi #sf",
+     "ageHours": 675
+    },
+    {
+     "id": "3tIRPD-QWhE",
+     "title": "Voted the coolest neighbourhood in the world",
+     "description": "SUPPORT THE CHANNEL BUY ME A COFFEE - AWESOME MERCH - #sciencefiction #scifi #sf",
+     "ageHours": 752
+    },
+    {
+     "id": "0uOK0tyEhd4",
+     "title": "Klara and the Sun - A book about silly robots and a dark future?",
+     "description": "Just in time for the new film. SUPPORT THE CHANNEL BUY ME A COFFEE - AWESOME MERCH - #sciencefiction #scifi #sf",
+     "ageHours": 803
+    }
+   ]
+  }
+ }
+}
