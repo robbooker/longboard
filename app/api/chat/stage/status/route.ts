@@ -9,6 +9,7 @@ import {
   sharedStageOnScreen,
   sharedStageState,
   stageNoticeCheckDue,
+  stageNoticeFollowUpDue,
   stageVideoConfig,
 } from "@/lib/chatStageVideo";
 import { parseChatRoom, type ChatRoom } from "@/lib/publicChat";
@@ -33,6 +34,8 @@ const json = (body: unknown, status = 200) =>
  * starting) is missed, this is what notices: an answer freshly read from LiveKit that differs from
  * this server's last one (and otherwise once a minute per room) has the room's "live now" message
  * checked against LiveKit after the response, and if that changes the message, the room is told.
+ * #521: that check can be lost (it runs after the response), so one that has not reported back is
+ * run again by the room's next status answer; see lib/chatStageVideo.ts.
  *
  * #505: Dual, Quad and Six view ask for all the rooms on their cards in one request
  * (`?rooms=main,gainers`, answered as `states`, with no `onScreen`: a card only shows the button);
@@ -70,6 +73,13 @@ export async function GET(req: NextRequest) {
           : "off";
       }),
     );
+    // #521: a look that never reported back is run again, within the same one-per-request limit.
+    if (api)
+      for (const room of rooms)
+        if (checks < MOST_NOTICE_CHECKS && stageNoticeFollowUpDue(room)) {
+          checks += 1;
+          stageNoticeAfterResponse(room, api, null, { tellRoom: true });
+        }
     return json({ states, video: !!config });
   }
   const room = parseChatRoom(req.nextUrl.searchParams.get("room"));
@@ -78,11 +88,18 @@ export async function GET(req: NextRequest) {
   const config = stageVideoConfig();
   if (!config) return json({ state: "off", video: false });
   const api = stageVideoApi(config);
+  let looked = false;
   const state = await sharedStageState(room, async () => {
     const read = await readStageState(api, room);
-    if (stageNoticeCheckDue(room, read)) stageNoticeAfterResponse(room, api, null, { tellRoom: true });
+    if (stageNoticeCheckDue(room, read)) {
+      looked = true;
+      stageNoticeAfterResponse(room, api, null, { tellRoom: true });
+    }
     return read;
   });
+  // #521: a look at the message that never reported back (it runs after the response and can be
+  // lost) is run again here, whether this answer was read from LiveKit or remembered.
+  if (!looked && stageNoticeFollowUpDue(room)) stageNoticeAfterResponse(room, api, null, { tellRoom: true });
   const onScreen = state === "off" ? null : await sharedStageOnScreen(room, () => readStageOnScreen(api, room));
   return json({ state, video: true, onScreen });
 }

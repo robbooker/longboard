@@ -213,6 +213,8 @@ const mark=page=>page.evaluate(()=>{window.__samePage=true;});
 const where=page=>page.evaluate(()=>{const list=[...document.querySelectorAll('article[id^="chat-message-"]')].find(a=>a.checkVisibility());let scroller=list?.parentElement;
  while(scroller&&!(scroller.scrollHeight>scroller.clientHeight+4&&/auto|scroll/.test(getComputedStyle(scroller).overflowY)))scroller=scroller.parentElement;
  return {url:location.href,room:[...document.querySelectorAll('main[data-chat-view]')].find(e=>e.checkVisibility())?.dataset.room??null,samePage:window.__samePage===true,stage:!!document.querySelector('[data-stage-root]'),scroll:scroller?Math.round(scroller.scrollTop):null,composer:!!document.querySelector('textarea[aria-label="Message LB"]')};});
+// Waits until the room on screen has stopped moving: its place the same for a second and a half.
+const settled=async page=>{let last,same=0;for(const began=Date.now();same<3;){const now=(await where(page)).scroll;same=now===last?same+1:0;last=now;assert(Date.now()-began<30000*scale,'the room never settled');await sleep(500);}};
 try{
  const bob=await newPage(),alice=await newPage();
  // Not started: nothing at all for a member.
@@ -236,6 +238,10 @@ try{
  assert((await openMenu(a)).includes('Go live (preview)'));
  assert.deepEqual(lk.calls.filter(c=>c!=='Ingress/ListIngress'&&c!=='RoomService/ListRooms'),[],'nothing is made for a room nobody has opened the stage of');
  await a.click('[data-stage-go-live]');
+ // On a machine with no time to spare the press can land while the menu is still opening and do
+ // nothing (once in 20 soak runs, under heavy load): if the stage has not appeared, it is pressed again.
+ for(let tries=0;!(await a.waitForSelector('[data-stage-root]',{timeout:15000*scale}).catch(()=>null));tries++){assert(tries<3,'Go live never opened the stage');
+  if(!(await visible(a,'[data-stage-go-live]')))await openMenu(a);await (await shown(a,'[data-stage-go-live]')).click();}
  await a.waitForSelector('[data-stage-broadcast]',{timeout:60000*scale});
  await a.waitForSelector('[data-stage-key]',{timeout:30000*scale});
  for(const gone of ['[data-stage-start]','[data-stage-end]','[data-stage-end-confirm]'])assert.equal(await a.$(gone),null,`no ${gone}`);
@@ -378,7 +384,7 @@ try{
  if(shots)await b.screenshot({path:`${shots}/bell.png`});
  // #505: the bell entry is a link that opens the stage in a tab of its own; Bob's room is untouched.
  assert.deepEqual(await b.$eval(`${bellPanel} [data-stage-notice-alert] a`,a=>[a.getAttribute('href'),a.target]),['/chat?room=main&stage=1','stage-main']);
- await mark(b);
+ await settled(b);await mark(b);
  const bellBefore=await where(b);
  const stage=await opensStageTab(bob,()=>b.click(`${bellPanel} [data-stage-notice-alert] a`)),s=stage.tab;
  await waitPlayer(s,'live');
@@ -524,7 +530,7 @@ try{
  await b.bringToFront();
  assert.deepEqual(await (await shown(b,'[data-stage-notice-watch]')).evaluate(a=>[a.getAttribute('href'),a.target]),['/chat?room=main&stage=1','stage-main']);
  await (await shown(b,'[data-stage-notice-watch]')).evaluate(a=>a.scrollIntoView({block:'center'}));await sleep(600);
- await mark(b);
+ await settled(b);await mark(b);
  const noticeBefore=await where(b),tabsNow=(await bob.context.pages()).length;
  await (await shown(b,'[data-stage-notice-watch]')).click();
  await s.waitForSelector('[data-stage-root="main"]',{timeout:60000*scale});
@@ -677,6 +683,11 @@ try{
  // #505: an admin's Watch live opens a tab of its own as well (the admin's stage: three columns).
  {const a2=await alice.context.newPage();await a2.setViewport({width:1440,height:900});
   await a2.goto(base+'/chat?room=main');await a2.waitForSelector('[data-stage-watch-live="main"]',{visible:true,timeout:60000*scale});await ready(a2);
+  // A room that has just opened is still settling (it keeps itself at the newest message while
+  // late rows and pictures arrive), so "as it was" is measured once it has stopped moving: its
+  // place has been the same for a second and a half. (Taken too early, the place it settled at a
+  // moment later read as the tab having moved: 59px, twice in ten runs.)
+  await settled(a2);
   await mark(a2);const before=await where(a2),had=new Set(await alice.context.pages());
   await a2.click('[data-stage-watch-live="main"]');
   const tab=await until(async()=>(await alice.context.pages()).find(p=>!had.has(p)&&/[?&]room=main&stage=1/.test(p.url())),'the admin\'s stage tab');
@@ -690,6 +701,7 @@ try{
  await a.click('[data-stage-exit]');await a.waitForFunction(()=>!document.querySelector('[data-stage-root]'));
  assert.deepEqual(await feedOf(a),{connects:2,closed:2},'leaving the stage closes the admin\'s connection');
  const bobFeed=await feedOf(b);
+ const statusReads=()=>bob.stageAnswers.filter(x=>x.includes('/api/chat/stage/status?room=main')).length,readsBefore=statusReads();
  lk.publishing=false;
  await waitPlayer(b,'waiting');
  assert.match(await b.$eval('[data-stage-video-message]',e=>e.textContent),/The broadcast has stopped/);
@@ -702,7 +714,15 @@ try{
  await b.waitForFunction(()=>!document.querySelector('[data-stage-live]'),{timeout:20000*scale});
  assert.equal((await feedOf(b)).connects,bobFeed.connects,'and nothing connects again while the room is only waiting');
  // The room's message says it ended, with no End, no webhook and no admin: the status noticed.
- await until(async()=>(await notices())[0].body===ENDED_TEXT,'the message says it ended once the broadcast has stopped',90000);
+ // #521: the only status reads this depends on are Bob's own, from the page he is still on: one as
+ // his player lets go (above) and one more 30 seconds later. The look at the message that a status
+ // answer starts runs after the response and can be lost (on CI it was: the admin's stage tab,
+ // closed a moment earlier, still had a status request on its way when the broadcast stopped, so
+ // that look never ran and nothing ever asked again). A lost look is run again by the next status
+ // answer, so the longest this takes from here is Bob's second read (30 s) and, when the server
+ // did not see the stop itself, the 20 s the broadcast is given to come back; plus a margin.
+ await until(async()=>(await notices())[0].body===ENDED_TEXT,'the message says it ended once the broadcast has stopped',30000+20000+10000);
+ await until(async()=>statusReads()>=readsBefore+3,'three status reads from Bob\'s page since the stop: as the picture went, as his player let go, and once more 30 seconds later',45000);
  await b.click('[data-stage-exit]');
  await b.waitForFunction(()=>!document.querySelector('[data-stage-root]'));
  await b.waitForFunction(()=>!document.querySelector('[data-stage-watch-live]'),{timeout:20000*scale});
