@@ -17,10 +17,15 @@
 //  - every button in the stage is at least 44px tall and has a name;
 //  - "Back to rooms" leaves: the room is as before, and the address drops &stage=1; the admin's own
 //    /chat?room=main&stage=1 link opens the stage again.
+//  - #510: the stage keeps the admin's own theme, and in every theme and colour combination the chat
+//    offers (changed while the stage is open, with nothing loaded again) its surfaces are that
+//    look's own colours, its text is readable (4.5:1; 3:1 large), the player and its bars stay dark,
+//    LIVE stays red and the focus ring shows (stage-theme-checks.mjs);
 // CHAT_SHOT_DIR saves menu-member.png, menu-admin.png, stage-1440.png and stage-1280.png.
 import assert from 'node:assert/strict';
 import puppeteer from 'puppeteer';
 import {signIn} from './browser-login.mjs';
+import {LOOKS,checkStageLooks,contrastOf,setLook} from './stage-theme-checks.mjs';
 const base=process.env.CHAT_TEST_URL||'http://localhost:3501',fixture=process.env.CHAT_FIXTURE_URL||'http://127.0.0.1:54501';
 for(const url of [base,fixture])assert(['localhost','127.0.0.1'].includes(new URL(url).hostname));
 const shots=process.env.CHAT_SHOT_DIR,TOKEN='synthetic-gainers-lookup-token-never-a-production-secret';
@@ -99,7 +104,7 @@ try{
   assert.equal(new URL(page.url()).searchParams.get('stage'),'1','the address says the stage is open');
   assert.equal(new URL(page.url()).searchParams.get('room'),'main');
   assert.equal(await page.evaluate(()=>document.activeElement?.tagName),'H1','focus moves to the stage\'s heading');
-  assert.equal(await page.$eval('main[data-stage]',m=>m.dataset.theme),'dark','the stage has its own dark look');
+  assert.equal(await page.$eval('main[data-stage]',m=>m.dataset.theme),'light','#510: the stage keeps the admin\'s own theme');
   // Three columns under the top bar, left to right; the sidebar and the room header are hidden.
   const layout=()=>page.evaluate(()=>{
    const box=s=>{const e=[...document.querySelectorAll(s)].find(x=>x.checkVisibility());if(!e)return null;const r=e.getBoundingClientRect();return {x:Math.round(r.left),y:Math.round(r.top),w:Math.round(r.width),h:Math.round(r.height),right:Math.round(r.right)};};
@@ -206,6 +211,21 @@ try{
   assert(controls.length>=15,String(controls.length));
   for(const c of controls){assert(c.name,'every stage button has a name');assert(c.h>=44,`"${c.name}" is ${c.h}px tall`);}
   if(shots)await page.screenshot({path:`${shots}/stage-1440.png`});
+  // #510: the stage in every theme and colour combination, changed while it is open (nothing is
+  // loaded again). A stock with a loss, its press releases, a selected chip, chapter and vote, the
+  // sample trades and the question box are all on screen for it.
+  {const requests=[];const note=r=>requests.push(r.url());page.on('request',note);
+   const marks=await page.evaluate(()=>{window.__stageKept=document.querySelector('[data-stage-root]');return performance.getEntriesByType('navigation').length;});
+   const seen=await checkStageLooks(page,{each:async look=>{
+    for(const [what,sel] of [['a loss','[data-stage-stat="change"] dd[data-tone="down"]'],['a press release link','[data-stage-news-item] a'],['a selected chip','[data-stage-chip][aria-pressed="true"]'],['a selected chapter','[data-stage-chapter][aria-pressed="true"]'],['a selected vote','[data-stage-question] button[aria-pressed="true"]'],['a sample label','[data-stage-column="trades"] h2'],['the SHORT tag','[data-stage-column="trades"] [data-tag="SHORT"]'],['the COVER tag','[data-stage-column="trades"] [data-tag="COVER"]']]){
+     const ratio=await contrastOf(page,sel);assert(ratio!==null,`${look.id}: ${what} is on screen`);assert(ratio>=4.5,`${look.id}: ${what} is ${ratio}:1`);}
+    if(shots)await page.screenshot({path:`${shots}/stage-look-${look.id}.png`});}});
+   assert.equal(Object.keys(seen).length,LOOKS.length);
+   assert.equal(await page.evaluate(()=>window.__stageKept===document.querySelector('[data-stage-root]')&&performance.getEntriesByType('navigation').length),marks,'changing the theme redraws the open stage in place: nothing is loaded again');
+   page.off('request',note);
+   const asked=requests.filter(url=>/\/api\/chat\/theme|\.css(\?|$)/.test(url));
+   assert.deepEqual(asked,[],`a theme change asks for nothing (no stylesheet, no save from this tab): ${asked.join(' ')}`);
+   await setLook(page,{theme:'light',palette:null});}
   // A 1280px laptop: still three columns.
   await page.setViewport({width:1280,height:800});await sleep(300);
   await checkLayout('1280px');

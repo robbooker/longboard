@@ -23,6 +23,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import puppeteer from 'puppeteer';
 import {signIn} from './browser-login.mjs';
+import {checkStageLooks} from './stage-theme-checks.mjs';
 const base=process.env.CHAT_TEST_URL||'http://localhost:3508',fixture=process.env.CHAT_FIXTURE_URL||'http://127.0.0.1:54708',STUB='http://127.0.0.1:54633';
 for(const url of [base,fixture,STUB])assert(['localhost','127.0.0.1'].includes(new URL(url).hostname));
 const shots=process.env.CHAT_SHOT_DIR,scale=Number(process.env.CHAT_TIMING_SCALE||1);
@@ -198,6 +199,9 @@ try{
  {const h=await until(m,h=>h.count==='2 hands up'&&h.list?.names.length===2,'Mallory\'s list has two');assert.deepEqual([h.button,h.pressed],['Lower hand','true']);
   assert.deepEqual(h.list.names,[bobName,malloryName],'oldest first for a member too');assert.deepEqual([h.list.lowers,h.list.lowerAll],[0,false]);}
  await shot(m,'member-hands-list');
+ // #510: a member's open hands list and count, in every theme and colour combination.
+ await checkStageLooks(m,{ring:false});
+ assert.equal((await hands(m)).list?.names.length,2,'the list stays open through the theme changes');
  await m.click('[data-stage-hands-close]');
  await m.waitForFunction(()=>!document.querySelector('[data-stage-hands-panel]'));
  assert.equal(await m.$eval('[data-stage-hands-toggle]',e=>e.getAttribute('aria-expanded')),'false');
@@ -208,6 +212,8 @@ try{
  {const h=await hands(a);assert.deepEqual(h.list.names,[bobName,malloryName],'two tabs, one hand');assert.equal(h.count,'2 hands up');assert.equal((await hands(m)).count,'2 hands up');}
  await a.evaluate(()=>document.querySelector('[data-stage-hands]').scrollIntoView({block:'nearest'}));
  await shot(a,'admin-hands-list');
+ // #510: the admin's hands list (two rows, the first tinted, Lower and Lower all) in every look.
+ await checkStageLooks(a,{each:async look=>{const rows=await a.$$eval('[data-stage-hand-of]',r=>r.length);assert.equal(rows,2,`${look.id}: both hands are listed`);if(shots&&look.id==='light')await a.screenshot({path:`${shots}/admin-hands-list-light.png`});}});
  console.log('PASS a second hand: oldest first for everyone, a count of 2, two tabs count once');
 
  // The admin lowers Bob's hand: in both of his tabs.

@@ -3,51 +3,53 @@
    data-stage and draws StageMode's root (.root) first inside the room's shell; the rules below
    turn that shell into the three-column desk and restyle the room's own chat as its right column. */
 
-/* The stage's own theme. Change the look here. */
+/* #510: the stage follows the member's theme. Every stage colour is one of the chat's own theme
+   tokens (PublicChat.module.css and chatPalettes.css set them on this same element, from its
+   data-theme and data-palette), so every theme and colour combination restyles the stage and a change
+   of theme shows at once. Nothing here is written per theme. The fallbacks are the stage's first
+   dark look. lib/__tests__/chatStageTheme.test.ts reads this file and checks every pairing below
+   for contrast in every look. */
 :global(main[data-stage]):has(.root) {
-  --stage-page: #07090d;
-  --stage-panel: #0b0e13;
-  --stage-panel-2: #0f141b;
-  --stage-card: #131922;
-  --stage-control: #151b24;
-  --stage-line: #1e2632;
-  --stage-control-line: #2a3442;
-  --stage-text: #e6eaf0;
-  --stage-text-2: #a9b3c1;
-  --stage-label: #8b95a5;
-  --stage-amber: #f5b83d;
-  --stage-amber-soft: #2a2210;
-  --stage-amber-line: #4a3b16;
-  --stage-amber-text: #ffd27a;
-  --stage-red: #ff6b5e;
-  --stage-green: #3dd68c;
-  --stage-ink: #0a0d12;
-  --stage-video-bar: #1b2430;
-  --stage-video: #232d3b;
+  --stage-page: var(--chat-bg, #07090d);
+  --stage-panel: var(--chat-panel, #0b0e13);
+  --stage-panel-2: var(--chat-panel-raised, #0f141b);
+  --stage-card: var(--chat-panel-raised, #131922);
+  --stage-control: var(--chat-panel, #151b24);
+  --stage-line: var(--chat-line, #1e2632);
+  /* A control's outline: a step stronger than a dividing line. */
+  --stage-control-line: color-mix(in srgb, var(--chat-muted, #8b95a5) 45%, var(--chat-line, #1e2632));
+  --stage-text: var(--chat-text, #e6eaf0);
+  /* Secondary text and small labels are both the theme's muted colour: its dimmer one (--chat-dim)
+     is under 4.5:1 in most themes. */
+  --stage-text-2: var(--chat-muted, #a9b3c1);
+  --stage-label: var(--chat-muted, #a9b3c1);
+  /* The accent as text, links and focus rings; as a fill (with the text that goes on it); as the
+     tint behind a selected thing; and as that thing's outline. The tint is light enough that the
+     theme's text and muted text stay 4.5:1 or better on it, so a selected thing keeps the text
+     colour (the accent itself falls under 4.5:1 on its own tint in the light themes). */
+  --stage-accent: var(--chat-palm, #f5b83d);
+  --stage-accent-fill: var(--chat-palm-fill, #f5b83d);
+  --stage-on-accent: var(--chat-on-fill, #0a0d12);
+  --stage-accent-soft: color-mix(in srgb, var(--chat-palm, #f5b83d) 6%, var(--chat-panel-raised, #0f141b));
+  --stage-accent-line: color-mix(in srgb, var(--chat-palm, #f5b83d) 55%, var(--chat-line, #1e2632));
+  --stage-focus: var(--chat-palm, #f5b83d);
+  /* Gains, losses and errors: the theme's own green and red, a quarter of the way to its text
+     colour. On their own they are under 4.5:1 on the raised panels of the light themes. */
+  --stage-positive: color-mix(in srgb, var(--chat-success, #3dd68c) 75%, var(--chat-text, #e6eaf0));
+  --stage-negative: color-mix(in srgb, var(--chat-error, #ff6b5e) 75%, var(--chat-text, #e6eaf0));
+  --stage-shadow: var(--chat-shadow, rgba(0, 0, 0, 0.6));
+  /* LIVE (and "End live video") is the same red in every theme, with the word on it in white: some
+     themes' own error colour is pink. On the dark player it is the lighter --stage-live of .player. */
+  --stage-live: #d13438;
+  --stage-on-live: #fff;
   --stage-radius: 8px;
   --stage-radius-video: 14px;
   --stage-font-mono: var(--font-chat-terminal), "JetBrains Mono", ui-monospace, monospace;
   --stage-middle-width: 360px;
   --stage-chat-width: 340px;
 
-  /* The room chat follows the stage theme through the chat's own tokens. */
-  --chat-bg: var(--stage-panel);
-  --chat-panel: var(--stage-panel);
-  --chat-panel-raised: var(--stage-panel-2);
-  --chat-line: var(--stage-line);
-  --chat-text: var(--stage-text);
-  --chat-muted: var(--stage-text-2);
-  --chat-dim: var(--stage-label);
-  --chat-palm: var(--stage-amber);
-  --chat-palm-fill: var(--stage-amber);
-  --chat-palm-soft: rgba(245, 184, 61, 0.12);
-  --chat-success: var(--stage-green);
-  --chat-error: var(--stage-red);
-  --chat-header: var(--stage-panel-2);
-  --chat-composer: var(--stage-panel);
+  /* The room chat keeps the theme's own tokens; only its sizes are the stage's (a compact column). */
   --chat-grid: transparent;
-  --chat-shadow: transparent;
-  --chat-on-fill: var(--stage-ink);
   --ui-text-body: 13px;
   --ui-text-name: 13px;
   --ui-text-small: 12px;
@@ -60,8 +62,10 @@
   color: var(--stage-text);
 }
 
-/* The room's shell becomes the desk: top bar, then stage | trades and questions | room chat. */
-:global(main[data-stage]) > div:has(> .root) {
+/* The room's shell becomes the desk: top bar, then stage | trades and questions | room chat.
+   [data-theme] is there for weight: the themes style the room's shell too (Terminal's thin edge,
+   Blade Runner's glow), and the desk must win over them. */
+:global(main[data-stage][data-theme]) > div:has(> .root) {
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--stage-middle-width) var(--stage-chat-width);
   grid-template-rows: auto minmax(0, 1fr);
@@ -91,21 +95,21 @@
 .spacer { flex: 1; }
 .srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .label { margin: 0; color: var(--stage-label); font: 400 11px/1.4 var(--chat-font-ui); letter-spacing: 0.08em; text-transform: uppercase; }
-.link { color: var(--stage-amber); font-size: 12px; }
-.link:hover { color: var(--stage-amber-text); }
+.link { color: var(--stage-accent); font-size: 12px; }
+.link:hover { color: var(--stage-text); }
 .root button { font-family: inherit; cursor: pointer; }
-.root :is(button, a, input):focus-visible { outline: 2px solid var(--stage-amber); outline-offset: 2px; }
+.root :is(button, a, input):focus-visible { outline: 2px solid var(--stage-focus); outline-offset: 2px; }
 
 /* Top bar */
 .topBar { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 10px 16px; background: var(--stage-panel-2); color: var(--stage-text); font: 400 13px/1.4 var(--chat-font-ui); }
-.appMark { display: flex; width: 30px; height: 30px; align-items: center; justify-content: center; border-radius: 8px; background: var(--stage-amber); color: var(--stage-ink); font-weight: 700; }
+.appMark { display: flex; width: 30px; height: 30px; align-items: center; justify-content: center; border-radius: 8px; background: var(--stage-accent-fill); color: var(--stage-on-accent); font-weight: 700; }
 .roomName { margin: 0; font: 700 15px/1.3 var(--chat-font-ui); }
 .roomName:focus { outline: none; }
-.liveBadge { padding: 2px 6px; border-radius: 4px; background: var(--stage-red); color: var(--stage-ink); font-size: 10px; font-weight: 700; }
+.liveBadge { padding: 2px 6px; border-radius: 4px; background: var(--stage-live); color: var(--stage-on-live); font-size: 10px; font-weight: 700; }
 .previewTag { padding: 2px 8px; border: 1px solid var(--stage-control-line); border-radius: 4px; color: var(--stage-text-2); font-size: 11px; }
 .barButton { min-height: 44px; padding: 10px 14px; border: 1px solid var(--stage-control-line); border-radius: 8px; background: var(--stage-control); color: var(--stage-text); font-size: 13px; }
 .barButton:hover { border-color: var(--stage-label); }
-.barButton[aria-pressed="true"] { border-color: var(--stage-amber-line); background: var(--stage-amber-soft); color: var(--stage-amber-text); font-weight: 600; }
+.barButton[aria-pressed="true"] { border-color: var(--stage-accent-line); background: var(--stage-accent-soft); color: var(--stage-text); font-weight: 600; }
 
 /* Left: the stage */
 /* #504: everything in the stage column is one width, centred, sized around a 16:9 picture. That
@@ -121,81 +125,99 @@
 /* The video player: reads as a player, apart from the panels around it. Its 6px margin (the glow)
    and 2px border each side come off the shared width: the picture is that width less 16px. */
 .stageColumn > .player { width: calc(var(--stage-width) - 12px); }
-.player { display: flex; flex: none; flex-direction: column; border: 2px solid var(--stage-red); border-radius: var(--stage-radius-video); overflow: hidden; background: #000; box-shadow: 0 0 0 6px rgba(255, 107, 94, 0.12), 0 18px 48px rgba(0, 0, 0, 0.7); margin: 6px; }
+/* #510: the picture and what frames it (the player's border, title bar, control bar and the bars
+   beside the picture) keep one dark look in every theme, so the picture reads well and the controls
+   have contrast over it. The player sets the stage's tokens again for everything inside it. */
+.player {
+  --stage-text: #e6eaf0; --stage-text-2: #a9b3c1; --stage-label: #8b95a5; --stage-control-line: #2a3442;
+  --stage-accent: #f5b83d; --stage-accent-fill: #f5b83d; --stage-on-accent: #0a0d12; --stage-accent-soft: #3a2e12; --stage-focus: #f5b83d;
+  --stage-live: #ff6b5e; --stage-on-live: #0a0d12; --stage-live-soft: #ffb4ac; --stage-live-glow: rgba(255, 107, 94, 0.12);
+  --stage-video-black: #000; --stage-video-bar: #1b2430; --stage-video: #232d3b; --stage-video-note: #c9d1dc; --stage-video-white: #fff; --stage-video-ink: #0a0d12;
+  --stage-video-hover: rgba(255, 255, 255, 0.06); --stage-video-label: rgba(10, 13, 18, 0.72);
+  color: var(--stage-text);
+}
+.player { display: flex; flex: none; flex-direction: column; border: 2px solid var(--stage-live); border-radius: var(--stage-radius-video); overflow: hidden; background: var(--stage-video-black); box-shadow: 0 0 0 6px var(--stage-live-glow), 0 18px 48px var(--stage-shadow); margin: 6px; }
 .playerBar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--stage-video-bar); }
-.liveVideoBadge { display: flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 5px; background: var(--stage-red); color: var(--stage-ink); font-size: 11px; font-weight: 700; }
-.liveVideoBadge i { width: 7px; height: 7px; border-radius: 50%; background: var(--stage-ink); }
-.hostAvatar { display: flex; width: 26px; height: 26px; align-items: center; justify-content: center; border-radius: 50%; background: #3a2e12; color: var(--stage-amber); font-size: 11px; font-weight: 700; }
+.liveVideoBadge { display: flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 5px; background: var(--stage-live); color: var(--stage-on-live); font-size: 11px; font-weight: 700; }
+.liveVideoBadge i { width: 7px; height: 7px; border-radius: 50%; background: var(--stage-on-live); }
+.hostAvatar { display: flex; width: 26px; height: 26px; align-items: center; justify-content: center; border-radius: 50%; background: var(--stage-accent-soft); color: var(--stage-accent); font-size: 11px; font-weight: 700; }
 .hostName { flex: none; font-size: 14px; }
 .playerBar > * { flex: none; }
 .playerBar > .hostTopic { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .playerBar > .spacer { flex: 1 0 0; }
 .videoArea { position: relative; width: 100%; aspect-ratio: 16 / 9; }
-.videoPlaceholder { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: var(--stage-video) repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.035) 0 14px, rgba(255, 255, 255, 0) 14px 28px); color: #c9d1dc; }
+.videoPlaceholder { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: var(--stage-video) repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.035) 0 14px, rgba(255, 255, 255, 0) 14px 28px); color: var(--stage-video-note); }
 .videoTitle { color: var(--stage-text); font-size: 16px; font-weight: 600; }
 .overlayLayer { position: absolute; inset: 0; display: flex; align-items: flex-end; padding: 14px; pointer-events: none; }
 .overlayLayer > * { pointer-events: auto; }
 .playerControls { display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: var(--stage-video-bar); }
 .playerButton { display: flex; min-width: 44px; height: 44px; align-items: center; justify-content: center; border: 0; border-radius: 8px; background: none; color: var(--stage-text); }
-.playerButton:hover { background: rgba(255, 255, 255, 0.06); }
+.playerButton:hover { background: var(--stage-video-hover); }
+/* #510: the Terminal themes draw every pressed button as a block in the theme's colour (a pale one
+   on Paper Terminal). Not on the dark player: Mute and Picture in picture keep their own look. The
+   doubled classes are there for weight, over that rule. */
+.player.player .playerButton.playerButton[aria-pressed="true"] { background: none; box-shadow: none; color: var(--stage-text); }
+.player.player .playerButton.playerButton[aria-pressed="true"]:hover:not(:disabled) { background: var(--stage-video-hover); }
 .playerButton:disabled { opacity: 0.4; cursor: default; }
 .playerButton:disabled:hover { background: none; }
 .playerQuality { padding: 0 10px; color: var(--stage-text-2); font-size: 12px; font-weight: 600; }
 .volume { width: 84px; min-height: 44px; margin: 0 4px; accent-color: var(--stage-text); }
 .volume:disabled { opacity: 0.4; }
 /* #502: the broadcast itself, and what is said while there is no picture. */
-.video { position: absolute; inset: 0; width: 100%; height: 100%; background: #000; object-fit: contain; }
-.videoArea:fullscreen { width: 100%; height: 100%; aspect-ratio: auto; background: #000; }
-.videoAction { min-height: 44px; padding: 0 16px; border: 0; border-radius: 8px; background: var(--stage-amber); color: var(--stage-ink); font-weight: 700; }
-.soundPrompt { position: absolute; top: 14px; left: 50%; z-index: 2; display: flex; min-height: 44px; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 999px; background: #fff; color: #0a0d12; font-size: 14px; font-weight: 700; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); transform: translateX(-50%); }
+.video { position: absolute; inset: 0; width: 100%; height: 100%; background: var(--stage-video-black); object-fit: contain; }
+.videoArea:fullscreen { width: 100%; height: 100%; aspect-ratio: auto; background: var(--stage-video-black); }
+.videoAction { min-height: 44px; padding: 0 16px; border: 0; border-radius: 8px; background: var(--stage-accent-fill); color: var(--stage-on-accent); font-weight: 700; }
+.soundPrompt { position: absolute; top: 14px; left: 50%; z-index: 2; display: flex; min-height: 44px; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--stage-video-white); color: var(--stage-video-ink); font-size: 14px; font-weight: 700; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); transform: translateX(-50%); }
 .liveVideoBadge[data-off] { background: var(--stage-control-line); color: var(--stage-text-2); }
 .liveVideoBadge[data-off] i { background: var(--stage-text-2); }
 .hostTopic small { color: var(--stage-label); font-size: 11px; }
 .scrub[data-off] .scrubFill { background: var(--stage-control-line); }
 .scrub[data-off] .scrubKnob { display: none; }
 /* #502: the admin's "Live video" card (start, stream address and key, end). */
-.broadcast { display: flex; flex: none; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--stage-amber-line); border-radius: var(--stage-radius); background: var(--stage-panel-2); }
+.broadcast { display: flex; flex: none; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--stage-accent-line); border-radius: var(--stage-radius); background: var(--stage-panel-2); }
 .broadcastState { color: var(--stage-text-2); font-size: 12px; }
-.broadcastState[data-live] { color: var(--stage-green); font-weight: 600; }
+.broadcastState[data-live] { color: var(--stage-positive); font-weight: 600; }
 .broadcastRow { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .broadcastRow > p { flex: 1 1 320px; }
 .broadcastField { display: flex; align-items: center; gap: 8px; }
 .broadcastField label { flex: none; width: 110px; color: var(--stage-text-2); font-size: 12px; }
-.broadcastError { margin: 0; color: var(--stage-red); font-size: 12px; }
-.dangerButton { min-height: 44px; padding: 0 16px; border: 0; border-radius: 8px; background: var(--stage-red); color: var(--stage-ink); font-weight: 700; }
+.broadcastError { margin: 0; color: var(--stage-negative); font-size: 12px; }
+.dangerButton { min-height: 44px; padding: 0 16px; border: 0; border-radius: 8px; background: var(--stage-live); color: var(--stage-on-live); font-weight: 700; }
 .root button:disabled { cursor: default; }
-.askButton:disabled, .dangerButton:disabled, .barButton:disabled { opacity: 0.5; }
+/* #510: a button that is switched off loses its fill and takes the muted text colour (4.5:1 or
+   better in every theme), rather than fading, which fell under that on the lighter themes. */
+.askButton:disabled, .dangerButton:disabled, .barButton:disabled, .nowButton:disabled { border-color: transparent; background: transparent; box-shadow: inset 0 0 0 1px var(--stage-control-line); color: var(--stage-text-2); }
 .scrub { position: relative; flex: 1; height: 4px; border-radius: 2px; background: var(--stage-control-line); }
-.scrubFill { position: absolute; inset: 0; border-radius: 2px; background: var(--stage-red); }
-.scrubKnob { position: absolute; top: -4px; right: -5px; width: 12px; height: 12px; border-radius: 50%; background: #fff; }
-.scrubLive { padding: 0 8px; color: #ffb4ac; }
+.scrubFill { position: absolute; inset: 0; border-radius: 2px; background: var(--stage-live); }
+.scrubKnob { position: absolute; top: -4px; right: -5px; width: 12px; height: 12px; border-radius: 50%; background: var(--stage-video-white); }
+.scrubLive { padding: 0 8px; color: var(--stage-live-soft); }
 
 /* Chapters */
 .chapters { display: flex; flex: none; flex-direction: column; gap: 8px; }
 .chapterRow { display: flex; flex-wrap: wrap; gap: 8px; }
 .chapter { display: flex; min-height: 44px; align-items: center; gap: 8px; padding: 11px 12px; border: 1px solid var(--stage-line); border-radius: var(--stage-radius); background: var(--stage-panel-2); color: var(--stage-text); font-size: 13px; }
 .chapter:hover { border-color: var(--stage-control-line); }
-.chapter[aria-pressed="true"] { border-color: var(--stage-amber-line); background: var(--stage-amber-soft); color: var(--stage-amber-text); font-weight: 600; }
+.chapter[aria-pressed="true"] { border-color: var(--stage-accent-line); background: var(--stage-accent-soft); color: var(--stage-text); font-weight: 600; }
 
 /* On screen now */
 .stock { display: flex; flex: none; flex-direction: column; gap: 12px; padding: 14px; border: 1px solid var(--stage-line); border-radius: var(--stage-radius); background: var(--stage-panel-2); }
 .stockHead { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .stockSym { font-size: 18px; font-weight: 600; }
-.marketTag { padding: 2px 6px; border-radius: 4px; background: var(--stage-control-line); font-size: 10px; font-weight: 700; }
+.marketTag { padding: 2px 6px; border-radius: 4px; background: var(--stage-line); font-size: 10px; font-weight: 700; }
 .sampleTag { padding: 2px 6px; border: 1px dashed var(--stage-control-line); border-radius: 4px; color: var(--stage-text-2); font-size: 10px; }
 /* #507: one row of today's stocks; it scrolls sideways rather than wrapping into many lines. */
 .chips { display: flex; gap: 8px; overflow-x: auto; padding: 2px; scrollbar-width: thin; }
-.chip { min-height: 44px; padding: 0 12px; border: 1px solid var(--stage-control-line); border-radius: 8px; background: var(--stage-control); color: #c9d1dc; font-size: 12px; }
+.chip { min-height: 44px; padding: 0 12px; border: 1px solid var(--stage-control-line); border-radius: 8px; background: var(--stage-control); color: var(--stage-text); font-size: 12px; }
 .chip { display: inline-flex; flex: none; align-items: center; gap: 6px; }
 .chip:hover { border-color: var(--stage-label); }
-.chip:disabled { opacity: 0.6; }
-.chipOn { padding: 1px 5px; border-radius: 4px; background: var(--stage-amber); color: var(--stage-ink); font: 700 9px/1.5 var(--chat-font-ui); letter-spacing: 0.06em; text-transform: uppercase; }
-.nowButton { min-height: 44px; padding: 0 14px; border: 1px solid var(--stage-amber-line); border-radius: 8px; background: var(--stage-amber); color: var(--stage-ink); font-size: 13px; font-weight: 700; }
+.chip:disabled { background: transparent; color: var(--stage-text-2); }
+.chipOn { padding: 1px 5px; border-radius: 4px; background: var(--stage-accent-fill); color: var(--stage-on-accent); font: 700 9px/1.5 var(--chat-font-ui); letter-spacing: 0.06em; text-transform: uppercase; }
+.nowButton { min-height: 44px; padding: 0 14px; border: 1px solid var(--stage-accent-line); border-radius: 8px; background: var(--stage-accent-fill); color: var(--stage-on-accent); font-size: 13px; font-weight: 700; }
 .onScreenSet { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 12px; border-top: 1px solid var(--stage-line); }
 .onScreenSet label { color: var(--stage-text-2); font-size: 12px; }
 .onScreenSet input { flex: 0 1 140px; min-width: 0; text-transform: uppercase; }
 .onScreenSet p { flex: 1 1 220px; }
-.chip[aria-pressed="true"] { border-color: var(--stage-amber-line); background: var(--stage-amber-soft); color: var(--stage-amber-text); font-weight: 600; }
+.chip[aria-pressed="true"] { border-color: var(--stage-accent-line); background: var(--stage-accent-soft); color: var(--stage-text); font-weight: 600; }
 .statsScroll { overflow-x: auto; }
 /* One row, in the Gainers Table's order. A column is never narrower than its longest word; the row
    scrolls sideways inside the panel when the stage column is too narrow for all ten. */
@@ -203,8 +225,8 @@
 .stat { display: flex; flex-direction: column; justify-content: space-between; gap: 3px; }
 .stat dt { color: var(--stage-text-2); font-size: 10px; line-height: 1.3; letter-spacing: 0.06em; text-transform: uppercase; }
 .stat dd { margin: 0; color: var(--stage-text); font-weight: 600; white-space: nowrap; }
-.stat dd[data-tone="up"] { color: var(--stage-green); }
-.stat dd[data-tone="down"] { color: var(--stage-red); }
+.stat dd[data-tone="up"] { color: var(--stage-positive); }
+.stat dd[data-tone="down"] { color: var(--stage-negative); }
 .news { display: flex; flex-direction: column; gap: 7px; }
 .newsHead { margin: 0; color: var(--stage-text-2); font: 400 11px/1.4 var(--chat-font-ui); }
 .newsNote { margin: 0; color: var(--stage-label); font-size: 12px; }
@@ -217,21 +239,22 @@
 .middleColumn { display: flex; min-width: 0; min-height: 0; flex-direction: column; gap: 14px; padding: 14px; overflow-y: auto; background: var(--stage-panel); font: 400 13px/1.4 var(--chat-font-ui); color: var(--stage-text); }
 .tape { display: flex; flex: none; flex-direction: column; gap: 1px; margin: 0; padding: 0; border: 1px solid var(--stage-line); border-radius: var(--stage-radius); overflow: hidden; background: var(--stage-line); list-style: none; }
 .tape li { display: flex; align-items: center; gap: 10px; padding: 10px; background: var(--stage-panel-2); }
-.tape li[data-latest] { background: #1a1215; }
-.tradeTag { padding: 0 5px; border-radius: 4px; background: var(--stage-control-line); color: var(--stage-text); font-weight: 600; }
-.tradeTag[data-tag="SHORT"] { background: var(--stage-red); color: var(--stage-ink); }
-.tradeTag[data-tag="COVER"] { background: var(--stage-green); color: var(--stage-ink); }
+.tape li[data-latest] { background: color-mix(in srgb, var(--stage-negative) 5%, var(--stage-panel-2)); }
+.tradeTag { padding: 0 5px; border-radius: 4px; background: var(--stage-line); color: var(--stage-text); font-weight: 600; }
+/* Outlined in the theme's own loss and gain colours (the themes have no text colour for a fill of them). */
+.tradeTag[data-tag="SHORT"] { background: transparent; box-shadow: inset 0 0 0 1px currentColor; color: var(--stage-negative); }
+.tradeTag[data-tag="COVER"] { background: transparent; box-shadow: inset 0 0 0 1px currentColor; color: var(--stage-positive); }
 .tradeNote { flex: 1; text-align: right; }
 .questions { display: flex; flex: none; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .question { display: flex; gap: 10px; padding: 10px; border: 1px solid var(--stage-line); border-radius: var(--stage-radius); background: var(--stage-panel-2); }
-.vote { display: flex; flex: none; width: 44px; height: 46px; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 1px solid var(--stage-control-line); border-radius: 8px; background: var(--stage-control); color: #c9d1dc; font-size: 12px; }
-.vote[aria-pressed="true"] { border-color: var(--stage-amber-line); background: var(--stage-amber-soft); color: var(--stage-amber); }
+.vote { display: flex; flex: none; width: 44px; height: 46px; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 1px solid var(--stage-control-line); border-radius: 8px; background: var(--stage-control); color: var(--stage-text); font-size: 12px; }
+.vote[aria-pressed="true"] { border-color: var(--stage-accent-line); background: var(--stage-accent-soft); color: var(--stage-text); }
 .questionText { display: flex; min-width: 0; flex-direction: column; gap: 3px; overflow-wrap: anywhere; }
 .questionText small { color: var(--stage-label); font-size: 11px; }
 .ask { display: flex; flex: none; gap: 8px; }
 .askInput { flex: 1; min-width: 0; min-height: 44px; padding: 12px; border: 1px solid var(--stage-control-line); border-radius: 8px; background: var(--stage-panel-2); color: var(--stage-text); font: 400 13px/1.4 var(--chat-font-ui); }
 .askInput::placeholder { color: var(--stage-label); }
-.askButton { min-height: 44px; padding: 0 16px; border: 0; border-radius: 8px; background: var(--stage-amber); color: var(--stage-ink); font-weight: 700; }
+.askButton { min-height: 44px; padding: 0 16px; border: 0; border-radius: 8px; background: var(--stage-accent-fill); color: var(--stage-on-accent); font-weight: 700; }
 .sampleNote { margin: 0; color: var(--stage-label); font-size: 11px; }
 
 /* Right: the room's own chat (PublicChat's section), compact. */
@@ -241,7 +264,7 @@
    edge; the ordinary room leaves the same room under its last message), so it never covers one. */
 .root ~ section [role="log"] { padding: 12px 14px 34px; gap: 10px; }
 .root ~ section article[id^="chat-message-"] { display: block; position: relative; padding: 0; border: 0; background: transparent; font-size: 13px; line-height: 1.45; }
-.root ~ section article[id^="chat-message-"] [class*="_body__"] { color: #d5dbe3; font-size: 13px; line-height: 1.45; }
+.root ~ section article[id^="chat-message-"] [class*="_body__"] { color: var(--stage-text); font-size: 13px; line-height: 1.45; }
 .root ~ section article[id^="chat-message-"]::before { display: none; }
 .root ~ section article[id^="chat-message-"] > [class*="_avatar__"] { display: none; }
 .root ~ section article[id^="chat-message-"] > [class*="_messageIdentity__"] { display: inline-flex; float: left; flex-wrap: wrap; align-items: baseline; gap: 6px; margin-right: 6px; }
@@ -260,7 +283,7 @@
 /* Narrower than a laptop: the columns stack and the page scrolls. */
 @media (max-width: 1279px) {
   :global(main[data-stage]):has(.root) { height: auto; min-height: 100dvh; overflow: visible; }
-  :global(main[data-stage]) > div:has(> .root) { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; height: auto; overflow: visible; }
+  :global(main[data-stage][data-theme]) > div:has(> .root) { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; height: auto; overflow: visible; }
   .stageColumn, .middleColumn { overflow: visible; }
   .root ~ section, .root ~ aside { grid-column: 1; grid-row: 4; height: 80dvh; position: relative; }
   :global(main[data-stage]) > div:has(> .root[data-stage-columns="2"]) { grid-template-columns: minmax(0, 1fr); }
@@ -275,16 +298,15 @@
    (52px), centred, with dark bars only where the card's shape differs. The title bar becomes a small
    label over the picture's corner. The stage's own player (above) is not touched by any of this. */
 .fill {
-  --stage-ink: #0a0d12; --stage-text: #e6eaf0; --stage-text-2: #a9b3c1; --stage-label: #8b95a5; --stage-amber: #f5b83d; --stage-red: #ff6b5e;
-  --stage-control-line: #2a3442; --stage-video-bar: #1b2430; --stage-video: #232d3b;
+  /* The colours are the player's own fixed dark set (.player above): a card is all video. */
   --stage-font-mono: var(--font-chat-terminal), "JetBrains Mono", ui-monospace, monospace;
-  position: absolute; inset: 0; display: grid; grid-template-columns: max-content; place-content: center; margin: 0; border: 0; border-radius: 0; box-shadow: none; container-type: size; background: #000; color: var(--stage-text); font: 400 13px/1.4 var(--chat-font-ui);
+  position: absolute; inset: 0; display: grid; grid-template-columns: max-content; place-content: center; margin: 0; border: 0; border-radius: 0; box-shadow: none; container-type: size; background: var(--stage-video-black); color: var(--stage-text); font: 400 13px/1.4 var(--chat-font-ui);
 }
 .fill > .videoArea, .fill > .playerControls { grid-column: 1; width: min(100cqw, calc((100cqh - 52px) * 16 / 9)); }
 .fill > .videoArea { grid-row: 1; }
 .fill > .videoArea:fullscreen { width: 100%; }
 .fill > .playerControls { grid-row: 2; box-sizing: border-box; height: 52px; }
-.fill > .playerBar { grid-area: 1 / 1; z-index: 3; align-self: start; justify-self: start; box-sizing: border-box; max-width: calc(100% - 16px); margin: 8px; padding: 4px 10px 4px 4px; gap: 8px; border-radius: 7px; overflow: hidden; background: rgba(10, 13, 18, 0.72); pointer-events: none; }
+.fill > .playerBar { grid-area: 1 / 1; z-index: 3; align-self: start; justify-self: start; box-sizing: border-box; max-width: calc(100% - 16px); margin: 8px; padding: 4px 10px 4px 4px; gap: 8px; border-radius: 7px; overflow: hidden; background: var(--stage-video-label); pointer-events: none; }
 .fill > .playerBar > .spacer { display: none; }
 .fill .hostName { min-width: 0; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .fill > .playerBar > .hostName { flex: 0 1 auto; }
@@ -295,6 +317,6 @@
 .fill .soundPrompt { top: 50%; white-space: nowrap; transform: translate(-50%, -50%); }
 .fill button { font-family: inherit; cursor: pointer; }
 .fill button:disabled { cursor: default; }
-.fill :is(button, input):focus-visible { outline: 2px solid var(--stage-amber); outline-offset: -2px; }
+.fill :is(button, input):focus-visible { outline: 2px solid var(--stage-focus); outline-offset: -2px; }
 /* A narrow card keeps mute, picture in picture and full screen; the volume slider goes first. */
 @container (max-width: 359px) { .fill .volume { display: none; } }
