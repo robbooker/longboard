@@ -92,7 +92,9 @@ begin
   then raise exception 'queue_chat_push is not the expected definition: read it and add the #537 rooms by hand'; end if;
  if (select md5(pg_get_functiondef(p.oid)) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='search_longboard_chat') is distinct from '04091b94069a1b24cb829157a0a3069c'
   then raise exception 'search_longboard_chat is not the expected definition: read it and add the #537 rooms by hand'; end if;
- if (select md5(pg_get_functiondef(p.oid)) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='search_longboard_chat_semantic') is distinct from 'b3c6439f9d2e8003f7662f1d42dde597'
+ -- This one's argument type prints as "vector" or "extensions.vector" depending on the session's search_path
+ -- (the hosted databases print the first, a plain connection the second), so it is compared with that evened out.
+ if (select md5(replace(pg_get_functiondef(p.oid),'extensions.vector','vector')) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='search_longboard_chat_semantic') is distinct from 'e1fdec0f57fa9130f594a26f9e67cb4a'
   then raise exception 'search_longboard_chat_semantic is not the expected definition: read it and add the #537 rooms by hand'; end if;
  if (select md5(pg_get_functiondef(p.oid)) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='queue_longboard_chat_embedding') is distinct from '8cf7dd52e6bbf5352a1f3ace7663098b'
   then raise exception 'queue_longboard_chat_embedding is not the expected definition: read it and add the #537 rooms by hand'; end if;
