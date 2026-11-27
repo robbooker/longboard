@@ -54,7 +54,7 @@ import {
 import { QUALITY, cardSizeClass, labelBudget, labelTextPx, type SizeClass } from "./scene/quality";
 import type { BalloonScene } from "./scene/scene";
 import { useBalloonsFeed } from "./useBalloonsFeed";
-import { useBalloonsWeather } from "./useBalloonsWeather";
+import { searchWeatherPlaces, useBalloonsWeather, type ChosenPlace } from "./useBalloonsWeather";
 import WeatherIcon from "./WeatherIcon";
 import styles from "./GainerBalloons.module.css";
 
@@ -133,6 +133,8 @@ export default function GainerBalloons({
   const fill = useRef<HTMLDivElement>(null);
   const spark = useRef<HTMLCanvasElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
+  const placeInput = useRef<HTMLInputElement>(null);
+  const changeWeather = useRef<HTMLButtonElement>(null);
 
   // --- On screen? A hidden card, a card scrolled away and a background tab all stop the work.
   const [inView, setInView] = useState(true);
@@ -592,6 +594,45 @@ export default function GainerBalloons({
     if (searchOpen) searchInput.current?.focus();
   }, [searchOpen]);
 
+  // --- "Change weather" (#531, the full app only): type a U.S. city or place, or use the browser's location.
+  const [weatherOpen, setWeatherOpen] = useState(false);
+  const [placeQuery, setPlaceQuery] = useState("");
+  /** What the last finished search found for `text`; `places` is null when it couldn't be made. */
+  const [placeFound, setPlaceFound] = useState<{ text: string; places: ChosenPlace[] | null } | null>(null);
+  const placeText = placeQuery.trim();
+  useEffect(() => {
+    if (!weatherOpen || placeText.length < 2) return;
+    const stop = new AbortController();
+    // A short pause, so a name typed quickly is one search.
+    const timer = setTimeout(() => {
+      void searchWeatherPlaces(placeText, stop.signal).then((places) => {
+        if (!stop.signal.aborted) setPlaceFound({ text: placeText, places });
+      });
+    }, 220);
+    return () => {
+      clearTimeout(timer);
+      stop.abort();
+    };
+  }, [weatherOpen, placeText]);
+  const placeMatches = placeFound && placeFound.text === placeText && placeText.length >= 2 ? placeFound : null;
+  const closeWeather = useCallback(() => {
+    setWeatherOpen(false);
+    setPlaceQuery("");
+    setPlaceFound(null);
+    changeWeather.current?.focus();
+  }, []);
+  const { choosePlace, chooseLocal } = weather;
+  const pickPlace = useCallback(
+    (place: ChosenPlace) => {
+      choosePlace(place);
+      closeWeather();
+    },
+    [choosePlace, closeWeather],
+  );
+  useEffect(() => {
+    if (weatherOpen) placeInput.current?.focus();
+  }, [weatherOpen]);
+
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
     const tag = target.tagName;
@@ -600,7 +641,8 @@ export default function GainerBalloons({
       tag === "SELECT" ||
       (tag === "INPUT" && (target as HTMLInputElement).type !== "range");
     if (event.key === "Escape") {
-      if (searchOpen) setSearchOpen(false);
+      if (weatherOpen) closeWeather();
+      else if (searchOpen) setSearchOpen(false);
       else if (legendOpen) setLegendOpen(false);
       else if (selected) setSelected(null);
       else return;
@@ -868,15 +910,75 @@ export default function GainerBalloons({
               {pastDay && <p className={styles.dayNote}>Most recent trading day</p>}
               <div className={styles.weatherRow}>
                 {weatherButton}
-                {!w?.local && (
-                  <button
-                    type="button"
-                    className={styles.link}
-                    onClick={weather.chooseLocal}
-                    data-balloons-weather-local-button
-                  >
-                    Use my local weather
-                  </button>
+                <button
+                  ref={changeWeather}
+                  type="button"
+                  className={styles.link}
+                  aria-expanded={weatherOpen}
+                  onClick={() => {
+                    if (weatherOpen) return closeWeather();
+                    setSearchOpen(false);
+                    setWeatherOpen(true);
+                  }}
+                  data-balloons-weather-change
+                >
+                  Change weather
+                </button>
+                {weatherOpen && (
+                  <div className={`${styles.searchBox} ${styles.weatherBox}`} data-balloons-weather-panel>
+                    <input
+                      ref={placeInput}
+                      type="text"
+                      inputMode="text"
+                      autoCapitalize="words"
+                      autoComplete="off"
+                      spellCheck={false}
+                      maxLength={60}
+                      placeholder="City or place"
+                      aria-label="City or place"
+                      value={placeQuery}
+                      onChange={(event) => setPlaceQuery(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter") return;
+                        // Focus goes back to the link when a place is picked: the same key press must not tap it.
+                        event.preventDefault();
+                        if (placeMatches?.places?.[0]) pickPlace(placeMatches.places[0]);
+                      }}
+                      data-balloons-place-search
+                    />
+                    {placeMatches && (
+                      <ul aria-label="Places">
+                        {placeMatches.places?.map((place) => (
+                          <li key={place.id}>
+                            <button type="button" onClick={() => pickPlace(place)} data-balloons-place={place.id}>
+                              {place.label ?? place.name}
+                            </button>
+                          </li>
+                        ))}
+                        {placeMatches.places?.length === 0 && (
+                          <li className={styles.noMatch} role="status" data-balloons-place-none>
+                            No U.S. place by that name.
+                          </li>
+                        )}
+                        {!placeMatches.places && (
+                          <li className={styles.noMatch} role="status">
+                            Couldn’t look that up just now. Try again in a moment.
+                          </li>
+                        )}
+                      </ul>
+                    )}
+                    <button
+                      type="button"
+                      className={styles.useLocation}
+                      onClick={() => {
+                        closeWeather();
+                        chooseLocal();
+                      }}
+                      data-balloons-weather-local-button
+                    >
+                      Use my location
+                    </button>
+                  </div>
                 )}
               </div>
               {weather.note && (
@@ -891,7 +993,10 @@ export default function GainerBalloons({
                   type="button"
                   className={styles.pill}
                   aria-expanded={searchOpen}
-                  onClick={() => setSearchOpen((open) => !open)}
+                  onClick={() => {
+                    setWeatherOpen(false);
+                    setSearchOpen((open) => !open);
+                  }}
                   data-balloons-search-button
                 >
                   Find a ticker
@@ -1021,7 +1126,8 @@ export default function GainerBalloons({
                 <li>
                   <strong>Sky</strong>
                   <span>
-                    The time of day follows New York, the market’s clock. The weather is yours, or New York’s.
+                    The time of day follows New York, the market’s clock. The weather is New York’s, or that of a
+                    U.S. city or place you choose with “Change weather”.
                   </span>
                 </li>
               </ul>
