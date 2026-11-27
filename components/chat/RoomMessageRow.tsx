@@ -7,7 +7,7 @@ import dynamic from "next/dynamic";
 import { STAGE_NOTICE_BOT, stageEndedNotice, stageNoticeAuthor } from "@/lib/chatStageNotice";
 import { isStageRoom } from "@/lib/chatStageLive";
 import { stageRecordingVideos } from "@/lib/chatStageRecording";
-import { messageRepliesOff } from "@/lib/publicChat";
+import { CHAT_ROOMS, messageRepliesOff } from "@/lib/publicChat";
 import type { ChatRoom, PublicChatMessage } from "@/lib/publicChat";
 import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
 import { AvatarTile } from "./ChatAvatar";
@@ -133,10 +133,13 @@ const RoomMessageRow = memo(function RoomMessageRow({
     const posted = recordingVideosFromText(room, original.body);
     return posted.length ? posted : stageRecordingVideos(original.bot_slug, original.body);
   }, [room, original.body, original.bot_slug]);
-  const endedNotice = useMemo(
-    () => (isAdmin && original.bot_slug === STAGE_NOTICE_BOT && !original.deleted_at && isStageRoom(room) ? stageEndedNotice(original.body) : null),
-    [isAdmin, room, original.bot_slug, original.body, original.deleted_at],
-  );
+  // #537: only on the room's own notice. A Webinars notice's copy in another room names Webinars,
+  // not this room: its recording is added in Webinars, and the copy follows.
+  const endedNotice = useMemo(() => {
+    if (!isAdmin || original.bot_slug !== STAGE_NOTICE_BOT || original.deleted_at || !isStageRoom(room)) return null;
+    const ended = stageEndedNotice(original.body);
+    return ended && ended.roomName === CHAT_ROOMS.find((known) => known.slug === room)?.label ? ended : null;
+  }, [isAdmin, room, original.bot_slug, original.body, original.deleted_at]);
   const stampInBody = alert && continued && !original.deleted_at && !isPollBody(original.body);
   // #439: a sent message's tags are stored with the person they point to (not yet while it is sending).
   const tagMessageId = message.pending ? undefined : message.id;

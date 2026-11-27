@@ -63,6 +63,9 @@ A read-only room that names the #1 stock of the day. The stock is picked from th
 
 Each post shows the symbol, price, % gain today, volume, country, institutional ownership, the borrow cost at TradeZero, and the levels above the price: missed monthly pivots (older monthly pivots the price hasn't touched since), the current monthly pivot, and the daily 200 SMA, with a small chart of the day so far. Nobody can post or reply here, but you can react. It is open to Booker Stock Club members and to everyone who has the Gainers room.
 
+### Webinars
+The room for live webinars with every member. When a webinar is live, a red LIVE button appears at the top of the room: press it to watch, with the room's chat beside the video. While you watch you can raise your hand. Chat is open: everyone in the room can post, reply and react, before, during and after a webinar. Every other room gets a short notice with a Watch live link when a webinar starts, so you can join from wherever you are; only the notice in Webinars itself reaches your bell and your phone. It is open to all Longboard and ShortScout members and to Booker Stock Club members.
+
 ### LB Review
 Each trading day's gainers, charted. The day's gainers page is posted here in the evening. It is open to all chat members, and members can post and reply.
 
@@ -86,6 +89,9 @@ NEEDS ADMIN: what is posted here. The code only says it holds recordings, that a
 
 ### SS Recordings
 NEEDS ADMIN: what is posted here. The code only says it holds recordings, that admins post, that readers can react but not reply, and that it is for ShortScout mastermind members.
+
+### Booker Stock Club Recordings
+Recordings of the webinars held in Webinars and in Booker Stock Club. In the sidebar it is under Recordings, as Booker Stock Club. Admins post, and readers can react but not reply. It is open to the same people as Webinars.
 
 ### Admins
 A private room only admins can see. FAQ suggestions from members arrive here.
@@ -142,7 +148,7 @@ On a computer, use Search in the sidebar or Search chat at the top of a room. On
 
 Choose where to look (for example LB, Social or Developers) and how: Meaning + words finds related messages as well as matching ones, and Words & phrases looks for what you typed. Choosing a result opens the message in its conversation.
 
-Search covers conversation rooms you can read: LB, Social, SS, Developers, LB Review and Runner Watch. It doesn't cover Gainers, announcements, recordings, What's New? or DMs.
+Search covers conversation rooms you can read: LB, Social, SS, Developers, LB Review, Runner Watch and Webinars. It doesn't cover Gainers, announcements, recordings, What's New? or DMs.
 
 ## Notifications
 

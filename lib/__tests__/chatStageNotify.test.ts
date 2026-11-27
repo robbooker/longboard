@@ -10,6 +10,9 @@
 //    broadcast announces it and closes the stale notice; a brief drop never re-announces;
 //  - the end: the message is rewritten and its alerts are taken back; a short drop changes nothing;
 //  - #524 bells: written in slices; "message there, bells missing" is finished by the next look, once;
+//  - #537 Webinars: its notice is also posted, silently, in every other member room, once; a
+//    reconnect posts nothing new; the end, a return and a later broadcast carry over; no other
+//    room's broadcast is copied anywhere;
 //  - the words: the room message, the bell's reading of it and the phone notification.
 import { describe, expect, it } from "vitest";
 import {
@@ -19,6 +22,8 @@ import {
   STAGE_RECONNECT_MS,
   STAGE_SEEN_GAP_MS,
   stageBroadcastVerdict,
+  stageCopyId,
+  stageCopyRooms,
   stageNoticeId,
   stageNoticeIds,
   stageNoticePush,
@@ -30,7 +35,7 @@ import {
   type StageNoticeStore,
 } from "@/lib/chatStageNotify";
 import { composeStageEndedNotice, composeStageLiveNotice, stageEndedNotice, stageLiveNotice, stageLivePush, stageNoticeAuthor, STAGE_NOTICE_AUTHOR } from "@/lib/chatStageNotice";
-import { isReservedChatName } from "@/lib/publicChat";
+import { CHAT_ROOMS, isReservedChatName } from "@/lib/publicChat";
 import type { ChatRoom } from "@/lib/publicChat";
 
 const MIN = 60_000;
@@ -44,12 +49,22 @@ const RECORDING = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
 const ENDED_RECORDED = `The live video in LB has ended. Watch the recording: ${RECORDING}`;
 const PAGE = 3;
 
-type Row = StageBroadcast & { room: ChatRoom; body: string; cursor: number; bells: Set<string> };
+/** `copies`: #537, the notice's copies in other rooms (room -> the words it shows now). */
+type Row = StageBroadcast & { room: ChatRoom; body: string; cursor: number; bells: Set<string>; copies: Map<ChatRoom, string> };
 
 /** The database as these rules see it. `tick` lets two callers interleave at every step. */
 function fakeStore(members: string[] = ["acct-bob", "acct-cara"]) {
   const rows = new Map<string, Row>();
-  const state = { clock: T0, opens: 0, seenWrites: 0, pages: 0, bellWrites: [] as string[], withdrawn: [] as string[], failPageAt: 0 };
+  const state = {
+    clock: T0, opens: 0, seenWrites: 0, pages: 0, bellWrites: [] as string[], withdrawn: [] as string[], failPageAt: 0,
+    // #537: every copy ever posted ("room:id"), how often copies were asked for, a call to fail, rooms that refuse.
+    copyPosts: [] as string[], copyCalls: 0, failCopyAt: 0, refuses: [] as ChatRoom[],
+  };
+  // As the database does (chat_stage_notice_rewrite): a notice's new words are its copies' too.
+  const rewrite = (row: Row, body: string) => {
+    row.body = body;
+    for (const room of row.copies.keys()) row.copies.set(room, body);
+  };
   const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
   const copy = (row: Row | undefined): StageBroadcast | null => (row ? { ...row } : null);
   const store: StageNoticeStore = {
@@ -71,11 +86,11 @@ function fakeStore(members: string[] = ["acct-bob", "acct-cara"]) {
       for (const row of rows.values())
         if (row.room === room && row.endedAt === null) {
           row.endedAt = Math.max(row.lastLiveAt, row.startedAt);
-          row.body = staleBody;
+          rewrite(row, staleBody);
           row.bells.clear();
           state.withdrawn.push(row.id);
         }
-      rows.set(id, { id, room, body, startedAt: Math.min(startedAt, state.clock), lastLiveAt: state.clock, endedAt: null, recordingUrl: null, recordingSource: null, notifiedAt: null, createdAt: state.clock, cursor: 0, bells: new Set() });
+      rows.set(id, { id, room, body, startedAt: Math.min(startedAt, state.clock), lastLiveAt: state.clock, endedAt: null, recordingUrl: null, recordingSource: null, notifiedAt: null, createdAt: state.clock, cursor: 0, bells: new Set(), copies: new Map() });
       return true;
     },
     seen: async (id, at, gap) => {
@@ -90,7 +105,7 @@ function fakeStore(members: string[] = ["acct-bob", "acct-cara"]) {
       const row = rows.get(id);
       if (!row || row.endedAt !== null) return false;
       row.endedAt = Math.min(Math.max(endedAt, row.startedAt), state.clock);
-      row.body = body;
+      rewrite(row, body);
       row.bells.clear();
       state.withdrawn.push(id);
       return true;
@@ -101,7 +116,7 @@ function fakeStore(members: string[] = ["acct-bob", "acct-cara"]) {
       if (!row || row.endedAt === null) return false;
       row.endedAt = null;
       row.lastLiveAt = state.clock;
-      row.body = body;
+      rewrite(row, body);
       return true;
     },
     notifyPage: async (id) => {
@@ -118,6 +133,18 @@ function fakeStore(members: string[] = ["acct-bob", "acct-cara"]) {
       row.cursor += slice.length;
       if (slice.length < PAGE) row.notifiedAt = state.clock;
       return { done: slice.length < PAGE };
+    },
+    copy: async (id, rooms, body) => {
+      await tick();
+      state.copyCalls++;
+      if (state.failCopyAt && state.copyCalls === state.failCopyAt) throw new Error("stage_notice_copy");
+      const row = rows.get(id);
+      if (!row || row.endedAt !== null) return;
+      for (const room of rooms) {
+        if (room === row.room || row.copies.has(room) || state.refuses.includes(room)) continue;
+        row.copies.set(room, body);
+        state.copyPosts.push(`${room}:${stageCopyId(id, room)}`);
+      }
     },
   };
   const live = (room: ChatRoom, now: number, startedAt?: number | null) => {
@@ -704,5 +731,122 @@ describe("the phone notification (stageNoticePush)", () => {
       expect(stageNoticePush(url, T0), String(url)).toBeNull();
     // Long after the broadcast, the id means nothing.
     expect(stageNoticePush(`/chat?room=main&thread=${id}`, T0 + 8 * 60 * MIN)).toBeNull();
+  });
+});
+
+describe("#537 Webinars: the notice is copied, silently, into every other member room", () => {
+  const W_LIVE = "🔴 Webinars is live now. Watch live: https://chat.example.test/chat?room=webinars&stage=1";
+  const W_ENDED = "The live video in Webinars has ended. The recording will follow.";
+  const others = CHAT_ROOMS.map((room) => room.slug).filter((slug) => !["webinars", "admins", "gainers"].includes(slug));
+
+  it("which rooms: every member room but Webinars itself, Admins and Gainers; no other room has copies", () => {
+    expect(stageCopyRooms("webinars")).toEqual(others);
+    // The read-only rooms are among them: a bot post is allowed there.
+    for (const room of ["club", "lb-announcements", "ss-announcements", "lb-recordings", "ss-recordings", "whats-new"] as ChatRoom[])
+      expect(stageCopyRooms("webinars")).toContain(room);
+    for (const room of CHAT_ROOMS.map((known) => known.slug).filter((slug) => slug !== "webinars")) expect(stageCopyRooms(room)).toEqual([]);
+  });
+  it("a copy's id comes from its notice and its room, so two servers ask for the same one", () => {
+    const notice = stageNoticeId("webinars", 7);
+    expect(stageCopyId(notice, "social")).toBe(stageCopyId(notice, "social"));
+    expect(stageCopyId(notice, "social")).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(new Set([notice, stageCopyId(notice, "social"), stageCopyId(notice, "club"), stageCopyId(stageNoticeId("webinars", 8), "social")]).size).toBe(4);
+  });
+  it("going live in Webinars: the room's notice, one copy per other member room, and one bell per member (from the room's notice only)", async () => {
+    const db = fakeStore();
+    expect(await db.live("webinars", T0, T0 - 2_000)).toBe("announced");
+    const [row] = db.rows.values();
+    expect(row.body).toBe(W_LIVE);
+    expect([...row.copies.keys()]).toEqual(others);
+    expect([...row.copies.values()].every((body) => body === W_LIVE)).toBe(true);
+    // The copy reads as the notice does everywhere: "Watch live" opens the Webinars stage.
+    expect(stageLiveNotice(W_LIVE)).toMatchObject({ room: "webinars", href: "/chat?room=webinars&stage=1", roomName: "Webinars" });
+    // Bells: the room's members once each, written for the notice. Nothing is written for a copy.
+    expect(db.state.bellWrites).toEqual(["acct-bob", "acct-cara"]);
+    expect(db.state.copyPosts).toHaveLength(others.length);
+  });
+  it("a repeated webhook, another server and a reconnect within the window post no second copy", async () => {
+    const db = fakeStore();
+    const [first, second] = await Promise.all([db.live("webinars", T0, T0), db.live("webinars", T0, T0)]);
+    expect([first, second].sort()).toEqual(["already", "announced"]);
+    expect(await db.live("webinars", T0 + 30_000, T0)).toBe("already");
+    expect(await db.end("webinars", T0 + 5 * MIN)).toBe(true);
+    // Back within ten minutes: the same broadcast. The copies say live again; none is posted.
+    expect(await db.live("webinars", T0 + 8 * MIN, T0 + 8 * MIN)).toBe("resumed");
+    const [row] = db.rows.values();
+    expect(db.rows.size).toBe(1);
+    expect(db.state.copyPosts).toHaveLength(others.length);
+    expect(new Set(db.state.copyPosts).size).toBe(others.length);
+    expect([...row.copies.values()].every((body) => body === W_LIVE)).toBe(true);
+    expect(db.state.bellWrites).toEqual(["acct-bob", "acct-cara"]);
+  });
+  it("the end reaches every copy; a later broadcast has its own notice and its own copies", async () => {
+    const db = fakeStore();
+    await db.live("webinars", T0, T0);
+    expect(await db.end("webinars", T0 + HOUR)).toBe(true);
+    const [first] = db.rows.values();
+    expect(first.body).toBe(W_ENDED);
+    expect([...first.copies.values()].every((body) => body === W_ENDED)).toBe(true);
+    expect(await db.live("webinars", T0 + 3 * HOUR, T0 + 3 * HOUR)).toBe("announced");
+    const [, later] = db.rows.values();
+    expect([...later.copies.values()].every((body) => body === W_LIVE)).toBe(true);
+    expect([...first.copies.values()].every((body) => body === W_ENDED)).toBe(true);
+    expect(db.state.copyPosts).toHaveLength(2 * others.length);
+    expect(new Set(db.state.copyPosts).size).toBe(2 * others.length);
+  });
+  it("a missed end: the next broadcast marks the stale notice and its copies ended", async () => {
+    const db = fakeStore();
+    await db.live("webinars", T0, T0);
+    expect(await db.live("webinars", T0 + 5 * HOUR, T0 + 5 * HOUR)).toBe("announced");
+    const [stale, fresh] = db.rows.values();
+    expect([...stale.copies.values()].every((body) => body === W_ENDED)).toBe(true);
+    expect([...fresh.copies.values()].every((body) => body === W_LIVE)).toBe(true);
+  });
+  it("going live in any other room copies nothing anywhere", async () => {
+    const db = fakeStore();
+    for (const room of ["main", "social", "shortscout", "club", "developers"] as ChatRoom[]) expect(await db.live(room, T0, T0)).toBe("announced");
+    expect(db.state.copyCalls).toBe(0);
+    expect(db.state.copyPosts).toEqual([]);
+    expect([...db.rows.values()].every((row) => row.copies.size === 0)).toBe(true);
+  });
+  it("a room that refuses the post (paused) goes without; the others and the bells are not held up", async () => {
+    const db = fakeStore();
+    db.state.refuses = ["social"];
+    expect(await db.live("webinars", T0, T0)).toBe("announced");
+    const [row] = db.rows.values();
+    expect([...row.copies.keys()]).toEqual(others.filter((room) => room !== "social"));
+    expect(row.notifiedAt).toBe(T0);
+  });
+  it("the copies failing does not stop the bells, and is tried once more by the same call", async () => {
+    const db = fakeStore();
+    db.state.failCopyAt = 1;
+    expect(await db.live("webinars", T0, T0)).toBe("announced");
+    const [row] = db.rows.values();
+    expect(db.state.bellWrites).toEqual(["acct-bob", "acct-cara"]);
+    expect(db.state.copyCalls).toBe(2);
+    expect([...row.copies.keys()]).toEqual(others);
+  });
+  it("cut off after the notice was posted: the next look posts the missing copies and finishes the bells, once", async () => {
+    const db = fakeStore(Array.from({ length: 10 }, (_, i) => `acct-${i + 1}`));
+    db.state.failCopyAt = 1; // the copies fail...
+    db.state.failPageAt = 2; // ...and the announcing call dies on its second slice of bells
+    await expect(db.live("webinars", T0, T0)).rejects.toThrow("stage_notice_notify");
+    const [row] = db.rows.values();
+    expect(row.copies.size).toBe(0);
+    expect(await db.live("webinars", T0 + 5_000, T0)).toBe("already");
+    expect(row.copies.size).toBe(0);
+    expect(await db.live("webinars", T0 + STAGE_BELLS_RETRY_MS, T0)).toBe("already");
+    expect([...row.copies.keys()]).toEqual(others);
+    expect(db.state.bellWrites).toHaveLength(10);
+    const calls = db.state.copyCalls;
+    expect(await db.live("webinars", T0 + 5 * MIN, T0)).toBe("already");
+    expect(db.state.copyCalls).toBe(calls);
+    expect(db.state.copyPosts).toHaveLength(others.length);
+  });
+  it("the ended words (and a recording's link) read the same in every room", () => {
+    expect(composeStageEndedNotice("Webinars")).toBe(W_ENDED);
+    expect(stageEndedNotice(composeStageEndedNotice("Webinars", RECORDING))).toEqual({ roomName: "Webinars", recordingUrl: RECORDING });
+    expect(stageNoticeAuthor("longboard", W_LIVE)).toBe(STAGE_NOTICE_AUTHOR);
+    expect(stageLivePush("Webinars", "webinars")).toEqual({ title: "Webinars is live now", body: "Live video has started. Tap to watch.", url: "/chat?room=webinars&stage=1" });
   });
 });

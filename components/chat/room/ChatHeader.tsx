@@ -175,6 +175,8 @@ function ChatHeader({
               ? "Runner Watch"
             : room === "club"
               ? "Booker Stock Club"
+            : room === "webinars"
+              ? "Webinars"
             : room === "ai-insights"
               ? "AI Insights"
             : room === "admins"
@@ -709,6 +711,10 @@ function ChatHeader({
                           ? "Runner Watch room"
                         : room === "club"
                           ? "Booker Stock Club room"
+                        : room === "webinars"
+                          ? "Webinars room"
+                        : room === "club-recordings"
+                          ? "Booker Stock Club recordings"
                         : room === "ai-insights"
                           ? "AI Insights room"
                         : room === "admins"
@@ -728,6 +734,10 @@ function ChatHeader({
                           ? "Runner Watch room"
                         : room === "club"
                           ? "Booker Stock Club room"
+                        : room === "webinars"
+                          ? "Webinars room"
+                        : room === "club-recordings"
+                          ? "Booker Stock Club recordings"
                         : room === "ai-insights"
                           ? "AI Insights room"
                         : room === "admins"
@@ -735,9 +745,9 @@ function ChatHeader({
                           : "Longboard Chat"
                 }
               >
-                {gainers ? "G" : shortScoutRoom ? "SS" : room === "developers" ? "D" : room === "lb-review" ? "R" : room === "runner-watch" ? "W" : room === "club" ? "BSC" : room === "ai-insights" ? "AI" : room === "admins" ? "A" : "LB"}
+                {gainers ? "G" : shortScoutRoom ? "SS" : room === "developers" ? "D" : room === "lb-review" ? "R" : room === "runner-watch" ? "W" : room === "club" || room === "club-recordings" ? "BSC" : room === "webinars" ? "WEB" : room === "ai-insights" ? "AI" : room === "admins" ? "A" : "LB"}
                 <span aria-hidden="true">
-                  {gainers ? "↗" : shortScoutRoom ? "↘" : room === "developers" ? "💻" : room === "lb-review" ? "📈" : room === "runner-watch" ? "🔎" : room === "club" ? "★" : room === "ai-insights" ? "✦" : room === "admins" ? "🔒" : "🌴"}
+                  {gainers ? "↗" : shortScoutRoom ? "↘" : room === "developers" ? "💻" : room === "lb-review" ? "📈" : room === "runner-watch" ? "🔎" : room === "club" || room === "club-recordings" ? "★" : room === "webinars" ? "🎥" : room === "ai-insights" ? "✦" : room === "admins" ? "🔒" : "🌴"}
                 </span>
               </span>
             )}

@@ -11,7 +11,7 @@
 // one open broadcast at a time, and the message, its row and the closing of a stale one are written
 // together (lib/chatStageNotifyServer.ts, supabase/migrations/20261126120000_chat_stage_broadcasts.sql).
 // Server only (lib/chatLongboardBot.ts hashes with node:crypto); the wording is lib/chatStageNotice.ts.
-import { uuidFrom } from "./chatLongboardBot";
+import { ANNOUNCE_ROOMS, uuidFrom } from "./chatLongboardBot";
 import { CHAT_ROOMS, parseChatRoom, type ChatRoom } from "./publicChat";
 import { composeStageEndedNotice, composeStageLiveNotice, stageLivePush } from "./chatStageNotice";
 import { stageStateOf, type StageIngress } from "./chatStageVideo";
@@ -42,6 +42,25 @@ export function stageNoticeIds(room: ChatRoom, now: number) {
   const last = slotOf(now) + 1;
   return Array.from({ length: STAGE_NOTICE_LOOKBACK_SLOTS + 2 }, (_, back) => stageNoticeId(room, last - back));
 }
+
+/**
+ * #537: the rooms a room's "live now" notice is copied into. Only the Webinars room has any: a
+ * webinar there is for everyone, so every other member room gets a short copy of the notice (the
+ * same words and the same "Watch live" link). Every other room's broadcast is told in that room
+ * alone, as before.
+ * The copies go wherever Longboard Bot may post (ANNOUNCE_ROOMS: every room except Gainers, where
+ * every post is read as a stock alert and the database refuses anything else), except the private
+ * Admins room and Webinars itself. That includes the read-only rooms (Booker Stock Club, the
+ * announcement and recording rooms, What's New), where a bot post is allowed.
+ * A copy is silent: no bell entry and no phone notification. Each member is told once, by the
+ * Webinars room's own notice. A member only ever sees the copies in rooms they can open.
+ */
+export const STAGE_COPY_FROM: ChatRoom = "webinars";
+export const stageCopyRooms = (room: ChatRoom): ChatRoom[] =>
+  room === STAGE_COPY_FROM ? ANNOUNCE_ROOMS.filter((slug) => slug !== "admins" && slug !== STAGE_COPY_FROM) : [];
+/** #537: a copy's message id, worked out from its notice and its room, so two servers ask for the same one. */
+export const stageCopyId = (noticeId: string, room: ChatRoom) => uuidFrom(`stage-live-copy:${noticeId}:${room}`);
+
 export const stageRoomName = (room: ChatRoom) => CHAT_ROOMS.find((known) => known.slug === room)?.label ?? room;
 const roomName = stageRoomName;
 
@@ -79,6 +98,28 @@ export interface StageNoticeStore {
   reopen(room: ChatRoom, id: string, body: string): Promise<boolean>;
   /** Bell entries for the next slice of the room's members (the database queues their phone notifications from them). */
   notifyPage(id: string, room: ChatRoom): Promise<{ done: boolean }>;
+  /**
+   * #537: the notice's silent copies, one per room of `rooms` that does not have this broadcast's
+   * copy yet (asking again posts nothing new). Nothing is posted once the broadcast is over. A room
+   * that refuses goes without. When the notice's words change later (ended, back, a recording),
+   * the database changes its copies with it.
+   */
+  copy(id: string, rooms: ChatRoom[], body: string): Promise<void>;
+}
+
+/**
+ * #537: posts the copies of a room's notice (only Webinars has any). Never throws: the room's own
+ * notice and its bell entries do not wait on the copies. false: it failed and is worth another try.
+ */
+export async function writeStageCopies(store: Pick<StageNoticeStore, "copy">, id: string, room: ChatRoom, body: string): Promise<boolean> {
+  const rooms = stageCopyRooms(room);
+  if (!rooms.length) return true;
+  try {
+    await store.copy(id, rooms, body);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -123,7 +164,8 @@ export type StageLiveResult = "announced" | "resumed" | "already";
  *    bell entries an earlier call did not finish are finished;
  *  - it ended under 10 minutes before: the same broadcast is back; its message says live again and
  *    nobody is notified;
- *  - otherwise a new notice, with the id of the slot the broadcast began in. Every server that
+ *  - otherwise a new notice, with the id of the slot the broadcast began in (#537: and, for the
+ *    Webinars room, its silent copies in every other member room, once, by the same call). Every server that
  *    sees this broadcast works out the same id, and only the call that created it writes the bells.
  *    An earlier notice still saying "live" is marked ended in the same step.
  */
@@ -143,7 +185,11 @@ export async function tellStageLive(
     // At most once a minute, and nothing is sent to the database in between.
     if (now - known.lastLiveAt >= STAGE_SEEN_GAP_MS) await store.seen(known.id, now, STAGE_SEEN_GAP_MS);
     // The message is there and its bell entries are not all written: the call that posted it was cut off.
-    if (known.notifiedAt === null && now - known.createdAt >= STAGE_BELLS_RETRY_MS) await writeStageBells(store, known.id, room);
+    // #537: the copies are posted before the bells, so unfinished bells may mean unposted copies too.
+    if (known.notifiedAt === null && now - known.createdAt >= STAGE_BELLS_RETRY_MS) {
+      await writeStageCopies(store, known.id, room, body);
+      await writeStageBells(store, known.id, room);
+    }
     return "already";
   };
   const last = await store.latest(room);
@@ -156,7 +202,11 @@ export async function tellStageLive(
     const id = stageNoticeId(room, slot);
     if (id === last?.id) continue;
     if (await store.open(id, room, body, startedAt ?? now, composeStageEndedNotice(roomName(room)))) {
+      // #537: a Webinars broadcast is also told in every other member room, silently, and first:
+      // the copies are a handful of posts, the bells one entry per member.
+      const copied = await writeStageCopies(store, id, room, body);
       await writeStageBells(store, id, room);
+      if (!copied) await writeStageCopies(store, id, room, body);
       return "announced";
     }
     // Already there: another server told the room a moment ago, or the slot holds an earlier notice.

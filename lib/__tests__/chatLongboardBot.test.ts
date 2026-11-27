@@ -61,7 +61,7 @@ beforeEach(() => {
 describe("what all covers", () => {
   it("is every room except Gainers, in room order", () => {
     expect(ANNOUNCE_ROOMS).toEqual(CHAT_ROOMS.map((room) => room.slug).filter((slug) => slug !== "gainers"));
-    expect(ANNOUNCE_ROOMS).toHaveLength(14);
+    expect(ANNOUNCE_ROOMS).toHaveLength(16);
   });
 });
 

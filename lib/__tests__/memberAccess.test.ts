@@ -49,7 +49,7 @@ const base: ChatEntitlements = { longboard: false, shortscout: false, shortscout
 describe("rooms", () => {
   it("a 'gainers' entitlement opens Gainers and (#386) the Booker Stock Club room, nothing else; it stays read-only", () => {
     const access = { ...base, member: ["gainers", "reader", "club-room"] };
-    expect(allowedChatRooms(access)).toEqual(["gainers", "club"]);
+    expect(allowedChatRooms(access)).toEqual(["gainers", "club", "webinars", "club-recordings"]);
     expect(canWriteChatRoom(access, "gainers")).toBe(false);
     expect(allowedChatRooms({ ...base, member: ["reader"] })).toEqual([]);
     expect(allowedChatRooms(base)).toEqual([]);
@@ -84,7 +84,7 @@ describe("sign-in", () => {
       sessionKey: expect.any(String),
     });
     if (!auth.ok) throw new Error("expected ok");
-    expect(allowedChatRooms(auth.access)).toEqual(["gainers", "club"]);
+    expect(allowedChatRooms(auth.access)).toEqual(["gainers", "club", "webinars", "club-recordings"]);
     expect(accessHasEntitlement(auth.access, "reader")).toBe(true);
     expect(accessHasEntitlement(auth.access, "admin")).toBe(false);
   });

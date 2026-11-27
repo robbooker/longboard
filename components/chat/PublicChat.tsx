@@ -57,7 +57,7 @@ import { jumpToLatestState } from "@/lib/chatJumpToLatest";
 import { flashChatMessage } from "@/lib/chatJumpHighlight";
 import { useChatRefreshGuard } from "./hooks/useChatRefreshGuard";
 import { clearChatDrafts } from "@/lib/chatRefreshDrafts";
-import { isAnnouncementRoom, isWhatsNewRoom } from "@/lib/publicChat";
+import { isAnnouncementRoom, isRecordingRoom, isWhatsNewRoom } from "@/lib/publicChat";
 import {
   CHAT_PHONE_QUERY,
   chatPhoneDeepLink,
@@ -378,7 +378,7 @@ function PublicChatContent({
     openChatPage,
   } = session;
   const updates = useChatUpdates()!;
-  const recordings = room === "lb-recordings" || room === "ss-recordings";
+  const recordings = isRecordingRoom(room);
   const whatsNew = isWhatsNewRoom(room);
   // Recordings and What's New (#302) have no replies or conversations.
   const noReplies = recordings || whatsNew;
@@ -2370,6 +2370,8 @@ function PublicChatContent({
                 ? "Risk checks on small-cap runners"
               : room === "club"
                 ? "The #1 stock of the day · Read-only"
+              : room === "webinars"
+                ? "Live webinars for all members"
               : room === "ai-insights"
                 ? "What the AI learned from SS · Replies only"
               : room === "admins"
@@ -2391,6 +2393,8 @@ function PublicChatContent({
               ? "Runner Watch"
             : room === "club"
               ? "Booker Stock Club"
+            : room === "webinars"
+              ? "Webinars"
             : room === "ai-insights"
               ? "AI Insights"
             : room === "admins"

@@ -30,11 +30,13 @@ const labels = {
   gainers: "Gainers",
   "lb-recordings": "LB Recordings",
   "ss-recordings": "SS Recordings",
+  "club-recordings": "Booker Stock Club Recordings",
   "whats-new": "What's New?",
   developers: "Developers",
   "lb-review": "LB Review",
   "runner-watch": "Runner Watch",
   club: "Booker Stock Club",
+  webinars: "Webinars",
   "ai-insights": "AI Insights",
   admins: "Admins",
 };

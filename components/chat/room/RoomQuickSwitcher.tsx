@@ -45,7 +45,9 @@ export default function RoomQuickSwitcher({
                   ? "Gainers"
                   : option.slug === "whats-new" || option.slug === "club" || option.slug === "runner-watch" || option.slug === "ai-insights"
                     ? option.label
-                    : option.label.split(" ")[0],
+                    : option.slug === "club-recordings"
+                      ? "Booker Stock Club"
+                      : option.label.split(" ")[0],
             hint: option.slug.endsWith("-announcements")
               ? "Announcements"
               : option.slug.endsWith("-recordings")

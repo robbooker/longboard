@@ -2,11 +2,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { after } from "next/server";
 import { createChatAdminClient } from "./chatAdmin";
-import { publishRoomEvent } from "./chatRealtimePublish";
 import { composeStageEndedNotice } from "./chatStageNotice";
 import { stageRoomName } from "./chatStageNotify";
-import { latestStageBroadcast } from "./chatStageNotifyServer";
-import { stageRecordingFits, stageRecordingFromPost } from "./chatStageRecording";
+import { latestStageBroadcast, stageNoticeChanged } from "./chatStageNotifyServer";
+import { stageRecordingFits, stageRecordingFromPost, stageRecordingRooms } from "./chatStageRecording";
 import type { ChatRoom } from "./publicChat";
 
 /**
@@ -30,7 +29,8 @@ export async function setStageRecording(
     p_only_if_empty: by.onlyIfEmpty === true,
   });
   if (error) throw new Error("stage_recording_failed");
-  if (data === true) await publishRoomEvent(room, { kind: "changed", topics: ["history"] });
+  // #537: the database rewrote the notice's copies in other rooms too; those rooms reload as well.
+  if (data === true) await stageNoticeChanged(room);
   return data === true;
 }
 
@@ -38,9 +38,15 @@ export async function setStageRecording(
 export async function attachStageRecordingFromPost(db: SupabaseClient, postRoom: ChatRoom, body: string, postedAt: number): Promise<boolean> {
   const found = stageRecordingFromPost(postRoom, body);
   if (!found) return false;
-  const last = await latestStageBroadcast(db, found.room);
-  if (!last || !stageRecordingFits(last, postedAt)) return false;
-  return setStageRecording(db, found.room, last.id, found.url, { source: "post", onlyIfEmpty: true });
+  // #537: a recordings room can hold more than one room's recordings (Booker Stock Club's holds
+  // Webinars' and the club's): the link goes onto the last broadcast that fits, the latest to start.
+  let pick: { room: ChatRoom; id: string; startedAt: number } | null = null;
+  for (const room of stageRecordingRooms(postRoom)) {
+    const last = await latestStageBroadcast(db, room);
+    if (last && stageRecordingFits(last, postedAt) && (!pick || last.startedAt > pick.startedAt)) pick = { room, id: last.id, startedAt: last.startedAt };
+  }
+  if (!pick) return false;
+  return setStageRecording(db, pick.room, pick.id, found.url, { source: "post", onlyIfEmpty: true });
 }
 
 /**
