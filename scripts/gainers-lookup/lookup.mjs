@@ -2,19 +2,29 @@
 // #371 Gainers Table lookup. Runs on Rob's computer as a systemd user service (see README.md).
 //
 // Every ~20 seconds it asks the chat which of today's gainers still need facts
-// (GET /api/chat/gainers/facts), then, one at a time, shows that company's DilutionTracker page in
-// the ONE DilutionTracker tab of the dedicated Chromium Rob keeps open and signed in (Chrome DevTools
-// Protocol at http://127.0.0.1:9333; dt-tab.mjs), reads the country, cash left and institutional
-// ownership and posts the result (POST /api/chat/gainers/facts). #472: the tab stays open and is reused
-// for every stock; this program never opens a tab per stock, never closes one, and never starts or
-// closes the browser. If the browser isn't answering it logs that once and checks every 2 minutes.
+// (GET /api/chat/gainers/facts) and, one at a time, looks up the country, cash left, institutional
+// ownership and float and posts the result (POST /api/chat/gainers/facts).
+//
+// #534: the facts come from the DilutionTracker API first (dt-api.mjs: four reads per ticker with the
+// key in ~/.config/longboard/dilutiontracker.key, never printed). That needs no browser, so facts keep
+// arriving when the browser is down, and it doesn't count against the page limits below. The company
+// page is the fallback for facts: when there is no key file, the ticker isn't one the API takes
+// ("BRK.B"), or the API could not answer (a refused key: no API for 30 minutes; 429, 5xx, network
+// trouble or a timeout: none for 3 minutes). The News tab (#387) is always read on the page.
+//
+// The page: the company's DilutionTracker page is shown in the ONE DilutionTracker tab of the dedicated
+// Chromium Rob keeps open and signed in (Chrome DevTools Protocol at http://127.0.0.1:9333; dt-tab.mjs).
+// #472: the tab stays open and is reused for every stock; this program never opens a tab per stock,
+// never closes one, and never starts or closes the browser. If the browser isn't answering it logs that
+// once and checks every 2 minutes.
 //
 // #472: no catching up. The tickers already on today's list when the program starts count as done
 // and are never looked up; only tickers that show up after it started are, once each per day. A failed
 // lookup is tried again after 5, 10 and 20 minutes, then left until tomorrow.
 //
 // Limits: one page at a time, at least 3 seconds between pages, at most 60 pages an hour, never the
-// same ticker twice within 5 minutes. It only ever opens dilutiontracker.com/app/search/<TICKER>
+// same ticker twice within 5 minutes; on the API one ticker at a time, half a second apart, and never
+// the same ticker twice within 5 minutes. It only ever opens dilutiontracker.com/app/search/<TICKER>
 // and clicks nothing but that page's own News tab (#387), so it can't sign Rob out. Node 22+, no packages. The token is never printed.
 //
 // #373: beside that, a second loop checks what it costs to borrow each of today's gainers at
@@ -45,6 +55,7 @@ import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "no
 import { homedir } from "node:os";
 import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
+import { createDtApi } from "./dt-api.mjs";
 import { BrowserDown, createDtTab } from "./dt-tab.mjs";
 import { createIbReader, ibPosts, ibRowsFor, ibUnsent } from "./ib.mjs";
 import { DT_NEWS_EXPRESSION, dtNewsSettled, factsPayload, newsPayload, parseDilutionTracker, parseDtNews } from "./parse.mjs";
@@ -55,6 +66,9 @@ const HOME = homedir();
 const CHAT_URL = (process.env.GAINERS_LOOKUP_CHAT_URL || "https://chat.robbooker.com").replace(/\/$/, "");
 const CDP_URL = (process.env.GAINERS_LOOKUP_CDP_URL || "http://127.0.0.1:9333").replace(/\/$/, "");
 const TOKEN_FILE = process.env.GAINERS_LOOKUP_TOKEN_FILE || `${HOME}/.config/longboard/gainers-lookup/ingest.token`;
+// #534: the DilutionTracker API key (one line, mode 600). Never printed.
+const DT_KEY_FILE = process.env.GAINERS_LOOKUP_DT_KEY_FILE || `${HOME}/.config/longboard/dilutiontracker.key`;
+const API_GAP_MS = 500; // between two tickers on the API
 const POLL_MS = 20_000;
 const QUIET_POLL_MS = 300_000; // nights and weekends: no alerts come then
 export const BROWSER_WAIT_MS = 120_000; // #472: the lookup browser isn't answering: check again this often
@@ -358,6 +372,28 @@ function readToken() {
   return token;
 }
 
+/**
+ * #534: the DilutionTracker API key from `file`, read once at start: { key } or { problem } (a line for
+ * the log; the key itself is never in it). No file, an empty one or one others can read: no key.
+ */
+export function readDtKey(file = DT_KEY_FILE) {
+  const none = "no DilutionTracker API key; using the browser tab for facts";
+  let info;
+  try {
+    info = statSync(file);
+  } catch {
+    return { problem: none };
+  }
+  if (info.mode & 0o077) return { problem: `the DilutionTracker API key file must be private (chmod 600): ${file}; using the browser tab for facts` };
+  let key = "";
+  try {
+    key = readFileSync(file, "utf8").trim();
+  } catch {
+    return { problem: none };
+  }
+  return key && !/\s/.test(key) ? { key } : { problem: none };
+}
+
 async function chat(token, method, body) {
   // #466: this lookup reads the float, so it asks for tickers whose float is due too.
   const response = await fetch(`${CHAT_URL}/api/chat/gainers/facts${method === "GET" ? "?float=1" : ""}`, {
@@ -421,10 +457,11 @@ export async function readPage(tab, ticker, { facts = true, news = false } = {},
   return { parsed, news: { ok: false, items: [] } };
 }
 
-const describe = (p) =>
-  p.state === "not_found"
+const describe = (p, source = "") =>
+  (source ? `(${source}) ` : "") +
+  (p.state === "not_found"
     ? "not on DilutionTracker"
-    : `country ${p.country ?? "-"}, cash ${p.cashFlowPositive ? "flow positive" : (p.cashUsd ?? "-")}, months ${p.cashMonthsLeft ?? "-"}, inst ${p.instOwnPct ?? "-"}%, float ${p.floatShares ?? "-"}`;
+    : `country ${p.country ?? "-"}, cash ${p.cashFlowPositive ? "flow positive" : (p.cashUsd ?? "-")}, months ${p.cashMonthsLeft ?? "-"}, inst ${p.instOwnPct ?? "-"}%, float ${p.floatShares ?? "-"}`);
 
 const describeBorrow = (b) =>
   b.status === "etb"
@@ -524,15 +561,25 @@ export function tickersOf(list) {
  *   BROWSER_WAIT_MS. Tickers aren't charged a try for that.
  * - One page at a time (`pacer`), never the same ticker twice within 5 minutes, failed tries again after
  *   5, 10, 20 minutes, then left until tomorrow.
- * @param {{ tab: ReturnType<typeof createDtTab>, post: (body: Record<string, any>) => Promise<any>, say?: (...parts: any[]) => void, pacer?: ReturnType<typeof createPacer>, wait?: (ms: number) => Promise<unknown>, now?: () => number, isStopping?: () => boolean, timing?: { pollMs?: number, newsPollMs?: number, pageTimeoutMs?: number, cashWaitMs?: number, newsWaitMs?: number } }} options
+ * - #534: with `api` (dt-api.mjs), a ticker's facts are asked of the DilutionTracker API first, before
+ *   and without the browser: an answer (found or not found) is posted and the ticker's facts are done
+ *   for the day. No page is loaded for it, so neither the pacer nor the 5-minute page gap applies. The
+ *   page is then loaded only for what is still due: news, and the facts the API couldn't give (it could
+ *   not answer, is paused after a failure, or doesn't take the ticker). With the browser down the round
+ *   still returns { browserDown: true } but with `api: true`: the caller keeps its normal pace and the
+ *   browser is tried again only every BROWSER_WAIT_MS.
+ * @param {{ tab: ReturnType<typeof createDtTab>, api?: ReturnType<typeof createDtApi> | null, apiGapMs?: number, post: (body: Record<string, any>) => Promise<any>, say?: (...parts: any[]) => void, pacer?: ReturnType<typeof createPacer>, wait?: (ms: number) => Promise<unknown>, now?: () => number, isStopping?: () => boolean, timing?: { pollMs?: number, newsPollMs?: number, pageTimeoutMs?: number, cashWaitMs?: number, newsWaitMs?: number } }} options
  */
-export function createLookup({ tab, post, say = log, pacer = createPacer(), wait = sleep, now = Date.now, isStopping = () => false, timing } = {}) {
+export function createLookup({ tab, post, api = null, apiGapMs = API_GAP_MS, say = log, pacer = createPacer(), wait = sleep, now = Date.now, isStopping = () => false, timing } = {}) {
   const facts = createDaySchedule();
   const news = createNewsSchedule();
   const pages = createBorrowSchedule({ gap: BORROW_MIN_GAP_MS }); // each ticker's page at most once per 5 minutes
   let started = false;
   let down = false;
   let lastTabProblem = "";
+  const asked = createBorrowSchedule({ gap: BORROW_MIN_GAP_MS }); // #534: each ticker on the API at most once per 5 minutes
+  let tabNextTry = 0; // #534: with the API on, the browser is tried again only this often while it is down
+  const usesApi = !!api;
   const note = (schedule, ticker, what, why) => {
     const count = schedule.failed(ticker, now());
     const last = schedule.gaveUp(ticker, now());
@@ -542,6 +589,31 @@ export function createLookup({ tab, post, say = log, pacer = createPacer(), wait
     if (!down) say(`${tab.downMessage}; checking again every ${BROWSER_WAIT_MS / 60_000} minutes`);
     down = true;
     return { browserDown: true, looked: 0 };
+  };
+  /** #534: the facts the API can give now, one ticker at a time. Returns how many it answered. */
+  const askApi = async (needs) => {
+    let answered = 0,
+      calls = 0;
+    for (const ticker of needs) {
+      if (isStopping() || !api.available(now())) break;
+      if (!api.fits(ticker) || !facts.ready(ticker, now()) || !asked.ready(ticker, now())) continue;
+      if (calls++) await wait(apiGapMs);
+      asked.started(ticker, now());
+      const result = await api.facts(ticker);
+      if (!result.ok) {
+        say(`${ticker}: (API) no answer: ${result.reason}; reading its page in the browser tab instead`);
+        continue;
+      }
+      answered++;
+      try {
+        await post(factsPayload(ticker, result.parsed));
+        facts.succeeded(ticker, now());
+        say(`${ticker}: ${describe(result.parsed, "API")}`);
+      } catch (error) {
+        note(facts, ticker, "", `lookup failed: ${error.message}`);
+      }
+    }
+    return answered;
   };
 
   return {
@@ -556,20 +628,27 @@ export function createLookup({ tab, post, say = log, pacer = createPacer(), wait
         say(`${there.size} tickers already on today's list: not looked up (only tickers that show up from now on are)`);
         return { browserDown: false, looked: 0, skipped: there.size };
       }
-      // One page load per ticker for whatever it needs: its facts, today's news read, or both.
+      // #534: facts from the API first (no browser, no page).
+      const byApi = usesApi ? await askApi(needs) : 0;
+      const tried = usesApi ? { api: true, byApi } : {};
+      // One page load per ticker for whatever it still needs: its facts, today's news read, or both.
       const t = now();
       const work = new Map();
       for (const ticker of needs) if (facts.ready(ticker, t) && pages.ready(ticker, t)) work.set(ticker, { facts: true, news: false });
       for (const ticker of newsList) if (news.ready(ticker, t) && pages.ready(ticker, t)) work.set(ticker, { facts: work.has(ticker), news: true });
-      if (!work.size) return { browserDown: false, looked: 0 };
+      if (!work.size) return { browserDown: false, looked: 0, ...tried };
+      // With the API on the caller doesn't wait out a browser that is down, so the wait is kept here.
+      if (usesApi && t < tabNextTry) return { browserDown: true, looked: 0, ...tried };
       try {
         await tab.ready();
       } catch (error) {
-        if (error instanceof BrowserDown) return browserDown();
+        tabNextTry = now() + BROWSER_WAIT_MS;
+        if (error instanceof BrowserDown) return { ...browserDown(), ...tried };
         if (error.message !== lastTabProblem) say(`DilutionTracker tab: ${error.message}; checking again every ${BROWSER_WAIT_MS / 60_000} minutes`);
         lastTabProblem = error.message;
-        return { browserDown: true, looked: 0 };
+        return { browserDown: true, looked: 0, ...tried };
       }
+      tabNextTry = 0;
       if (down || lastTabProblem) say(`DilutionTracker browser answering again; using its one DilutionTracker tab`);
       down = false;
       lastTabProblem = "";
@@ -585,7 +664,10 @@ export function createLookup({ tab, post, say = log, pacer = createPacer(), wait
           read = await readPage(tab, ticker, want, timing);
         } catch (error) {
           // The browser went away mid-round: not this ticker's fault, and nothing more is tried now.
-          if (error instanceof BrowserDown) return { ...browserDown(), looked };
+          if (error instanceof BrowserDown) {
+            tabNextTry = now() + BROWSER_WAIT_MS;
+            return { ...browserDown(), looked, ...tried };
+          }
           if (want.facts) note(facts, ticker, "", `lookup failed: ${error.message}`);
           if (want.news) note(news, ticker, " news", error.message);
           continue;
@@ -597,7 +679,7 @@ export function createLookup({ tab, post, say = log, pacer = createPacer(), wait
             try {
               await post(factsPayload(ticker, read.parsed));
               facts.succeeded(ticker, now());
-              say(`${ticker}: ${describe(read.parsed)}`);
+              say(`${ticker}: ${describe(read.parsed, usesApi ? "tab" : "")}`);
             } catch (error) {
               note(facts, ticker, "", `lookup failed: ${error.message}`);
             }
@@ -617,14 +699,16 @@ export function createLookup({ tab, post, say = log, pacer = createPacer(), wait
           }
         }
       }
-      return { browserDown: false, looked };
+      return { browserDown: false, looked, ...tried };
     },
   };
 }
 
 /** How long the main loop sleeps after a round. */
 export function waitAfterRound(result, open) {
-  if (result?.browserDown) return BROWSER_WAIT_MS;
+  // #534: with the API on, facts don't need the browser: keep the normal pace (the lookup itself tries
+  // the browser again only every BROWSER_WAIT_MS).
+  if (result?.browserDown && !result.api) return BROWSER_WAIT_MS;
   return open ? POLL_MS : QUIET_POLL_MS;
 }
 
@@ -647,7 +731,11 @@ async function main() {
   } else log(tz.problem);
   ibLoop(token, () => stopping).catch((error) => log(`IB loop stopped: ${error.message}`));
   let lastProblem = "";
-  const lookup = createLookup({ tab, post: (body) => chat(token, "POST", body), isStopping: () => stopping });
+  // #534: company facts from the DilutionTracker API when its key file is there; the tab otherwise.
+  const dtKey = readDtKey();
+  const api = dtKey.key ? createDtApi({ key: dtKey.key, say: log }) : null;
+  log(api ? "facts from the DilutionTracker API (the browser tab for news, and for facts when the API can't answer)" : dtKey.problem);
+  const lookup = createLookup({ tab, api, post: (body) => chat(token, "POST", body), isStopping: () => stopping });
   while (!stopping) {
     const open = marketHours();
     let result = null;

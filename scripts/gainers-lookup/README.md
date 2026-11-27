@@ -2,19 +2,22 @@
 
 `lookup.mjs` runs on Rob's computer and fills in the facts the chat's **Gainers Table** shows for each
 stock that alerts in Gainers: country, estimated current cash with months of cash left (or "cash flow
-positive"), and institutional ownership. All from DilutionTracker. Node 22+, no packages.
+positive"), institutional ownership and float. All from DilutionTracker (#534: its API first, the
+company page as the fallback). Node 22+, no packages.
 
 - Every ~20 seconds (every 5 minutes outside 4 AM to 8 PM New York time and at weekends) it asks
   `GET /api/chat/gainers/facts` which of today's tickers still need a lookup.
-- For each one it shows `https://dilutiontracker.com/app/search/<TICKER>` in **the one DilutionTracker
+- **Facts come from the DilutionTracker API first (#534)**, see "Company facts from the DilutionTracker
+  API" below. The company page is the fallback for facts, and is always what the News tab is read from.
+- For a page read it shows `https://dilutiontracker.com/app/search/<TICKER>` in **the one DilutionTracker
   tab** of the dedicated Chromium already running with remote debugging on `http://127.0.0.1:9333`
   (its own profile, signed in to DilutionTracker by Rob; see "The DilutionTracker browser" below), reads
   the page text and posts the result to `POST /api/chat/gainers/facts`. It never opens any other
   address, and the only thing it ever clicks is that page's own News tab (#387, below).
 - **No catching up (#472).** When the program starts, every ticker already on today's list (the table,
   plus anything the chat lists as needing facts or news) counts as done and is never looked up that day.
-  Only tickers that show up after it started are looked up, once each per New York day (facts and news
-  on one page load). The log says `N tickers already on today's list: not looked up …` at start.
+  Only tickers that show up after it started are looked up, once each per New York day (facts from the
+  API, news on one page load; facts ride on that page load too when the API couldn't give them). The log says `N tickers already on today's list: not looked up …` at start.
 - One page at a time, at least 3 seconds apart, at most 60 an hour, never the same ticker twice within
   5 minutes. A page that doesn't load is tried again after 5, 10 and 20 minutes, then left until
   tomorrow; the log then asks whether DilutionTracker is still signed in.
@@ -25,6 +28,46 @@ positive"), and institutional ownership. All from DilutionTracker. Node 22+, no 
   figure), posted with the facts as `floatShares` (null when the page shows none). The program asks
   `GET /api/chat/gainers/facts?float=1`, so a ticker whose float was never read, or is over 7 days old,
   is listed too. Since #472 that only matters for a ticker's one lookup on the day it shows up.
+
+## Company facts from the DilutionTracker API (#534)
+
+The page read missed a lot (of 12 tickers on 2026-11-27 it gave cash for 1 and the float for 2; the API
+gave everything for all 12), so the facts now come from DilutionTracker's API v2. Client: `dt-api.mjs`
+(no packages; fetch, the clock and the key are passed in).
+
+- Key: `~/.config/longboard/dilutiontracker.key`, one line, mode 600 (or `GAINERS_LOOKUP_DT_KEY_FILE`).
+  Read once at start, never printed and never in an error message. Without the file (or if it is empty
+  or others can read it) the log says `no DilutionTracker API key; using the browser tab for facts` once
+  and everything is read from the page, as before #534.
+- Per ticker, at `https://api.dilutiontracker.com` with the key in the `x-api-key` header: first
+  `GET /v2/company/profile/{T}` (country; a 400 "Invalid Ticker" means not on DilutionTracker, posted
+  as `notFound`), then together `GET /v2/cash-position/{T}`, `GET /v2/institutional-ownership/companies/{T}`
+  and `GET /v2/float/{T}`. A 404 on those three means DilutionTracker has none: saved empty.
+- What is saved (the same fields the page read posts, so the chat's route is unchanged):
+  - country: as the page writes it (`U.S` becomes `U.S.`).
+  - institutional ownership: `totalInstOwnPct` (already a percent), 0 to 1000.
+  - float: `float` (millions of shares) x 1,000,000, when above 0.
+  - cash, only when `hasEstCurrentCash` is true: `estCurrentCash` (millions of USD) x 1,000,000, a
+    negative estimate saved as 0. Cash flow positive when `quarterlyOperatingCashflow` is 0 or more
+    (then no months, like the page). Months left: `monthsCashRunway`, never below 0. The API stops that
+    figure at 100, so at 100 with a burn it is worked out the way the page shows it,
+    `estCurrentCash / -quarterlyOperatingCashflow x 3`, to one decimal (42.59 / 0.26 x 3 = 491.4),
+    never above 1,000,000 (the most the chat accepts).
+- An answer (found or not found) is posted and the ticker's facts are done for the day. That needs no
+  browser: facts keep arriving while the browser is down (the main loop then keeps its 20-second pace
+  and tries the browser every 2 minutes), and API reads don't count against the page limits. The page
+  is then loaded only for what is still due: the News tab, and the facts the API couldn't give.
+- The page is the fallback for a ticker's facts when: the ticker isn't 1 to 5 letters (`BRK.B`); the API
+  could not answer (any of the four reads failing with something other than a 404 fails the whole try,
+  nothing half-read is posted); or the API is paused. Pauses: **30 minutes** after a 401/403 (the key
+  was refused), **3 minutes** after a 429, a 5xx, a network error or a timeout (10 s per read). Each
+  pause is logged once: `DilutionTracker API refused the key (401); using the browser tab for facts for
+  30 minutes`.
+- Politeness: one ticker at a time, half a second apart, at most four reads per ticker, and never the
+  same ticker twice within 5 minutes.
+- Log lines say where the facts came from: `WETO: (API) country China, cash 49360000, months -, inst
+  0.1%, float 14740000`, or `(tab)` for a page read. (Without a key the lines are as before, no tag.)
+- Tests (a fake fetch and a fake key, no network): `npx vitest run lib/__tests__/gainersLookupApi.test.ts`.
 
 ## Borrow at TradeZero (#373)
 
@@ -153,4 +196,5 @@ Install:
 It runs from `~/projects/longboard`, so keep that checkout on `main`.
 
 Settings (environment, for testing): `GAINERS_LOOKUP_CHAT_URL` (default `https://chat.robbooker.com`),
-`GAINERS_LOOKUP_CDP_URL` (default `http://127.0.0.1:9333`), `GAINERS_LOOKUP_TOKEN_FILE`.
+`GAINERS_LOOKUP_CDP_URL` (default `http://127.0.0.1:9333`), `GAINERS_LOOKUP_TOKEN_FILE`,
+`GAINERS_LOOKUP_DT_KEY_FILE` (default `~/.config/longboard/dilutiontracker.key`).

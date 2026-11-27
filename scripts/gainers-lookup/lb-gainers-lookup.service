@@ -1,5 +1,5 @@
 [Unit]
-Description=Longboard: look up country, cash and institutional ownership for today's gainers (#371)
+Description=Longboard: look up country, cash, institutional ownership and float for today's gainers (#371; DilutionTracker API first, #534)
 Wants=network-online.target
 After=network-online.target
 
