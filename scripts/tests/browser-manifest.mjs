@@ -115,6 +115,8 @@ export const TESTS = [
   { name: 'chat-feature-colors' },
   { name: 'chat-features-link' },
   { name: 'chat-pages' },
+  // #529 Booker Tube: chat-video-picks-preload.mjs answers YouTube's feeds; the daily job runs with the synthetic cron secret.
+  { name: 'chat-video-picks', env: ['cron'], timeout: 480 },
   // #441: the address bar follows the page on screen (?page=<name>), with Back between pages and rooms.
   { name: 'chat-page-urls', timeout: 360 },
   { name: 'chat-page-link-saves' },

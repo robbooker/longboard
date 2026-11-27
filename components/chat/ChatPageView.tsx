@@ -1,4 +1,5 @@
 "use client";
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   LINK_NOTE_MAX,
@@ -27,6 +28,9 @@ import styles from "./ChatPageView.module.css";
 // chat's reaction chips and picker.
 // #339: a link saved to My Links says who posted it, on the same line as on the shared list.
 
+// #529: Booker Tube is its own page, fetched only when someone opens it.
+const VideoPicksPage = dynamic(() => import("./videoPicks/VideoPicksPage"), { ssr: false });
+
 type Props = {
   page: ChatPage | null;
   creating: boolean;
@@ -46,14 +50,34 @@ async function send(url: string, method: string, body?: unknown) {
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(typeof data?.error === "string" && data.error.includes(" ") ? data.error : "That didn't work. Please try again.");
+  if (!response.ok)
+    throw new Error(
+      typeof data?.error === "string" && data.error.includes(" ")
+        ? data.error
+        : "That didn't work. Please try again.",
+    );
   return data;
 }
 
-export default function ChatPageView({ page, creating, canManage, suggestion, waiting, onPagesChanged, onOpenPage }: Props) {
+export default function ChatPageView({
+  page,
+  creating,
+  canManage,
+  suggestion,
+  waiting,
+  onPagesChanged,
+  onOpenPage,
+}: Props) {
   if (creating) return <NewPageForm canManage={canManage} onPagesChanged={onPagesChanged} />;
   if (waiting) return <WaitingList waiting={waiting} onPagesChanged={onPagesChanged} />;
-  if (suggestion) return <SuggestionStatus suggestion={suggestion} onPagesChanged={onPagesChanged} onDismissed={() => onOpenPage(NEW_CHAT_PAGE)} />;
+  if (suggestion)
+    return (
+      <SuggestionStatus
+        suggestion={suggestion}
+        onPagesChanged={onPagesChanged}
+        onDismissed={() => onOpenPage(NEW_CHAT_PAGE)}
+      />
+    );
   if (!page)
     return (
       <div className={styles.page}>
@@ -62,6 +86,7 @@ export default function ChatPageView({ page, creating, canManage, suggestion, wa
         </p>
       </div>
     );
+  if (page.kind === "video-picks") return <VideoPicksPage />;
   if (page.kind === "embed" && page.embedUrl)
     return <EmbedPage page={page} canManage={canManage} onPagesChanged={onPagesChanged} />;
   return <LinksPage key={page.id} page={page} canManage={canManage} onPagesChanged={onPagesChanged} />;
@@ -92,7 +117,15 @@ function RemovePage({ page, onPagesChanged }: { page: ChatPage; onPagesChanged: 
   );
 }
 
-function EmbedPage({ page, canManage, onPagesChanged }: { page: ChatPage; canManage: boolean; onPagesChanged: () => void }) {
+function EmbedPage({
+  page,
+  canManage,
+  onPagesChanged,
+}: {
+  page: ChatPage;
+  canManage: boolean;
+  onPagesChanged: () => void;
+}) {
   const url = page.embedUrl!;
   return (
     <div className={styles.page} data-embed="true">
@@ -201,7 +234,15 @@ function LinkForm({
   );
 }
 
-function LinksPage({ page, canManage, onPagesChanged }: { page: ChatPage; canManage: boolean; onPagesChanged: () => void }) {
+function LinksPage({
+  page,
+  canManage,
+  onPagesChanged,
+}: {
+  page: ChatPage;
+  canManage: boolean;
+  onPagesChanged: () => void;
+}) {
   const mine = page.kind === "my-links";
   const base = mine ? "/api/chat/pages/my-links" : "/api/chat/pages/links";
   const [links, setLinks] = useState<ChatPageLink[] | null>(null);
@@ -236,7 +277,10 @@ function LinksPage({ page, canManage, onPagesChanged }: { page: ChatPage; canMan
     void load();
   }, [load]);
   // My Links keep the server's order (newest first); shared lists follow the Top / New choice.
-  const shown = useMemo(() => (links && !mine ? sortPageLinks(links, likesOn ? sort : "new") : links), [links, mine, likesOn, sort]);
+  const shown = useMemo(
+    () => (links && !mine ? sortPageLinks(links, likesOn ? sort : "new") : links),
+    [links, mine, likesOn, sort],
+  );
   const setLink = (id: string, change: (link: ChatPageLink) => ChatPageLink) =>
     setLinks((current) => current?.map((link) => (link.id === id ? change(link) : link)) ?? current);
   // Like or take the like back at once, then settle on the server's count. Taps made while a
@@ -250,7 +294,9 @@ function LinksPage({ page, canManage, onPagesChanged }: { page: ChatPage; canMan
     setNotice(null);
     // The link may move in the ranking; keep the keyboard on its button.
     if (focused)
-      requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(`button[data-like="${CSS.escape(link.id)}"]`)?.focus());
+      requestAnimationFrame(() =>
+        document.querySelector<HTMLButtonElement>(`button[data-like="${CSS.escape(link.id)}"]`)?.focus(),
+      );
     wanted.current.set(link.id, { like, before: pending?.before ?? link.likedByMe });
     if (pending === undefined) {
       setSyncing((current) => new Set(current).add(link.id));
@@ -271,7 +317,8 @@ function LinksPage({ page, canManage, onPagesChanged }: { page: ChatPage; canMan
         );
       }
       if (typeof data?.likeCount === "number") {
-        const likeCount = data.likeCount, likedByMe = data.likedByMe === true;
+        const likeCount = data.likeCount,
+          likedByMe = data.likedByMe === true;
         setLink(id, (current) => ({ ...current, likeCount, likedByMe }));
       }
     } catch (caught) {
@@ -316,7 +363,12 @@ function LinksPage({ page, canManage, onPagesChanged }: { page: ChatPage; canMan
             ? "Your own saved links. Only you can see them. Share one to add it to Trader Links."
             : "Links traders find useful. Anyone can add one."}
         </p>
-        <button type="button" className={styles.primary} aria-expanded={adding} onClick={() => setAdding((open) => !open)}>
+        <button
+          type="button"
+          className={styles.primary}
+          aria-expanded={adding}
+          onClick={() => setAdding((open) => !open)}
+        >
           {adding ? "Close" : "Add a link"}
         </button>
         {canManage && <RemovePage page={page} onPagesChanged={onPagesChanged} />}
@@ -344,115 +396,141 @@ function LinksPage({ page, canManage, onPagesChanged }: { page: ChatPage; canMan
         </p>
       )}
       {links?.length === 0 && (
-        <p className={styles.empty}>{mine ? "You haven’t saved any links yet." : "No links yet. Add the first one."}</p>
+        <p className={styles.empty}>
+          {mine ? "You haven’t saved any links yet." : "No links yet. Add the first one."}
+        </p>
       )}
       {likesOn && !!links?.length && (
         <div className={styles.sortBar} role="group" aria-label="Order links by">
-          <button type="button" className={styles.sort} aria-pressed={sort === "top"} onClick={() => setSort("top")}>
+          <button
+            type="button"
+            className={styles.sort}
+            aria-pressed={sort === "top"}
+            onClick={() => setSort("top")}
+          >
             Top
           </button>
-          <button type="button" className={styles.sort} aria-pressed={sort === "new"} onClick={() => setSort("new")}>
+          <button
+            type="button"
+            className={styles.sort}
+            aria-pressed={sort === "new"}
+            onClick={() => setSort("new")}
+          >
             New
           </button>
         </div>
       )}
       <LinkReactionProvider seed={reactions}>
-      <ul className={styles.links}>
-        {shown?.map((link) =>
-          editing === link.id ? (
-            <li key={link.id} className={styles.link}>
-              <LinkForm
-                initial={{ title: link.title, url: link.url, note: link.note ?? "" }}
-                submitLabel="Save changes"
-                onSubmit={async (draft) => {
-                  await send(base, "PATCH", { id: link.id, ...draft });
-                  setEditing(null);
-                  await load();
-                }}
-                onCancel={() => setEditing(null)}
-              />
-            </li>
-          ) : (
-            <li key={link.id} className={styles.link} data-pinned={link.pinned || undefined}>
-              {likesOn && <LikeButton link={link} busy={syncing.has(link.id)} onToggle={toggleLike} />}
-              <div className={styles.linkMain}>
-                <a href={link.url} target="_blank" rel="noopener noreferrer" className={styles.linkTitle}>
-                  {link.pinned && <span className={styles.pin}>Pinned · </span>}
-                  {link.title} <span aria-hidden="true">↗</span>
-                  <span className={styles.srOnly}> (opens in a new tab)</span>
-                </a>
-                <span className={styles.linkUrl}>{link.url.replace(/^https:\/\//, "").replace(/\/$/, "")}</span>
-                {link.note && <span className={styles.note}>{link.note}</span>}
-                {link.addedByName && <span className={styles.meta}>Added by {link.addedByName}</span>}
-                {reactions && (
-                  <div className={styles.linkReactions}>
-                    <MessageReactions target={{ kind: "link", messageId: link.id }} compact />
-                  </div>
-                )}
-              </div>
-              <div className={styles.linkActions}>
-                {saved && (
-                  <button
-                    type="button"
-                    className={`${styles.quiet} ${styles.save}`}
-                    data-save-link={link.id}
-                    data-saved={saved.has(link.id) || undefined}
-                    disabled={saved.has(link.id) || saving === link.id}
-                    aria-label={saved.has(link.id) ? `“${link.title}” is saved to My Links` : `Save “${link.title}” to My Links`}
-                    title={saved.has(link.id) ? "On your My Links" : "Save to My Links"}
-                    onClick={() => void save(link.id)}
-                  >
-                    {saved.has(link.id) ? "✓ Saved" : saving === link.id ? "Saving…" : "Save"}
-                  </button>
-                )}
-                {mine && (
-                  <button
-                    type="button"
-                    className={styles.quiet}
-                    onClick={() =>
-                      act(link.id, () => send(`${base}/share`, "POST", { id: link.id }), "Shared to Trader Links.")
-                    }
-                  >
-                    Share
-                  </button>
-                )}
-                {!mine && canPin && (
-                  <button
-                    type="button"
-                    className={styles.quiet}
-                    aria-pressed={link.pinned}
-                    onClick={() => act(link.id, () => send(base, "PATCH", { id: link.id, pinned: !link.pinned }))}
-                  >
-                    {link.pinned ? "Unpin" : "Pin to top"}
-                  </button>
-                )}
-                {link.canEdit && (
-                  <>
-                    <button type="button" className={styles.quiet} onClick={() => setEditing(link.id)}>
-                      Edit
+        <ul className={styles.links}>
+          {shown?.map((link) =>
+            editing === link.id ? (
+              <li key={link.id} className={styles.link}>
+                <LinkForm
+                  initial={{ title: link.title, url: link.url, note: link.note ?? "" }}
+                  submitLabel="Save changes"
+                  onSubmit={async (draft) => {
+                    await send(base, "PATCH", { id: link.id, ...draft });
+                    setEditing(null);
+                    await load();
+                  }}
+                  onCancel={() => setEditing(null)}
+                />
+              </li>
+            ) : (
+              <li key={link.id} className={styles.link} data-pinned={link.pinned || undefined}>
+                {likesOn && <LikeButton link={link} busy={syncing.has(link.id)} onToggle={toggleLike} />}
+                <div className={styles.linkMain}>
+                  <a href={link.url} target="_blank" rel="noopener noreferrer" className={styles.linkTitle}>
+                    {link.pinned && <span className={styles.pin}>Pinned · </span>}
+                    {link.title} <span aria-hidden="true">↗</span>
+                    <span className={styles.srOnly}> (opens in a new tab)</span>
+                  </a>
+                  <span className={styles.linkUrl}>
+                    {link.url.replace(/^https:\/\//, "").replace(/\/$/, "")}
+                  </span>
+                  {link.note && <span className={styles.note}>{link.note}</span>}
+                  {link.addedByName && <span className={styles.meta}>Added by {link.addedByName}</span>}
+                  {reactions && (
+                    <div className={styles.linkReactions}>
+                      <MessageReactions target={{ kind: "link", messageId: link.id }} compact />
+                    </div>
+                  )}
+                </div>
+                <div className={styles.linkActions}>
+                  {saved && (
+                    <button
+                      type="button"
+                      className={`${styles.quiet} ${styles.save}`}
+                      data-save-link={link.id}
+                      data-saved={saved.has(link.id) || undefined}
+                      disabled={saved.has(link.id) || saving === link.id}
+                      aria-label={
+                        saved.has(link.id)
+                          ? `“${link.title}” is saved to My Links`
+                          : `Save “${link.title}” to My Links`
+                      }
+                      title={saved.has(link.id) ? "On your My Links" : "Save to My Links"}
+                      onClick={() => void save(link.id)}
+                    >
+                      {saved.has(link.id) ? "✓ Saved" : saving === link.id ? "Saving…" : "Save"}
                     </button>
+                  )}
+                  {mine && (
                     <button
                       type="button"
                       className={styles.quiet}
-                      onClick={() => {
-                        if (window.confirm(`Remove “${link.title}”?`))
-                          void act(link.id, () => send(`${base}?id=${encodeURIComponent(link.id)}`, "DELETE"));
-                      }}
+                      onClick={() =>
+                        act(
+                          link.id,
+                          () => send(`${base}/share`, "POST", { id: link.id }),
+                          "Shared to Trader Links.",
+                        )
+                      }
                     >
-                      Remove
+                      Share
                     </button>
-                  </>
+                  )}
+                  {!mine && canPin && (
+                    <button
+                      type="button"
+                      className={styles.quiet}
+                      aria-pressed={link.pinned}
+                      onClick={() =>
+                        act(link.id, () => send(base, "PATCH", { id: link.id, pinned: !link.pinned }))
+                      }
+                    >
+                      {link.pinned ? "Unpin" : "Pin to top"}
+                    </button>
+                  )}
+                  {link.canEdit && (
+                    <>
+                      <button type="button" className={styles.quiet} onClick={() => setEditing(link.id)}>
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.quiet}
+                        onClick={() => {
+                          if (window.confirm(`Remove “${link.title}”?`))
+                            void act(link.id, () =>
+                              send(`${base}?id=${encodeURIComponent(link.id)}`, "DELETE"),
+                            );
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </>
+                  )}
+                </div>
+                {notice?.id === link.id && (
+                  <p className={styles.notice} role="status">
+                    {notice.text}
+                  </p>
                 )}
-              </div>
-              {notice?.id === link.id && (
-                <p className={styles.notice} role="status">
-                  {notice.text}
-                </p>
-              )}
-            </li>
-          ),
-        )}
-      </ul>
+              </li>
+            ),
+          )}
+        </ul>
       </LinkReactionProvider>
     </div>
   );
@@ -476,8 +554,18 @@ function LikeButton({
       aria-pressed={link.likedByMe}
       aria-busy={busy || undefined}
       disabled={link.addedByMe}
-      aria-label={link.addedByMe ? `Your link, ${count}` : `${link.likedByMe ? "Unlike" : "Like"} “${link.title}”, ${count}`}
-      title={link.addedByMe ? "You can’t like your own link" : link.likedByMe ? "Take back your like" : "Like this link"}
+      aria-label={
+        link.addedByMe
+          ? `Your link, ${count}`
+          : `${link.likedByMe ? "Unlike" : "Like"} “${link.title}”, ${count}`
+      }
+      title={
+        link.addedByMe
+          ? "You can’t like your own link"
+          : link.likedByMe
+            ? "Take back your like"
+            : "Like this link"
+      }
       onClick={(event) => onToggle(link, event.currentTarget)}
     >
       <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
@@ -493,14 +581,23 @@ function SuggestionDetail({ suggestion }: { suggestion: ChatPageSuggestion }) {
   if (!suggestion.embedUrl) return <span className={styles.note}>A list of links</span>;
   return (
     <a href={suggestion.embedUrl} target="_blank" rel="noopener noreferrer" className={styles.linkUrl}>
-      A website: {suggestion.embedUrl.replace(/^https:\/\//, "").replace(/\/$/, "")} <span aria-hidden="true">↗</span>
+      A website: {suggestion.embedUrl.replace(/^https:\/\//, "").replace(/\/$/, "")}{" "}
+      <span aria-hidden="true">↗</span>
       <span className={styles.srOnly}> (opens in a new tab)</span>
     </a>
   );
 }
 
 /** #329: the member's own suggestion. It never opens as the page itself until it is approved. */
-function SuggestionStatus({ suggestion, onPagesChanged, onDismissed }: { suggestion: ChatPageSuggestion; onPagesChanged: () => void; onDismissed: () => void }) {
+function SuggestionStatus({
+  suggestion,
+  onPagesChanged,
+  onDismissed,
+}: {
+  suggestion: ChatPageSuggestion;
+  onPagesChanged: () => void;
+  onDismissed: () => void;
+}) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const declined = suggestion.status === "declined";
@@ -547,7 +644,13 @@ function SuggestionStatus({ suggestion, onPagesChanged, onDismissed }: { suggest
 }
 
 /** #329: an admin's list of suggested pages, with Approve and Decline for each. */
-function WaitingList({ waiting, onPagesChanged }: { waiting: ChatPageSuggestion[]; onPagesChanged: () => void }) {
+function WaitingList({
+  waiting,
+  onPagesChanged,
+}: {
+  waiting: ChatPageSuggestion[];
+  onPagesChanged: () => void;
+}) {
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ id: string; text: string } | null>(null);
   const [done, setDone] = useState("");
@@ -557,7 +660,11 @@ function WaitingList({ waiting, onPagesChanged }: { waiting: ChatPageSuggestion[
     setDone("");
     try {
       await send("/api/chat/pages", "PATCH", { id: suggestion.id, decision });
-      setDone(decision === "approve" ? `“${suggestion.name}” is now in everyone’s Pages list.` : `“${suggestion.name}” was declined.`);
+      setDone(
+        decision === "approve"
+          ? `“${suggestion.name}” is now in everyone’s Pages list.`
+          : `“${suggestion.name}” was declined.`,
+      );
       onPagesChanged();
     } catch (caught) {
       setNotice({ id: suggestion.id, text: (caught as Error).message });
@@ -570,7 +677,9 @@ function WaitingList({ waiting, onPagesChanged }: { waiting: ChatPageSuggestion[
   return (
     <div className={styles.page}>
       <div className={styles.listHead}>
-        <p className={styles.intro}>Pages members have suggested. Nobody else sees one until you approve it.</p>
+        <p className={styles.intro}>
+          Pages members have suggested. Nobody else sees one until you approve it.
+        </p>
       </div>
       {done && (
         <p className={styles.notice} role="status">
@@ -584,13 +693,25 @@ function WaitingList({ waiting, onPagesChanged }: { waiting: ChatPageSuggestion[
             <div className={styles.linkMain}>
               <span className={styles.linkTitle}>{suggestion.name}</span>
               <SuggestionDetail suggestion={suggestion} />
-              <span className={styles.meta}>Suggested by {suggestion.suggestedByName ?? "Former member"}</span>
+              <span className={styles.meta}>
+                Suggested by {suggestion.suggestedByName ?? "Former member"}
+              </span>
             </div>
             <div className={styles.linkActions}>
-              <button type="button" className={styles.primary} disabled={busy !== null} onClick={() => void decide(suggestion, "approve")}>
+              <button
+                type="button"
+                className={styles.primary}
+                disabled={busy !== null}
+                onClick={() => void decide(suggestion, "approve")}
+              >
                 Approve
               </button>
-              <button type="button" className={styles.quiet} disabled={busy !== null} onClick={() => void decide(suggestion, "decline")}>
+              <button
+                type="button"
+                className={styles.quiet}
+                disabled={busy !== null}
+                onClick={() => void decide(suggestion, "decline")}
+              >
                 Decline
               </button>
             </div>
@@ -622,7 +743,11 @@ function NewPageForm({ canManage, onPagesChanged }: { canManage: boolean; onPage
     setBusy(true);
     setError("");
     try {
-      const data = await send("/api/chat/pages", "POST", { name, kind, embedUrl: kind === "embed" ? embedUrl : undefined });
+      const data = await send("/api/chat/pages", "POST", {
+        name,
+        kind,
+        embedUrl: kind === "embed" ? embedUrl : undefined,
+      });
       setAdded(data?.page?.name ?? data?.suggestion?.name ?? name);
       setName("");
       setEmbedUrl("");
@@ -650,11 +775,12 @@ function NewPageForm({ canManage, onPagesChanged }: { canManage: boolean; onPage
         <fieldset className={styles.kinds}>
           <legend>What it shows</legend>
           <label>
-            <input type="radio" name="kind" checked={kind === "links"} onChange={() => setKind("links")} /> A list of
-            links
+            <input type="radio" name="kind" checked={kind === "links"} onChange={() => setKind("links")} /> A
+            list of links
           </label>
           <label>
-            <input type="radio" name="kind" checked={kind === "embed"} onChange={() => setKind("embed")} /> A website
+            <input type="radio" name="kind" checked={kind === "embed"} onChange={() => setKind("embed")} /> A
+            website
           </label>
         </fieldset>
         {kind === "embed" && (
@@ -668,7 +794,10 @@ function NewPageForm({ canManage, onPagesChanged }: { canManage: boolean; onPage
               placeholder="https://"
               onChange={(event) => setEmbedUrl(event.target.value)}
             />
-            <small>Some websites don’t allow being shown inside another site; members can still open it in its own tab.</small>
+            <small>
+              Some websites don’t allow being shown inside another site; members can still open it in its own
+              tab.
+            </small>
           </label>
         )}
         {error && (
@@ -678,7 +807,9 @@ function NewPageForm({ canManage, onPagesChanged }: { canManage: boolean; onPage
         )}
         {added && (
           <p className={styles.notice} role="status">
-            {canManage ? `“${added}” is now in everyone’s Pages list.` : `“${added}” is waiting for approval. It appears for everyone once an admin approves it.`}
+            {canManage
+              ? `“${added}” is now in everyone’s Pages list.`
+              : `“${added}” is waiting for approval. It appears for everyone once an admin approves it.`}
           </p>
         )}
         <div className={styles.formActions}>
