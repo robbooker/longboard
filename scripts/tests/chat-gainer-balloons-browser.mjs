@@ -50,12 +50,14 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const shot=async(page,name)=>{if(shots){await page.addStyleTag({content:'nextjs-portal{display:none!important}'});await sleep(700);await page.screenshot({path:`${shots}/${name}`});}};
 
 // --- Today's gainers (all with 150K+ shares so the Gainers Table lists them) and their company facts.
-const STOCKS={CHNA:['China',600_000],HKGO:['Hong Kong',2_000_000],CHHK:['China Hong Kong',900_000],SGPR:['Singapore',1_500_000],MLYS:['Malaysia',2_400_000],ISRL:['Israel',null],
- USAA:['U.S.',5_000_000],USBB:['U.S.',40_000_000],USCC:['U.S.',880_000],UNKF:['U.S.',null],NOPC:['U.S.',3_000_000],FADE:['Hong Kong',700_000],DOWN:['U.S.',1_000_000]};
+// #533: the third value is the institutional ownership % (null: looked up, none found). CHNA and USAA
+// also have shares outstanding in the fake Polygon (a market cap); ISRL has neither (two dashes).
+const STOCKS={CHNA:['China',600_000,12.4],HKGO:['Hong Kong',2_000_000,0],CHHK:['China Hong Kong',900_000,null],SGPR:['Singapore',1_500_000,null],MLYS:['Malaysia',2_400_000,null],ISRL:['Israel',null,null],
+ USAA:['U.S.',5_000_000,48],USBB:['U.S.',40_000_000,null],USCC:['U.S.',880_000,null],UNKF:['U.S.',null,3.25],NOPC:['U.S.',3_000_000,null],FADE:['Hong Kong',700_000,null],DOWN:['U.S.',1_000_000,null]};
 let n=1;
 for(const sym of Object.keys(STOCKS))await sql(`select public.ingest_chat_gainers_alert('-100',$1,$2::timestamptz,$3)`,[n++,new Date(Date.now()-n*60_000).toISOString(),`🚨 ${sym} (+45.0%)\nPrice: $2.50\nVolume: 400,000\nMarket Cap: 12.5M`]);
-for(const [ticker,[country,floatShares]] of Object.entries(STOCKS)){
- const r=await fetch(`${base}/api/chat/gainers/facts`,{method:'POST',headers:{authorization:`Bearer ${TOKEN}`,'content-type':'application/json'},body:JSON.stringify({ticker,notFound:false,country,cashUsd:null,cashMonthsLeft:null,cashFlowPositive:false,instOwnPct:null,...(floatShares?{floatShares}:{})})});
+for(const [ticker,[country,floatShares,instOwnPct]] of Object.entries(STOCKS)){
+ const r=await fetch(`${base}/api/chat/gainers/facts`,{method:'POST',headers:{authorization:`Bearer ${TOKEN}`,'content-type':'application/json'},body:JSON.stringify({ticker,notFound:false,country,cashUsd:null,cashMonthsLeft:null,cashFlowPositive:false,instOwnPct,...(floatShares?{floatShares}:{})})});
  assert.equal(r.status,200,await r.text());
 }
 // Signed out: refused.
@@ -166,7 +168,7 @@ const tap=async(page,root,ticker,touch=false)=>{
  assert(selected in STOCKS,`a tap selects a balloon (${selected})`);
  return selected;
 };
-const detail=(page,root)=>page.$eval(`${root} [data-balloons-detail]`,e=>({ticker:e.dataset.balloonsDetail,cells:Object.fromEntries([...e.querySelectorAll('dl > div')].map(d=>[d.querySelector('dt').textContent,d.querySelector('dd').textContent]))}));
+const detail=(page,root)=>page.$eval(`${root} [data-balloons-detail]`,e=>({ticker:e.dataset.balloonsDetail,price:e.querySelector('header [data-balloons-price]').textContent,change:e.querySelector('header [data-balloons-change]').textContent,direction:e.querySelector('header [data-balloons-change]').dataset.direction??null,country:e.querySelector('[data-balloons-country]').textContent,cells:Object.fromEntries([...e.querySelectorAll('dl > div')].map(d=>[d.querySelector('dt').textContent,d.querySelector('dd').textContent]))}));
 const pane=i=>`section[aria-label^="Pane ${i}:"]`;
 /** Chooses what a Dual or Quad pane shows, once its picker is ready. */
 const choose=async(page,i,key)=>{await page.waitForFunction((s,key)=>!!document.querySelector(`${s} select option[value="${key}"]`)||key==='',{timeout:60000},pane(i),key);await page.select(`${pane(i)} select`,key);};
@@ -319,8 +321,11 @@ try{
   await page.keyboard.press('Escape');await page.waitForSelector(`${SEL.app} [data-balloons-detail]`,{hidden:true});
   const find=async ticker=>{await page.click(`${SEL.app} [data-balloons-search-button]`);await page.type(`${SEL.app} [data-balloons-search]`,ticker.toLowerCase());await page.keyboard.press('Enter');await page.waitForSelector(`${SEL.app} [data-balloons-detail="${ticker}"]`);return detail(page,SEL.app);};
   let d=await find('ISRL');
-  assert.deepEqual(Object.keys(d.cells),['Price','Change','Volume','Float','Volume ÷ float','Prev close']);
-  assert.match(d.cells.Price,/^\$\d+\.\d\d$/);assert.match(d.cells.Change,/^\+\d+\.\d%$/);assert.match(d.cells.Volume,/^\d+(\.\d+)?[KM]$/);
+  // #533: the price and the change are in the card's header beside the ticker; the rows are the rest, without "Prev close".
+  assert.deepEqual(Object.keys(d.cells),['Volume','Float','Volume ÷ float','Market cap','Institutional']);
+  assert.match(d.price,/^\$\d+\.\d\d$/);assert.match(d.change,/^\+\d+\.\d%$/);assert.equal(d.direction,'up');assert.equal(d.country,'Israel');assert.match(d.cells.Volume,/^\d+(\.\d+)?[KM]$/);
+  assert.equal(d.cells['Market cap'],'—','a market cap that isn\'t known is a dash');assert.equal(d.cells.Institutional,'—','institutional ownership that isn\'t known is a dash');
+  assert.doesNotMatch(await page.$eval(`${SEL.app} [data-balloons-detail]`,e=>e.textContent),/Prev close/);
   assert.equal(d.cells.Float,'—','a float that isn\'t known is a dash');assert.equal(d.cells['Volume ÷ float'],'—');
   assert.match(await page.$eval(`${SEL.app} [data-balloons-detail]`,e=>e.textContent),/Float not known/);
   await page.keyboard.press('Escape');await page.waitForSelector(`${SEL.app} [data-balloons-detail]`,{hidden:true});
@@ -332,14 +337,31 @@ try{
   await page.keyboard.press('Enter');
   await page.waitForSelector(`${SEL.app} [data-balloons-detail="CHNA"]`);
   d=await detail(page,SEL.app);
-  assert.equal(d.cells.Float,'600.0K');assert.match(d.cells['Volume ÷ float'],/^\d+(\.\d+)?×$/);assert.equal(d.cells['Prev close'],'$1.00');
+  assert.equal(d.cells.Float,'600.0K');assert.match(d.cells['Volume ÷ float'],/^\d+(\.\d+)?×$/);
+  // #533: 12.4% held by institutions; the market cap is the price on the card times 10M shares.
+  assert.equal(d.cells.Institutional,'12.4%');assert.equal(d.country,'China');
+  const capFits=(d,what)=>{const m=d.cells['Market cap'].match(/^\$(\d+\.\d)M$/);assert(m&&Math.abs(Number(m[1])-Number(d.price.slice(1))*10)<=0.11,`${what}: market cap ${d.cells['Market cap']} = ${d.price} x 10M shares`);};
+  capFits(d,'live');const liveCap=d.cells['Market cap'];
+  assert.deepEqual(await within(page,[`${SEL.app} [data-balloons-detail] header`,`${SEL.app} [data-balloons-detail] dl`]),[],'the card\'s header and rows stay inside it');
   await sleep(1200);
   const after=(await scene(page,SEL.app)).target;
   assert(Math.hypot(after[0]-before[0],after[2]-before[2])>3,`the camera moved to it (${before} -> ${after})`);
   const where=await page.$eval(SEL.app,el=>{const p=el.__balloons.where('CHNA');return [p.x/el.clientWidth,p.y/el.clientHeight];});
   assert(Math.abs(where[0]-0.5)<0.12&&Math.abs(where[1]-0.5)<0.2,`CHNA is in the middle of the view (${where})`);
   await shot(page,'app-selected.png');
-  assert.equal((await find('NOPC')).cells['Prev close'],'—','no previous close: a dash');
+  // Scrubbed back, the market cap follows the price shown at that time.
+  await scrub(page,SEL.app,250);
+  await page.waitForFunction(s=>document.querySelector(s)?.dataset.mode==='replay',{},SEL.app);await sleep(900);
+  d=await detail(page,SEL.app);
+  capFits(d,'replay');assert.notEqual(d.cells['Market cap'],liveCap,'earlier in the day the market cap was a different one');
+  await page.click(`${SEL.app} [data-balloons-live]`);
+  await page.waitForFunction(s=>document.querySelector(s)?.dataset.mode==='live',{},SEL.app);
+  d=await find('USAA');
+  assert.equal(d.cells.Institutional,'48%');assert.match(d.cells['Market cap'],/^\$1\.[0-9]B$/,`USAA: about $5 x 250M weighted shares (${d.cells['Market cap']})`);
+  d=await find('HKGO');
+  assert.equal(d.cells.Institutional,'0%','0% is a real answer, not a dash');assert.match(d.cells['Market cap'],/^\$\d\.\dM$/,`HKGO: its share-class count (${d.cells['Market cap']})`);
+  d=await find('NOPC');
+  assert.equal(d.cells['Market cap'],'—');assert.match(await page.$eval(`${SEL.app} [data-balloons-detail]`,e=>e.textContent),/No previous close: change is from the day’s first trade\./);
   await page.keyboard.press('Escape');
   await page.click(`${SEL.app} [data-balloons-reset]`);
   // The legend.
@@ -421,7 +443,11 @@ try{
    assert(s.labelsShown>=3&&s.labelsShown<=room,`${name}: ticker labels for the biggest stories only, as many as the card has room for (${s.labelsShown} of at most ${room})`);
    assert(s.pixelRatio<=1.5,`${name}: the pixel ratio is capped (${s.pixelRatio})`);
    await tap(page,SEL.card,'UNKF');
-   assert.equal(Object.keys((await detail(page,SEL.card)).cells).length,6,`${name}: details in the card`);
+   const inCard=await detail(page,SEL.card);
+   assert.deepEqual(Object.keys(inCard.cells),['Volume','Float','Volume ÷ float','Market cap','Institutional'],`${name}: details in the card`);
+   assert.match(inCard.price,/^\$\d+\.\d\d$/,name);assert.equal(inCard.cells.Institutional,'3.3%',name);assert.equal(inCard.cells['Market cap'],'—',name);
+   assert.deepEqual(await within(page,[`${SEL.card} [data-balloons-detail] header`,`${SEL.card} [data-balloons-detail] [data-balloons-quote]`,`${SEL.card} [data-balloons-detail] dl`]),[],`${name}: the price and the rows stay inside the card`);
+   assert.deepEqual(await page.$eval(`${SEL.card} [data-balloons-detail]`,e=>[...e.querySelectorAll('dd,[data-balloons-quote] span')].filter(x=>x.scrollWidth>x.clientWidth+1).map(x=>x.textContent)),[],`${name}: no value is cut off`);
    assert.deepEqual(await within(page,[`${SEL.card} [data-balloons-detail]`,`${SEL.card} [data-balloons-open]`,`${SEL.card} [data-balloons-clock]`]),[],name);
    await shot(page,file);
    await page.click(`${SEL.card} [data-balloons-detail] button`);

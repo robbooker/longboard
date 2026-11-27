@@ -38,10 +38,13 @@ import {
   DASH,
   SESSION_LABELS,
   formatCompactNumber,
+  formatInstOwn,
+  formatMarketCap,
   formatMarketDay,
   formatPct,
   formatPrice,
   formatRatio,
+  marketCapAt,
 } from "@/lib/gainerBalloons/format";
 import { computeLayout } from "@/lib/gainerBalloons/layout";
 import {
@@ -73,6 +76,8 @@ type Detail = Pick<
   | "cumVolume"
   | "volumeToFloat"
   | "prevClose"
+  | "instOwnPct"
+  | "sharesOutstanding"
   | "liftLoss"
   | "peakPctChange"
   | "burst"
@@ -91,6 +96,8 @@ const detailOf = (s: StockState): Detail => ({
   cumVolume: s.cumVolume,
   volumeToFloat: s.volumeToFloat,
   prevClose: s.prevClose,
+  instOwnPct: s.instOwnPct,
+  sharesOutstanding: s.sharesOutstanding,
   liftLoss: s.liftLoss,
   peakPctChange: s.peakPctChange,
   burst: s.burst,
@@ -756,24 +763,11 @@ export default function GainerBalloons({
           aria-hidden="true"
         />
         <h3>{detail.ticker}</h3>
-        <span className={styles.country}>{detail.country ?? DASH}</span>
-        <button
-          type="button"
-          className={styles.close}
-          onClick={() => setSelected(null)}
-          aria-label={`Close ${detail.ticker} details`}
-        >
-          Close
-        </button>
-      </header>
-      <dl>
-        <div>
-          <dt>Price</dt>
-          <dd>{detail.hasTraded ? formatPrice(detail.price) : DASH}</dd>
-        </div>
-        <div>
-          <dt>Change</dt>
-          <dd
+        {/* #533: the price and the change sit beside the ticker, at the time shown. */}
+        <p className={styles.quote} data-balloons-quote>
+          <span data-balloons-price>{detail.hasTraded ? formatPrice(detail.price) : DASH}</span>
+          <span
+            data-balloons-change
             data-direction={
               !detail.hasTraded
                 ? undefined
@@ -785,8 +779,21 @@ export default function GainerBalloons({
             }
           >
             {detail.hasTraded ? formatPct(detail.pctChange) : DASH}
-          </dd>
-        </div>
+          </span>
+        </p>
+        <button
+          type="button"
+          className={styles.close}
+          onClick={() => setSelected(null)}
+          aria-label={`Close ${detail.ticker} details`}
+        >
+          Close
+        </button>
+      </header>
+      <p className={styles.country} data-balloons-country>
+        {detail.country ?? DASH}
+      </p>
+      <dl>
         <div>
           <dt>Volume</dt>
           <dd>{detail.hasTraded ? formatCompactNumber(detail.cumVolume) : DASH}</dd>
@@ -800,8 +807,14 @@ export default function GainerBalloons({
           <dd>{detail.floatKnown && detail.hasTraded ? formatRatio(detail.volumeToFloat) : DASH}</dd>
         </div>
         <div>
-          <dt>Prev close</dt>
-          <dd>{formatPrice(detail.prevClose)}</dd>
+          <dt>Market cap</dt>
+          <dd>
+            {formatMarketCap(detail.hasTraded ? marketCapAt(detail.price, detail.sharesOutstanding) : null)}
+          </dd>
+        </div>
+        <div>
+          <dt>Institutional</dt>
+          <dd>{formatInstOwn(detail.instOwnPct)}</dd>
         </div>
       </dl>
       {!compact && (

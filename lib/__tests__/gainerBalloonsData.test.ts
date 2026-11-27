@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { COUNTRY_STRETCH, DEFAULT_COUNTRY_PROFILE, SCALES, getCountryProfile } from "@/lib/gainerBalloons/config";
 import { cleanBars, createMarketData, mapAgility, mapPctChangeToY, mapVolumeScale, mergeFeed, nyEpochMs, type BalloonsFeed, type RawBar, type RawStock } from "@/lib/gainerBalloons/data";
-import { formatCompactNumber, formatMarketDay, formatPct, formatPrice, formatRatio } from "@/lib/gainerBalloons/format";
+import { formatCompactNumber, formatInstOwn, formatMarketCap, formatMarketDay, formatPct, formatPrice, formatRatio, marketCapAt } from "@/lib/gainerBalloons/format";
 import { centreOutSeats, computeLayout } from "@/lib/gainerBalloons/layout";
 import { cardSizeClass, labelBudget, labelTextPx } from "@/components/chat/balloons/scene/quality";
 
@@ -282,6 +282,41 @@ describe("the page's feed", () => {
     // A whole day always replaces what is held; a stock that left the list goes with it.
     const whole = feed({ stocks: [] });
     expect(mergeFeed(held, whole)).toBe(whole);
+  });
+});
+
+describe("#533 market cap and institutional ownership on the card", () => {
+  const bars = [bar(0, 2, 3, 100_000), bar(2, 3, 4.82, 100_000)];
+  it("carries the shares outstanding and the institutional % on every state; anything else is not known", () => {
+    const s = at(one(stock({ instOwnPct: 12.4, sharesOutstanding: 10_000_000, bars })), OPEN + 6 * MIN);
+    expect([s.instOwnPct, s.sharesOutstanding]).toEqual([12.4, 10_000_000]);
+    expect(at(one(stock({ instOwnPct: 0, bars })), OPEN + 6 * MIN).instOwnPct).toBe(0);
+    for (const bad of [null, undefined, -1, Number.NaN, Infinity]) {
+      const none = at(one(stock({ instOwnPct: bad, sharesOutstanding: bad === -1 ? 0 : bad, bars })), OPEN + 6 * MIN);
+      expect([none.instOwnPct, none.sharesOutstanding]).toEqual([null, null]);
+    }
+  });
+  it("the market cap is the price at the time shown times the shares, so it moves with the scrubber", () => {
+    const data = one(stock({ sharesOutstanding: 10_000_000, bars }));
+    const early = at(data, OPEN + 2 * MIN);
+    const late = at(data, OPEN + 6 * MIN);
+    expect(formatMarketCap(marketCapAt(early.price, early.sharesOutstanding))).toBe("$30.0M");
+    expect(formatMarketCap(marketCapAt(late.price, late.sharesOutstanding))).toBe("$48.2M");
+  });
+  it("no market cap without a price and a share count", () => {
+    for (const [price, shares] of [[null, 1e6], [2, null], [undefined, undefined], [0, 1e6], [2, 0], [-1, 1e6], [Number.NaN, 1e6], [2, Infinity]] as Array<[number | null | undefined, number | null | undefined]>)
+      expect(marketCapAt(price, shares)).toBeNull();
+    expect(marketCapAt(4.82, 10_000_000)).toBeCloseTo(48_200_000, 3);
+  });
+  it("reads a market cap as $48.2M or $1.3B, and a dash when it isn't known", () => {
+    expect([48_200_000, 1_300_000_000, 1_250_000_000_000, 940_000, 12_345_678, 5_000_000_000, 850].map(formatMarketCap)).toEqual(["$48.2M", "$1.3B", "$1.3T", "$940.0K", "$12.3M", "$5.0B", "$850"]);
+    // Never "$1000.0M": the next unit up takes it.
+    expect([999_960_000, 999_940_000, 999_999, 999_960_000_000].map(formatMarketCap)).toEqual(["$1.0B", "$999.9M", "$1.0M", "$1.0T"]);
+    for (const value of [null, undefined, Number.NaN, Infinity, 0, -5]) expect(formatMarketCap(value)).toBe("—");
+  });
+  it("reads institutional ownership as 12.4%, with 0% a real answer and a dash when it isn't known", () => {
+    expect([12.4, 12.44, 12.46, 48, 0, 0.04, 100, 3.25].map(formatInstOwn)).toEqual(["12.4%", "12.4%", "12.5%", "48%", "0%", "0%", "100%", "3.3%"]);
+    for (const value of [null, undefined, Number.NaN, Infinity, -1]) expect(formatInstOwn(value)).toBe("—");
   });
 });
 

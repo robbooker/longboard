@@ -27,6 +27,7 @@ import { GET } from "@/app/api/chat/balloons/route";
 import { BARS_DONE_TTL_MS, BARS_TTL_MS, capRows, dayWindow, resetBalloonsFeed } from "@/lib/gainerBalloons/feed.server";
 import { MAX_BALLOONS } from "@/lib/gainerBalloons/config";
 import type { BalloonsFeed } from "@/lib/gainerBalloons/data";
+import { resetGainersShares } from "@/lib/chatGainersShares";
 
 const KEY = "test-only-polygon-key";
 const member = { ok: true as const, user: { id: "11111111-1111-4111-8111-111111111111", email: "m@example.test", role: "user" as const }, access: { longboard: true, boardroom: true, shortscout: false, admin: true }, serverSession: false };
@@ -43,7 +44,9 @@ const calls = (): Call[] =>
   fetchMock.mock.calls.map(([url]) => {
     const parsed = new URL(String(url));
     const [, ticker, span] = parsed.pathname.match(/\/ticker\/([^/]+)\/range\/\d+\/(minute|day)\//) ?? [];
-    return { ticker, span, url: parsed };
+    // #533: the ticker details read (shares outstanding) is its own kind of call.
+    const [, detailsTicker] = parsed.pathname.match(/^\/v3\/reference\/tickers\/([^/]+)$/) ?? [];
+    return detailsTicker ? { ticker: detailsTicker, span: "details", url: parsed } : { ticker, span, url: parsed };
   });
 const count = (span: string, ticker?: string) => calls().filter((c) => c.span === span && (!ticker || c.ticker === ticker)).length;
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
@@ -54,6 +57,7 @@ function polygon(override?: (call: Call) => Response | undefined) {
     void url;
     const special = override?.(call);
     if (special) return special;
+    if (call.span === "details") return json({ results: call.ticker === "AAA" ? { weighted_shares_outstanding: 12_000_000, share_class_shares_outstanding: 9_000_000 } : {} });
     if (call.span === "day") return json({ results: [{ t: 1, o: 1.9, h: 2.1, l: 1.8, c: 1.95, v: 10 }, { t: 2, o: 2, h: 2, l: 2, c: 2, v: 10 }] });
     const open = dayWindow(WED).startMs + 5.5 * 3_600_000;
     return json({ results: [{ t: open, o: 2, h: 2.5, l: 2, c: 2.4, v: 1000 }, { t: open + 120_000, o: 2.4, h: 2.6, l: 2.3, c: 2.5, v: 500 }] });
@@ -68,6 +72,7 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(TEN_AM);
   resetBalloonsFeed();
+  resetGainersShares();
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
   vi.stubEnv("POLYGON_API_KEY", KEY);
@@ -113,6 +118,65 @@ describe("GET /api/chat/balloons", () => {
     const text = JSON.stringify(body);
     expect(text).not.toContain(KEY);
     expect(text.toLowerCase()).not.toMatch(/polygon|source|apikey/);
+  });
+
+  it("#533: sends institutional ownership from the saved company facts and the shares outstanding for the market cap", async () => {
+    state.rows[WED] = [
+      row("AAA", { inst_own_pct: "12.4", inst_own_checked_at: "2026-11-25T12:00:00Z" }),
+      row("BBB", { inst_own_pct: 0, inst_own_checked_at: "2026-11-25T12:00:00Z" }),
+      // Looked up, and there was none; never looked up; and a number that isn't a percent.
+      row("CCC", { inst_own_pct: null, inst_own_checked_at: "2026-11-25T12:00:00Z" }),
+      row("DDD"),
+      row("EEE", { inst_own_pct: -3, inst_own_checked_at: "2026-11-25T12:00:00Z" }),
+    ];
+    const { body } = await get();
+    expect(body.stocks.map((s) => [s.ticker, s.instOwnPct, s.sharesOutstanding])).toEqual([
+      ["AAA", 12.4, 12_000_000],
+      ["BBB", 0, null],
+      ["CCC", null, null],
+      ["DDD", null, null],
+      ["EEE", null, null],
+    ]);
+    expect(calls().find((c) => c.span === "details")!.url.pathname).toBe("/v3/reference/tickers/AAA");
+    expect(JSON.stringify(body)).not.toContain(KEY);
+  });
+
+  it("#533: reads a stock's shares once a day (an hour when there was no count), not with every minute's bars", async () => {
+    await Promise.all(Array.from({ length: 12 }, () => get()));
+    expect([count("details", "AAA"), count("details", "BBB")]).toEqual([1, 1]);
+    for (let minute = 1; minute <= 59; minute++) {
+      vi.setSystemTime(TEN_AM + minute * 60_000);
+      await get();
+    }
+    expect(count("details")).toBe(2);
+    // An hour on, the stock without a count is asked again; the one with a count waits a day.
+    vi.setSystemTime(TEN_AM + 3_600_000 + 1_000);
+    await get();
+    expect([count("details", "AAA"), count("details", "BBB")]).toEqual([1, 2]);
+    vi.setSystemTime(TEN_AM + 24 * 3_600_000 + 1_000);
+    await get();
+    expect(count("details", "AAA")).toBe(2);
+  });
+
+  it("#533: answers with the bars and no shares when the shares read fails or never comes back", async () => {
+    polygon((call) => (call.span === "details" && call.ticker === "AAA" ? json({ status: "ERROR" }, 500) : undefined));
+    const failed = await get();
+    expect(failed.body.stocks.map((s) => [s.ticker, s.sharesOutstanding, s.bars.length])).toEqual([["AAA", null, 2], ["BBB", null, 2]]);
+    resetBalloonsFeed();
+    resetGainersShares();
+    fetchMock.mockReset();
+    vi.useRealTimers();
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    vi.setSystemTime(TEN_AM);
+    fetchMock.mockImplementation(async (url: unknown) => {
+      if (String(url).includes("/v3/reference/tickers/")) return new Promise<Response>(() => {});
+      return String(url).includes("/day/") ? json({ results: [{ t: 2, o: 2, h: 2, l: 2, c: 2, v: 10 }] }) : json({ results: [] });
+    });
+    const pending = get();
+    await vi.advanceTimersByTimeAsync(3_100);
+    const slow = await pending;
+    expect(slow.response.status).toBe(200);
+    expect(slow.body.stocks.map((s) => [s.ticker, s.sharesOutstanding, s.prevClose])).toEqual([["AAA", null, 2], ["BBB", null, 2]]);
   });
 
   it("reads Polygon once per stock per minute, however many members ask", async () => {
