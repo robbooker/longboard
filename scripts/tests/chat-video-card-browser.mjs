@@ -278,6 +278,13 @@ try{
  const card=i=>`section[data-card="${i}"]`;
  saved=[{type:'room',source:'main'},null,{type:'room',source:'shortscout'},null,null,null];
  await p.setViewport({width:1920,height:1080});await p.goto(base+'/chat/six');await p.waitForSelector(card(6));await p.waitForFunction(()=>!document.body.textContent.includes('Loading your cards'),T);
+ // #538: a card showing a room's chat, switched to Live video, offers that same room's video first (not the first room's).
+ await p.click(`${card(3)} button[aria-label="Change card 3"]`);await p.waitForSelector(`${card(3)} [data-card-picker]`);
+ await p.click(`${card(3)} [data-card-picker] input[value="video"]`);
+ assert.equal(await p.$eval(`${card(3)} [data-card-picker] select`,e=>e.value),'shortscout','SS chat -> SS live video, not LB');
+ await p.click(`${card(3)} [data-card-picker] input[value="room"]`);
+ assert.equal(await p.$eval(`${card(3)} [data-card-picker] select`,e=>e.value),'shortscout','and back to the same room');
+ await p.keyboard.press('Escape');await p.waitForSelector(`${card(3)} [data-card-picker]`,{hidden:true});
  await p.click(`${card(2)} button[aria-label="Choose card 2"]`);await p.waitForSelector(`${card(2)} [data-card-picker]`);
  assert(await p.$eval(`${card(2)} [data-card-picker]`,e=>/Live video/.test(e.textContent)),'the picker has a Live video type');
  await p.click(`${card(2)} [data-card-picker] input[value="video"]`);
