@@ -23,13 +23,18 @@ export function amount(digits, unit = "") {
   return Math.round(value * scale);
 }
 
-function country(text) {
-  const match = text.match(/Country:\s*([^\n]*?)\s*Exchange:/);
-  if (!match) return null;
-  let value = match[1].replace(/\s+/g, " ").trim();
-  if (!value || /^(?:n\/?a|-+|—|unknown)$/i.test(value) || value.length > 60) return null;
+/** A country as DilutionTracker writes it (the page or, #534, the API), tidied: "U.S" -> "U.S."; null when none. */
+export function normaliseCountry(raw) {
+  if (typeof raw !== "string") return null;
+  let value = raw.replace(/\s+/g, " ").trim();
+  if (!value || /^(?:n\/?a|-+|—|unknown)$/i.test(value) || value.length > 60 || /[\0<>]/.test(value)) return null;
   if (value === "U.S" || value === "US" || value === "USA" || value === "United States") value = "U.S.";
   return value;
+}
+
+function country(text) {
+  const match = text.match(/Country:\s*([^\n]*?)\s*Exchange:/);
+  return match ? normaliseCountry(match[1]) : null;
 }
 
 function instOwn(text) {
