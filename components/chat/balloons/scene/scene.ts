@@ -290,6 +290,8 @@ export function createBalloonScene(
     drawCalls: 0,
     target: [0, 0, 0] as [number, number, number],
     pixelRatio: renderer.getPixelRatio(),
+    /** #539: what the weather is drawing (cloud shapes, rain streaks, snow flakes, the haze over the field). */
+    weather: sky.drawn,
   };
 
   return {

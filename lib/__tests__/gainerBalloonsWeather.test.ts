@@ -103,7 +103,10 @@ describe("conditions", () => {
     expect(sky("clear").cloud).toBeLessThan(0.1);
     expect(sky("cloudy").cloud).toBeGreaterThan(sky("partly").cloud);
     expect(sky("cloudy").dim).toBeGreaterThan(sky("partly").dim);
-    expect(sky("fog").fogDensity).toBeGreaterThan(sky("cloudy").fogDensity * 1.5);
+    // #539: fog is mist around the field; only a little more haze over the balloons themselves.
+    expect(sky("fog").mist).toBe(1);
+    expect(sky("fog").fogDensity).toBeGreaterThan(sky("cloudy").fogDensity);
+    for (const condition of ["clear", "partly", "cloudy", "rain", "snow", "thunder"] as const) expect(sky(condition).mist, condition).toBe(0);
     expect(sky("rain")).toMatchObject({ rain: 1, snow: 0, thunder: false });
     expect(sky("drizzle").rain).toBeLessThan(sky("rain").rain);
     expect(sky("drizzle").rain).toBeGreaterThan(0);
@@ -113,9 +116,9 @@ describe("conditions", () => {
     expect(sky("rain", 0).cloud).toBeGreaterThanOrEqual(0.9);
     for (const condition of WEATHER_CONDITIONS) {
       const s = sky(condition, Number.NaN);
-      for (const value of [s.cloud, s.dim, s.fogDensity, s.rain, s.snow]) expect(Number.isFinite(value), condition).toBe(true);
-      // Even the thickest weather leaves the balloons visible across the field.
-      expect(s.fogDensity).toBeLessThan(0.025);
+      for (const value of [s.cloud, s.dim, s.fogDensity, s.mist, s.rain, s.snow]) expect(Number.isFinite(value), condition).toBe(true);
+      // #539: no weather hazes the balloons much more than a clear day does (0.0086).
+      expect(s.fogDensity).toBeLessThanOrEqual(0.0102);
     }
   });
   it("lets lightning glow softly, once at most every several seconds", () => {
