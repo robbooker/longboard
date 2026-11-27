@@ -240,7 +240,7 @@ try{
   assert.equal(await page.$eval(link,e=>e.textContent),'Change weather','the link stays beside the readout');
   // The clock follows the place (#532): Austin is an hour behind New York, so 9:00 AM reads 8:00 AM CT
   // and the day runs 3:00 AM to 7:00 PM. The day itself hasn't moved: still Live, same session.
-  assert.match(await clockIn(page,SEL.app,'CT'),/^8:0\d AM CT$/,'the clock in Austin\'s time');
+  assert.match(await clockIn(page,SEL.app,'CT'),/^8:\d\d AM CT$/,'the clock in Austin\'s time');
   assert.deepEqual(await axis(page),['3:00 AM','8:30 AM','11:00 AM','3:00 PM','7:00 PM'],'the timeline in Austin\'s time');
   assert.match(await page.$eval(`${SEL.app} [data-balloons-scrubber]`,e=>e.getAttribute('aria-label')),/: 3:00 AM to 7:00 PM CT$/);
   assert.equal(await mode(page,SEL.app),'live','still Live');
@@ -252,7 +252,7 @@ try{
   await page.reload();await drawn(page,SEL.app);
   await page.waitForFunction(s=>document.querySelector(s)?.textContent==='86°FAustin',{},`${SEL.app} [data-balloons-weather]`);
   assert.deepEqual(page.weatherAsks.at(-1).body,{place:'tx:austin'},'the remembered place after a reload');
-  assert.match(await clockIn(page,SEL.app,'CT'),/^8:0\d AM CT$/,'the clock holds after a reload');
+  assert.match(await clockIn(page,SEL.app,'CT'),/^8:\d\d AM CT$/,'the clock holds after a reload');
   assert.deepEqual(await axis(page),['3:00 AM','8:30 AM','11:00 AM','3:00 PM','7:00 PM'],'and so does the timeline');
   assert.equal(await page.evaluate(()=>window.__geoAsks),0,'typing a place never asks for the location');
   // Enter picks the first match.
@@ -270,7 +270,7 @@ try{
   assert.equal(await page.evaluate(()=>window.__geoAsks),1,'asked once, on the tap');
   assert.deepEqual(page.weatherAsks.at(-1),{search:'',body:{lat:41.9,lon:-87.6},method:'POST'},'the place is rounded to one decimal and sent in the body');
   assert.equal(await page.$eval(`${SEL.app} [data-balloons-weather]`,e=>e.textContent),'50°FChicago');
-  assert.match(await clockIn(page,SEL.app,'CT'),/^8:0\d AM CT$/,'the viewer\'s own area: its time');
+  assert.match(await clockIn(page,SEL.app,'CT'),/^8:\d\d AM CT$/,'the viewer\'s own area: its time');
   assert.equal(await page.evaluate(()=>localStorage.getItem('rb-balloons-weather-v1')),'{"local":true,"unit":"F"}','only the choice is stored, never the position (and the typed place is forgotten)');
   assert.equal(await page.$eval(link,e=>e.textContent),'Change weather','the link is always there');
   assert.doesNotMatch(await page.$eval(SEL.app,e=>e.innerText),/Use New York weather/);
@@ -503,7 +503,7 @@ try{
   await drawn(page,SEL.card);
   await page.waitForFunction(s=>document.querySelector(s)?.textContent==='50°F',{},`${SEL.card} [data-balloons-weather]`);
   assert.deepEqual(page.weatherAsks.at(-1).body,{lat:41.9,lon:-87.6},'the remembered choice, rounded');
-  assert.match(await clockIn(page,SEL.card,'CT'),/^8:0\d AM CT$/,'the card\'s clock is in the viewer\'s own time');
+  assert.match(await clockIn(page,SEL.card,'CT'),/^8:\d\d AM CT$/,'the card\'s clock is in the viewer\'s own time');
   await page.close();
  }
 
@@ -519,7 +519,7 @@ try{
   assert.equal(await page.$(`${SEL.card} [data-balloons-weather-change]`),null,'no "Change weather" in a card');
   assert.equal(page.placeAsks.length,0,'a card never searches');
   // The card's clock follows the remembered place too (#532), and fits in the card.
-  assert.match(await clockIn(page,SEL.card,'CT'),/^8:0\d AM CT$/,'the card shows the place\'s time');
+  assert.match(await clockIn(page,SEL.card,'CT'),/^8:\d\d AM CT$/,'the card shows the place\'s time');
   assert.equal(await mode(page,SEL.card),'live');
   assert.deepEqual(await within(page,[`${SEL.card} [data-balloons-clock]`,`${SEL.card} [data-balloons-weather]`,`${SEL.card} [data-balloons-open]`]),[],'the card\'s top row fits');
   assert.doesNotMatch(await allWords(page,SEL.card),/America\/|Chicago/);
@@ -572,7 +572,7 @@ try{
   await changeWeather(page);
   assert.equal((await typePlace(page,'anchorage'))[0],'Anchorage, AK');
   await page.$eval(`${SEL.app} [data-balloons-place="ak:anchorage"]`,b=>b.click());
-  assert.match(await clockIn(page,SEL.app,'AKT'),/^5:0\d AM AKT$/,'phone: Anchorage\'s time');
+  assert.match(await clockIn(page,SEL.app,'AKT'),/^5:\d\d AM AKT$/,'phone: Anchorage\'s time');
   assert.deepEqual(await axis(page).then(list=>[list[0],list.at(-1)]),['12:00 AM','4:00 PM']);
   const clockFits=async what=>{
    const row=await page.$eval(`${SEL.app} [data-balloons-clock]`,e=>{const r=e.getBoundingClientRect(),box=e.closest('header > div').getBoundingClientRect();return {text:e.textContent,inside:r.left>=box.left-1&&r.right<=box.right+1,lines:Math.round(r.height/parseFloat(getComputedStyle(e).lineHeight))};});
