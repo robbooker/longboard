@@ -13,6 +13,8 @@ import { isStageRoom } from "./chatStageLive";
 import {
   STAGE_BELL_PAGE,
   STAGE_DROP_GRACE_MS,
+  stageCopyId,
+  stageCopyRooms,
   syncStageNotice,
   type StageBroadcast,
   type StageNoticeStore,
@@ -56,10 +58,19 @@ export async function latestStageBroadcast(db: SupabaseClient, room: ChatRoom): 
   return data[0] ? broadcastOf(data[0] as BroadcastRow) : null;
 }
 
+/**
+ * A notice's words changed (posted, ended, back, a recording): everyone showing its room reloads
+ * it, and (#537) so does everyone showing a room that holds one of its copies. Never throws.
+ */
+export async function stageNoticeChanged(room: ChatRoom): Promise<void> {
+  await Promise.all([room, ...stageCopyRooms(room)].map((slug) => publishRoomEvent(slug, { kind: "changed", topics: ["history"] })));
+}
+
 /** `actor`: the admin whose own player or action reported the broadcast; they get no bell entry from this call. */
 export function stageNoticeStore(db: SupabaseClient, actor?: string | null): StageNoticeStore {
   // Everyone showing the room reloads it (and their bell); never throws.
-  const changed = (room: ChatRoom) => publishRoomEvent(room, { kind: "changed", topics: ["history"] });
+  // #537: and everyone showing a room that holds a copy of this room's notice (Webinars only).
+  const changed = (room: ChatRoom) => stageNoticeChanged(room);
   const call = async (name: string, args: Record<string, unknown>, what: string) => {
     const { data, error } = await db.rpc(name, args);
     if (error) return failed(what);
@@ -111,6 +122,17 @@ export function stageNoticeStore(db: SupabaseClient, actor?: string | null): Sta
       // The bells only: the rows arrived after the message's own signal.
       if (result?.added) await publishRoomEvent(room, { kind: "changed", topics: [] });
       return { done: result?.done === true };
+    },
+    copy: async (id, rooms, body) => {
+      const result = (await call(
+        "chat_stage_broadcast_copy_post",
+        { p_id: id, p_rooms: rooms, p_ids: rooms.map((room) => stageCopyId(id, room)), p_body: body },
+        "copy",
+      )) as { rooms?: unknown } | null;
+      const posted = Array.isArray(result?.rooms) ? result.rooms : [];
+      await Promise.all(
+        rooms.filter((room) => posted.includes(room)).map((room) => publishRoomEvent(room, { kind: "changed", topics: ["history"] })),
+      );
     },
   };
 }

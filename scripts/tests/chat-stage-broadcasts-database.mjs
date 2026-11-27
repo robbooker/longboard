@@ -24,6 +24,9 @@ const one=async(sql,args=[])=>(await db.query(sql,args)).rows[0];
 const all=async(sql,args=[])=>(await db.query(sql,args)).rows;
 const file=async path=>readFile(`${root}/supabase/${path}`,'utf8');
 const migration={up:await file('migrations/20261126120000_chat_stage_broadcasts.sql'),down:await file('rollbacks/20261126120000_chat_stage_broadcasts.down.sql')};
+// #537 (the Webinars room) changed functions after this migration: it is rolled back first, so this
+// checks the migration against the definitions it was written for (chat-webinars-room-database.mjs checks #537's).
+await db.exec(await file('rollbacks/20261127130000_chat_webinars_room.down.sql'));
 const [alice,bob,mallory]=people.map(p=>p.id);
 const memberOf=async who=>(await one('select id from longboard_chat_members where user_id=$1',[who])).id;
 const [aliceMember,bobMember,malloryMember]=[await memberOf(alice),await memberOf(bob),await memberOf(mallory)];

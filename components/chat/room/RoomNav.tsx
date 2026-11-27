@@ -30,9 +30,9 @@ const NAV_GROUPS: ReadonlyArray<{
   slugs: readonly ChatRoom[];
 }> = [
   { label: "What's New?", heading: false, slugs: ["whats-new"] },
-  { label: "Rooms", fold: "rooms", slugs: ["main", "social", "shortscout", "ai-insights", "gainers", "club", "lb-review", "runner-watch", "developers", "admins"] },
+  { label: "Rooms", fold: "rooms", slugs: ["main", "social", "shortscout", "ai-insights", "gainers", "club", "webinars", "lb-review", "runner-watch", "developers", "admins"] },
   { label: "Announcements", fold: "announcements", slugs: ["lb-announcements", "ss-announcements"] },
-  { label: "Recordings", fold: "recordings", slugs: ["lb-recordings", "ss-recordings"] },
+  { label: "Recordings", fold: "recordings", slugs: ["lb-recordings", "ss-recordings", "club-recordings"] },
 ];
 
 /** Short sidebar name: the group heading already says Announcements / Recordings. */
@@ -51,7 +51,8 @@ function NavRoomLabel({ slug, label }: { slug: string; label: string }) {
       : "";
   return kind ? (
     <>
-      {label.split(" ")[0]}
+      {/* #537: "Booker Stock Club Recordings" is "Booker Stock Club" here; "LB Recordings" is "LB". */}
+      {label.replace(/ (Announcements|Recordings)$/, "")}
       <span className={styles.srOnly}>{kind}</span>
     </>
   ) : (

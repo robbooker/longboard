@@ -164,6 +164,9 @@ export const TESTS = [
   { name: 'chat-stage-hand', preload: 'chat-gainers-table-preload.mjs', env: ['livekit', 'gainersLookup', 'polygon'], timeout: 360 },
   // #524: webinar notices (Booker Stock Club, the recording on the ended notice); LiveKit is a stand-in inside the test.
   { name: 'chat-stage-notice', env: ['livekit'], timeout: 420, weight: 150 },
+  // #537: the Webinars room, its notice in every room and its recordings room; LiveKit and Ably are stand-ins inside the test.
+  // It waits out the real 20 seconds after a broadcast stops, once.
+  { name: 'chat-webinars-room', env: ['ably', 'livekit'], timeout: 600, weight: 200 },
   { name: 'chat-header-cards' },
   { name: 'chat-jammie-admin' },
   { name: 'chat-jammie-approval' },

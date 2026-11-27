@@ -13,11 +13,13 @@ export const ROOM_LABELS = {
   gainers: "GAINERS",
   "lb-recordings": "LB RECORDINGS",
   "ss-recordings": "SS RECORDINGS",
+  "club-recordings": "BOOKER STOCK CLUB RECORDINGS",
   "whats-new": "WHAT'S NEW?",
   developers: "DEVELOPERS",
   "lb-review": "LB REVIEW",
   "runner-watch": "RUNNER WATCH",
   club: "BOOKER STOCK CLUB",
+  webinars: "WEBINARS",
   "ai-insights": "AI INSIGHTS",
   admins: "ADMINS",
 };

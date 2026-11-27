@@ -41,6 +41,16 @@ export function clubRoomAccess(access: ChatEntitlements): boolean {
   return accessHasEntitlement(access, "club-room") || gainersAccess(access);
 }
 
+/**
+ * #537: who can open the Webinars room: exactly the people who can open Booker Stock Club (every LB
+ * and SS member, and club buyers), so a webinar for everyone has one room everyone can talk in.
+ * Unlike the club, chat here is open: whoever can open it can post (canWriteChatRoom). The database
+ * has the same rule (chat_account_has_room, 20261127130000_chat_webinars_room.sql).
+ */
+export function webinarsRoomAccess(access: ChatEntitlements): boolean {
+  return clubRoomAccess(access);
+}
+
 export function allowedChatRooms(access: ChatEntitlements): ChatRoom[] {
   if (access.botRooms) {
     const rooms = access.botRooms;
@@ -69,6 +79,12 @@ export function allowedChatRooms(access: ChatEntitlements): ChatRoom[] {
   if (access.longboard || access.shortscout || access.shortscoutMember) rooms.push("runner-watch");
   // #386: Booker Stock Club, read-only. Its rule lives in one place (clubRoomAccess).
   if (clubRoomAccess(access)) rooms.push("club");
+  // #537: Webinars, for all-member webinars with open chat: exactly the people who have Booker
+  // Stock Club (webinarsRoomAccess).
+  if (webinarsRoomAccess(access)) rooms.push("webinars");
+  // #537: and the recordings of those webinars (Recordings > Booker Stock Club), for the same people.
+  // Admins post there, members read and react, as in LB Recordings and SS Recordings.
+  if (webinarsRoomAccess(access)) rooms.push("club-recordings");
   // #482: AI Insights repeats the SS room's words, so it has exactly SS's members.
   if (access.shortscout) rooms.push("ai-insights");
   return rooms;
@@ -88,13 +104,13 @@ export function canUseDirectMessages(access: ChatEntitlements) {
   return !access?.botRooms;
 }
 
-export type ChatSearchRoom = "main" | "social" | "shortscout" | "developers" | "lb-review" | "runner-watch" | "admins";
+export type ChatSearchRoom = "main" | "social" | "shortscout" | "developers" | "lb-review" | "runner-watch" | "webinars" | "admins";
 
-/** Search includes only the conversation rooms this member can read (Developers added in #322). */
+/** Search includes only the conversation rooms this member can read (Developers added in #322, Webinars in #537). */
 export function allowedChatSearchRooms(access: ChatEntitlements): ChatSearchRoom[] {
   return allowedChatRooms(access).filter(
     (room): room is ChatSearchRoom =>
-      room === "main" || room === "social" || room === "shortscout" || room === "developers" || room === "lb-review" || room === "runner-watch" || room === "admins",
+      room === "main" || room === "social" || room === "shortscout" || room === "developers" || room === "lb-review" || room === "runner-watch" || room === "webinars" || room === "admins",
   );
 }
 

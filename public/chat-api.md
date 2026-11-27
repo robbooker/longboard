@@ -47,7 +47,8 @@ Authorization: Bearer lbc_<43 characters>
 ## Rooms
 
 Room slugs: `main` (LB), `social`, `shortscout` (SS), `lb-announcements`, `ss-announcements`,
-`gainers`, `lb-recordings`, `ss-recordings`, `developers`, `lb-review`, `runner-watch`, `ai-insights`, `admins`.
+`gainers`, `lb-recordings`, `ss-recordings`, `club-recordings`, `developers`, `lb-review`, `runner-watch`, `webinars`,
+`ai-insights`, `admins`.
 
 Which rooms you can see depends on your memberships (admins see every room):
 
@@ -55,6 +56,7 @@ Which rooms you can see depends on your memberships (admins see every room):
 |---|---|
 | `main`, `lb-announcements`, `lb-recordings` | Longboard Boardroom members |
 | `social`, `gainers`, `developers` | Longboard or any paid ShortScout member |
+| `webinars`, `club-recordings` | Longboard or any paid ShortScout member, and Booker Stock Club members |
 | `admins` | Chat admins only (never bot accounts) |
 | `shortscout`, `ss-announcements`, `ss-recordings`, `ai-insights` | ShortScout mastermind members |
 

@@ -132,6 +132,40 @@ describe("attaching it", () => {
     expect(calls).toEqual([]);
     expect(rows[0].recording_url).toBeNull();
   });
+  it("#537: a link posted in Recordings > Booker Stock Club goes onto the Webinars room's ended notice; its copies' rooms reload too", async () => {
+    const rows = [row({ notice_id: "w1", room_slug: "webinars" }), row()];
+    const { db, calls } = database(rows);
+    expect(stageRecordingFromPost("club-recordings", `Tuesday's webinar ${YT}`)).toEqual({ room: "webinars", url: YT });
+    expect(await attachStageRecordingFromPost(db, "club-recordings", `Tuesday's webinar ${YT}`, T0 + 2 * HOUR)).toBe(true);
+    expect(calls).toEqual([{ p_id: "w1", p_room: "webinars", p_url: YT, p_body: composeStageEndedNotice("Webinars", YT), p_source: "post", p_only_if_empty: true }]);
+    expect(rows[0]).toMatchObject({ recording_url: YT, recording_source: "post" });
+    expect(rows[1].recording_url).toBeNull(); // LB's notice is LB Recordings' business
+    // Webinars reloads, and so does every room that holds a copy of its notice (the database rewrote them).
+    const reloaded = mocks.publish.mock.calls.map((call) => call[0]);
+    expect(reloaded[0]).toBe("webinars");
+    for (const room of ["social", "club", "club-recordings", "lb-recordings", "whats-new"]) expect(reloaded).toContain(room);
+    for (const room of ["admins", "gainers"]) expect(reloaded).not.toContain(room);
+  });
+  it("#537: the same recordings room holds Booker Stock Club's own webinars: the link goes onto whichever fitting broadcast started last", async () => {
+    // Only the club had a webinar.
+    const club = database([row({ notice_id: "c1", room_slug: "club" })]);
+    expect(await attachStageRecordingFromPost(club.db, "club-recordings", YT, T0 + 2 * HOUR)).toBe(true);
+    expect(club.calls[0]).toMatchObject({ p_id: "c1", p_room: "club", p_body: composeStageEndedNotice("Booker Stock Club", YT) });
+    // Both did: the later one takes the first link, the earlier one the next.
+    const rows = [row({ notice_id: "w1", room_slug: "webinars" }), row({ notice_id: "c1", room_slug: "club", started_at: iso(T0 + 3 * HOUR), last_live_at: iso(T0 + 4 * HOUR), ended_at: iso(T0 + 4 * HOUR), created_at: iso(T0 + 3 * HOUR) })];
+    const both = database(rows);
+    expect(await attachStageRecordingFromPost(both.db, "club-recordings", YT, T0 + 5 * HOUR)).toBe(true);
+    expect(both.calls[0]).toMatchObject({ p_id: "c1", p_room: "club" });
+    expect(await attachStageRecordingFromPost(both.db, "club-recordings", LOOM, T0 + 6 * HOUR)).toBe(true);
+    expect(both.calls[1]).toMatchObject({ p_id: "w1", p_room: "webinars", p_url: LOOM });
+    // A webinar still live, or with its recording already set, is passed over; LB Recordings never reaches Webinars.
+    const live = database([row({ notice_id: "w2", room_slug: "webinars", ended_at: null })]);
+    expect(await attachStageRecordingFromPost(live.db, "club-recordings", YT, T0 + 2 * HOUR)).toBe(false);
+    const other = database([row({ notice_id: "w3", room_slug: "webinars" })]);
+    expect(await attachStageRecordingFromPost(other.db, "lb-recordings", YT, T0 + 2 * HOUR)).toBe(false);
+    expect(await attachStageRecordingFromPost(other.db, "ss-recordings", YT, T0 + 2 * HOUR)).toBe(false);
+    expect(other.calls).toEqual([]);
+  });
   it("only the room's most recent broadcast is looked at: outside the window, still live, or already set, nothing is attached", async () => {
     for (const rows of [
       [row({ started_at: iso(T0 - 40 * HOUR), ended_at: iso(T0 - 39 * HOUR), created_at: iso(T0 - 40 * HOUR) })], // long ago

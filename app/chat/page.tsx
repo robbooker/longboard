@@ -89,6 +89,7 @@ export default async function ChatPage({
             room === "lb-review" ||
             room === "runner-watch" ||
             room === "club" ||
+            room === "webinars" ||
             room === "admins" ||
             (room === "main" && !!auth.access.boardroom))
         }
@@ -103,6 +104,7 @@ export default async function ChatPage({
                   r === "lb-review" ||
                   r === "runner-watch" ||
                   r === "club" ||
+                  r === "webinars" ||
                   r === "admins" ||
                   (r === "main" && auth.access.boardroom),
               )

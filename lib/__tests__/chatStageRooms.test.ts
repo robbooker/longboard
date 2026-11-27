@@ -3,7 +3,7 @@
 // Ably are all faked.
 //  - Gainers, What's New and the announcement and recording rooms: no status asked of LiveKit, no
 //    key made, no token, no hand, no stock on screen, no notice attempted;
-//  - the nine rooms on the list (Booker Stock Club among them) work as before;
+//  - the ten rooms on the list (Booker Stock Club and, #537, Webinars among them) work as before;
 //  - recording: chat admins only, browser sign-in only, same origin, a stage room, a real notice id,
 //    a YouTube or Loom link only (stored rebuilt from its video id), never cached.
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -84,8 +84,8 @@ beforeEach(() => {
 
 describe("the list", () => {
   it("is the conversation rooms and Booker Stock Club, and nothing else", () => {
-    expect([...STAGE_ROOMS].sort()).toEqual(["admins", "ai-insights", "club", "developers", "lb-review", "main", "runner-watch", "shortscout", "social"]);
-    expect(NOT_OFFERED.sort()).toEqual(["gainers", "lb-announcements", "lb-recordings", "ss-announcements", "ss-recordings", "whats-new"]);
+    expect([...STAGE_ROOMS].sort()).toEqual(["admins", "ai-insights", "club", "developers", "lb-review", "main", "runner-watch", "shortscout", "social", "webinars"]);
+    expect(NOT_OFFERED.sort()).toEqual(["club-recordings", "gainers", "lb-announcements", "lb-recordings", "ss-announcements", "ss-recordings", "whats-new"]);
     for (const room of STAGE_ROOMS) expect(CHAT_ROOMS.some((known) => known.slug === room), room).toBe(true);
     for (const value of [null, undefined, "", "nowhere", 7, ["main"]]) expect(isStageRoom(value)).toBe(false);
   });

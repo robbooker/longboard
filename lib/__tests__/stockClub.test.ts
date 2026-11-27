@@ -20,8 +20,8 @@ describe("access: the club-room entitlement, or the Gainers rule", () => {
   it("#384: a club-room entitlement opens it without Gainers; a gainers entitlement opens both", () => {
     const club = member({ member: ["club-room"] });
     expect(clubRoomAccess(club)).toBe(true);
-    expect(allowedChatRooms(club)).toEqual(["club"]);
-    expect(allowedChatRooms(member({ member: ["gainers"] }))).toEqual(["gainers", "club"]);
+    expect(allowedChatRooms(club)).toEqual(["club", "webinars", "club-recordings"]);
+    expect(allowedChatRooms(member({ member: ["gainers"] }))).toEqual(["gainers", "club", "webinars", "club-recordings"]);
     expect(clubRoomAccess(member({ member: ["reader"] }))).toBe(false);
   });
   it("a bot never gets it from entitlements", () => {

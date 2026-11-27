@@ -30,15 +30,26 @@ export function stageRecordingVideos(botSlug: string | null | undefined, body: s
 }
 
 /**
- * Whose recordings a recordings room holds: LB Recordings is LB's, SS Recordings is SS's. No other
- * room is guessed at (Social is both LB and SS; Booker Stock Club has no recordings room): there an
- * admin adds the link by hand.
+ * Whose recordings a recordings room holds: LB Recordings is LB's, SS Recordings is SS's. #537: the
+ * Booker Stock Club recordings room holds the all-member webinars': those held in Webinars and, as
+ * the club had no recordings room before, those held in Booker Stock Club itself (the first room
+ * listed is the usual one). No other room is guessed at (Social is both LB and SS): there an admin
+ * adds the link by hand.
  */
-const RECORDINGS_OF: Partial<Record<ChatRoom, ChatRoom>> = { "lb-recordings": "main", "ss-recordings": "shortscout" };
+const RECORDINGS_OF: Partial<Record<ChatRoom, readonly ChatRoom[]>> = {
+  "lb-recordings": ["main"],
+  "ss-recordings": ["shortscout"],
+  "club-recordings": ["webinars", "club"],
+};
+/** The rooms whose broadcasts a recordings room holds the recordings of (none for any other room). */
+export const stageRecordingRooms = (postRoom: ChatRoom): readonly ChatRoom[] => RECORDINGS_OF[postRoom] ?? [];
 
-/** A post in a recordings room: the room it is a recording for and its first YouTube or Loom link. null: nothing to attach. */
+/**
+ * A post in a recordings room: the room it is a recording for and its first YouTube or Loom link.
+ * null: nothing to attach. (`room` is the recordings room's usual room; stageRecordingRooms has all.)
+ */
 export function stageRecordingFromPost(postRoom: ChatRoom, body: string): { room: ChatRoom; url: string } | null {
-  const room = RECORDINGS_OF[postRoom];
+  const room = stageRecordingRooms(postRoom)[0];
   if (!room || !/youtu|loom/i.test(body)) return null;
   for (const part of tokenizeChatMessage(body)) {
     const url = part.kind === "text" ? null : stageRecordingUrl(part.href);
