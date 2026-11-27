@@ -13,11 +13,14 @@
 //  - the legend explains size, stretch, height, movement, matte and the sky; nowhere does the app say
 //    where data came from, or use buy/sell/pump words;
 //  - weather: New York's by default with nothing asked of the browser; °F for a U.S. browser, a tap
-//    switches to °C and it is remembered; "Use my local weather" asks only on that tap and sends the
-//    place rounded to one decimal, in the body, never in the address; declined and unavailable both
-//    fall back to New York with a line saying so; rain, snow, overcast and a clear night all draw;
-//  - a card in Dual, Quad and Six draws, shows an in-card detail and an Open link, never offers or
-//    triggers a location prompt, stops drawing while hidden, ignores keys typed in another pane, and
+//    switches to °C and it is remembered; "Change weather" (#531) opens a small panel: typing a
+//    city shows up to six U.S. places (the real places route and list), picking one sends its id in
+//    the body, shows its name and is remembered after a reload; a name that isn't a U.S. place says
+//    so; "Use my location" in the panel asks only on that tap and sends the position rounded to one
+//    decimal, in the body, never in the address; declined and unavailable both fall back to New York
+//    with a line saying so; rain, snow, overcast and a clear night all draw;
+//  - a card in Dual, Quad and Six draws, shows an in-card detail and an Open link, never shows
+//    "Change weather" or triggers a location prompt, uses a remembered typed place, stops drawing while hidden, ignores keys typed in another pane, and
 //    still has WebGL after its pane is switched away and back 10 times and after 10 moves between
 //    Dual, Quad and Six;
 //  - without WebGL: a plain list (ticker, change, volume), no blank card;
@@ -25,7 +28,7 @@
 //    sideways scroll, every control on screen, a tap selects;
 //  - no gainers: a line saying so; no page errors anywhere.
 //  - full screen: an icon button in the app (never a card) fills the screen and comes back;
-// CHAT_SHOT_DIR saves app-fullscreen.png, app-desktop.png, app-selected.png, app-legend.png, app-phone.png,
+// CHAT_SHOT_DIR saves app-change-weather.png, app-change-weather-phone.png, app-fullscreen.png, app-desktop.png, app-selected.png, app-legend.png, app-phone.png,
 // app-unfolded.png, card-dual.png, card-quad.png, card-six.png, fallback.png, weather-rain.png,
 // weather-snow.png, weather-overcast.png and weather-clear-night.png.
 import assert from 'node:assert/strict';
@@ -56,11 +59,12 @@ assert.equal((await fetch(`${base}/api/chat/balloons/weather`,{method:'POST',hea
 
 const browser=await puppeteer.launch({headless:true,executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',args:['--no-sandbox','--enable-unsafe-swiftshader','--ignore-gpu-blocklist']});
 const errors=[];
-const WEATHER={newYork:{condition:'partly',cloud:0.4,tempC:20,night:false,place:'New York',local:false},chicago:{condition:'cloudy',cloud:0.9,tempC:10,night:false,place:'Chicago',local:true}};
+const WEATHER={newYork:{condition:'partly',cloud:0.4,tempC:20,night:false,place:'New York',local:false},chicago:{condition:'cloudy',cloud:0.9,tempC:10,night:false,place:'Chicago',local:true},austin:{condition:'clear',cloud:0.1,tempC:30,night:false,place:'Austin',local:true}};
 /**
  * A signed-in page. `geo`: what the browser's location does when asked (granted, denied, unavailable)
  * and whether it would answer without a prompt (`permission`). Every ask is counted in the page.
  * The weather route is answered here; each request's address and body are kept in `page.weatherAsks`.
+ * The places route is the real one; each search's address and body are kept in `page.placeAsks`.
  */
 async function open({viewport,geo='granted',permission='prompt',webgl=true,theme='dark',feed=null,path='/chat',composer}={}){
  const context=await browser.createBrowserContext(),page=await context.newPage();
@@ -76,15 +80,16 @@ async function open({viewport,geo='granted',permission='prompt',webgl=true,theme
   navigator.permissions.query=d=>d?.name==='geolocation'?Promise.resolve({state:window.__geoPermission??permission}):query(d);
   if(!webgl){const get=HTMLCanvasElement.prototype.getContext;HTMLCanvasElement.prototype.getContext=function(kind,...rest){return /webgl/.test(kind)?null:get.call(this,kind,...rest);};}
  },geo,permission,webgl);
- page.weatherAsks=[];page.weatherAnswer=null;
+ page.weatherAsks=[];page.weatherAnswer=null;page.placeAsks=[];
  await page.setRequestInterception(true);
  page.on('request',request=>{
   const url=new URL(request.url());
   if(url.pathname==='/api/chat/balloons/weather'){
    const body=JSON.parse(request.postData()||'{}');page.weatherAsks.push({search:url.search,body,method:request.method()});
-   const weather=page.weatherAnswer??('lat' in body?WEATHER.chicago:WEATHER.newYork);
+   const weather=page.weatherAnswer??('lat' in body?WEATHER.chicago:'place' in body?WEATHER.austin:WEATHER.newYork);
    return request.respond({status:200,contentType:'application/json',body:JSON.stringify({weather,covered:true})});
   }
+  if(url.pathname==='/api/chat/balloons/places')page.placeAsks.push({search:url.search,body:JSON.parse(request.postData()||'{}'),method:request.method()});
   if(feed&&url.pathname==='/api/chat/balloons')return request.respond({status:200,contentType:'application/json',body:JSON.stringify(feed())});
   request.continue();
  });
@@ -93,12 +98,30 @@ async function open({viewport,geo='granted',permission='prompt',webgl=true,theme
 }
 const SEL={app:'[data-balloons="app"]',card:'[data-balloons="card"]'};
 const drawn=(page,root)=>page.waitForFunction(s=>{const el=document.querySelector(s);return el?.dataset.webgl==='on'&&(el.__balloons?.scene()?.frames??0)>8;},{timeout:90000},root);
-/** Back to New York's weather: the app has no control for it, so the saved choice is cleared and the page reloaded. */
+const PANEL=`${SEL.app} [data-balloons-weather-panel]`,FIELD=`${SEL.app} [data-balloons-place-search]`,PLACE=`${SEL.app} [data-balloons-place]`;
+/** Opens the "Change weather" panel (the link is tapped by script, which works on a phone page too). */
+const changeWeather=async page=>{await page.$eval(`${SEL.app} [data-balloons-weather-change]`,b=>b.click());await page.waitForSelector(PANEL);};
+/** Types a city in the open panel (replacing what was there) and waits for the answer to exactly that text. */
+const typePlace=async(page,text)=>{
+ const before=page.placeAsks.length;
+ await page.$eval(FIELD,e=>{e.focus();e.select();});await page.keyboard.type(text);
+ await page.waitForFunction((s,text)=>document.querySelector(s)?.value===text,{},FIELD,text);
+ await page.waitForFunction(s=>!!document.querySelector(s),{},`${PLACE}, ${SEL.app} [data-balloons-place-none]`);
+ await sleep(500); // the pause before a search, and its answer
+ assert(page.placeAsks.length>before,`"${text}" was searched for`);
+ assert.equal(page.placeAsks.at(-1).body.q,text);
+ return page.$$eval(PLACE,b=>b.map(e=>e.textContent));
+};
+/** "Use my location", in the panel. */
+const myLocation=async page=>{await changeWeather(page);await page.$eval(`${SEL.app} [data-balloons-weather-local-button]`,b=>b.click());};
+/** Back to New York's weather, the way a member does it: Change weather, type New York, pick New York, NY. */
 const newYork=async page=>{
  page.weatherAnswer=null;
- await page.evaluate(()=>{const k='rb-balloons-weather-v1';localStorage.setItem(k,JSON.stringify({...JSON.parse(localStorage.getItem(k)||'{}'),local:false}));});
- await page.reload();await drawn(page,SEL.app);
+ await changeWeather(page);
+ assert.equal((await typePlace(page,'New York'))[0],'New York, NY');
+ await page.$eval(`${SEL.app} [data-balloons-place="ny:new york"]`,b=>b.click());
  await page.waitForFunction(s=>document.querySelector(s)?.textContent.includes('New York'),{},`${SEL.app} [data-balloons-weather]`);
+ assert.equal(await page.evaluate(()=>{const v=JSON.parse(localStorage.getItem('rb-balloons-weather-v1'));return v.local===false&&!('place' in v);}),true,'New York is the default: nothing is remembered');
 };
 const scene=(page,root)=>page.$eval(root,el=>({...el.__balloons.scene(),mode:el.__balloons.mode(),time:el.__balloons.time()}));
 const clock=(page,root)=>page.$eval(`${root} [data-balloons-clock]`,e=>e.textContent);
@@ -161,15 +184,61 @@ try{
   assert.equal(await page.$eval(`${SEL.app} [data-balloons-temp]`,e=>e.textContent),'20°C','a tap switches the unit');
   assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('rb-balloons-weather-v1')).unit),'C','and it is remembered');
   await page.click(`${SEL.app} [data-balloons-weather]`);
-  // "Use my local weather": asked on the tap, rounded before it is sent, in the body.
+  // "Change weather": one link beside the readout; it opens a small panel with the field in focus.
+  const link=`${SEL.app} [data-balloons-weather-change]`;
+  assert.equal(await page.$eval(link,e=>`${e.textContent} ${e.getAttribute('aria-expanded')}`),'Change weather false');
+  assert.doesNotMatch(await page.$eval(SEL.app,e=>e.innerText),/Use my local weather/);
+  assert.equal(await page.$(PANEL),null,'the panel is closed until asked for');
+  await page.click(link);await page.waitForSelector(PANEL);
+  await page.waitForFunction(s=>document.activeElement===document.querySelector(s),{},FIELD);
+  assert.equal(await page.$eval(FIELD,e=>`${e.placeholder}|${e.getAttribute('aria-label')}|${e.maxLength}`),'City or place|City or place|60');
+  assert.equal(await page.$eval(`${PANEL} [data-balloons-weather-local-button]`,e=>e.textContent),'Use my location');
+  await page.keyboard.press('Escape');await page.waitForSelector(PANEL,{hidden:true});
+  assert.equal(await page.$(`${SEL.app} [data-balloons-detail]`),null);
+  await changeWeather(page);
+  // Typing shows up to six matches as "City, ST", from the real list.
+  let places=await typePlace(page,'austin');
+  assert.equal(places[0],'Austin, TX');assert(places.length>1&&places.length<=6,`up to six matches (${places})`);
+  for(const label of places)assert.match(label,/^Austin[\w .'-]*, [A-Z]{2}$/,label);
+  assert.equal(await page.evaluate(s=>{const p=getComputedStyle(document.querySelector(s)).backgroundColor.match(/[\d.]+/g);return p.length<4||Number(p[3])===1;},PANEL),true,'a solid panel');
+  assert.doesNotMatch(await page.$eval(PANEL,e=>e.innerText+' '+[...e.querySelectorAll('*')].map(x=>`${x.title} ${x.getAttribute('aria-label')??''} ${x.getAttribute('placeholder')??''}`).join(' ')),/source|census|gazetteer|weather\.gov|national weather/i);
+  await shot(page,'app-change-weather.png');
+  // Not a U.S. place: one plain line.
+  assert.deepEqual(await typePlace(page,'zzyzxq'),[]);
+  assert.equal(await page.$eval(`${SEL.app} [data-balloons-place-none]`,e=>e.textContent),'No U.S. place by that name.');
+  // "austin tx" puts Austin, TX first; picking it closes the panel and sends its id in the body.
+  places=await typePlace(page,'austin tx');
+  assert.equal(places[0],'Austin, TX');
+  assert(page.placeAsks.length>=3&&page.placeAsks.every(a=>a.search===''&&a.method==='POST'),'what was typed is never in the address');
+  await page.click(`${SEL.app} [data-balloons-place="tx:austin"]`);
+  await page.waitForSelector(PANEL,{hidden:true});
+  await page.waitForFunction(s=>document.querySelector(s)?.textContent.includes('Austin'),{},`${SEL.app} [data-balloons-weather]`);
+  assert.deepEqual(page.weatherAsks.at(-1),{search:'',body:{place:'tx:austin'},method:'POST'},'the chosen place is sent in the body');
+  assert.equal(await page.$eval(`${SEL.app} [data-balloons-weather]`,e=>e.textContent),'86°FAustin','the readout shows the place\'s name');
+  assert.equal(await page.evaluate(()=>localStorage.getItem('rb-balloons-weather-v1')),'{"local":false,"unit":"F","place":{"id":"tx:austin","name":"Austin"}}','the typed place is remembered');
+  assert.equal(await page.$eval(link,e=>e.textContent),'Change weather','the link stays beside the readout');
+  // Remembered after a reload, with nothing asked of the browser.
+  await page.reload();await drawn(page,SEL.app);
+  await page.waitForFunction(s=>document.querySelector(s)?.textContent==='86°FAustin',{},`${SEL.app} [data-balloons-weather]`);
+  assert.deepEqual(page.weatherAsks.at(-1).body,{place:'tx:austin'},'the remembered place after a reload');
+  assert.equal(await page.evaluate(()=>window.__geoAsks),0,'typing a place never asks for the location');
+  // Enter picks the first match.
+  await changeWeather(page);
+  assert.equal((await typePlace(page,'Portland, Maine'))[0],'Portland, ME');
+  await page.keyboard.press('Enter');await page.waitForSelector(PANEL,{hidden:true});
+  for(let i=0;i<60&&page.weatherAsks.at(-1).body.place!=='me:portland';i++)await sleep(50);
+  assert.deepEqual(page.weatherAsks.at(-1).body,{place:'me:portland'},'Enter picks the first match');
+  // "Use my location": asked on the tap, rounded before it is sent, in the body.
+  await changeWeather(page);
+  assert.equal(await page.evaluate(()=>window.__geoAsks),0,'opening the panel asks nothing');
   await page.click(`${SEL.app} [data-balloons-weather-local-button]`);
+  await page.waitForSelector(PANEL,{hidden:true});
   await page.waitForFunction(s=>document.querySelector(s)?.textContent.includes('Chicago'),{},`${SEL.app} [data-balloons-weather]`);
   assert.equal(await page.evaluate(()=>window.__geoAsks),1,'asked once, on the tap');
   assert.deepEqual(page.weatherAsks.at(-1),{search:'',body:{lat:41.9,lon:-87.6},method:'POST'},'the place is rounded to one decimal and sent in the body');
   assert.equal(await page.$eval(`${SEL.app} [data-balloons-weather]`,e=>e.textContent),'50°FChicago');
-  assert.equal(await page.evaluate(()=>localStorage.getItem('rb-balloons-weather-v1')),'{"local":true,"unit":"F"}','only the choice is stored, never the place');
-  // With a local reading showing, there is no link beside it: not "Use my local weather", and none back to New York.
-  assert.equal(await page.$(`${SEL.app} [data-balloons-weather-local-button]`),null,'no link once local weather shows');
+  assert.equal(await page.evaluate(()=>localStorage.getItem('rb-balloons-weather-v1')),'{"local":true,"unit":"F"}','only the choice is stored, never the position (and the typed place is forgotten)');
+  assert.equal(await page.$eval(link,e=>e.textContent),'Change weather','the link is always there');
   assert.doesNotMatch(await page.$eval(SEL.app,e=>e.innerText),/Use New York weather/);
   await newYork(page);
   assert.deepEqual(page.weatherAsks.at(-1).body,{},'New York again');
@@ -247,12 +316,12 @@ try{
   await page.keyboard.press('Escape');await page.waitForSelector(`${SEL.app} [data-balloons-legend]`,{hidden:true});
   // Never where data came from, and no trading words.
   const words=await page.$eval(SEL.app,e=>e.innerText+' '+[...e.querySelectorAll('[title],[aria-label]')].map(x=>`${x.title} ${x.getAttribute('aria-label')??''}`).join(' '));
-  assert.doesNotMatch(words,/source|polygon|dilution|weather\.gov|from the gainers|\bbuy|\bsell|pump/i);
+  assert.doesNotMatch(words,/source|census|polygon|dilution|weather\.gov|from the gainers|\bbuy|\bsell|pump/i);
 
   // Weather the sky draws: each answer comes back from the faked route on the next read.
   const sky=async(answer,name,progress)=>{
    page.weatherAnswer=answer;
-   await page.click(`${SEL.app} [data-balloons-weather-local-button]`);
+   await myLocation(page);
    await page.waitForFunction((s,c)=>document.querySelector(s)?.dataset.balloonsWeather===c,{},`${SEL.app} [data-balloons-weather]`,answer.condition);
    if(progress!==undefined)await scrub(page,SEL.app,progress);
    await sleep(2600);await picture(page,SEL.app,name);
@@ -266,7 +335,7 @@ try{
   await sky({condition:'clear',cloud:0,tempC:4,night:true,place:'Anchorage',local:true},'weather-clear-night',4);
   // A reading with no temperature: a dash, never a made-up number.
   page.weatherAnswer={condition:'fog',cloud:0.8,tempC:null,night:false,place:null,local:true};
-  await page.click(`${SEL.app} [data-balloons-weather-local-button]`);
+  await myLocation(page);
   await page.waitForFunction(s=>document.querySelector(s)?.dataset.balloonsWeather==='fog',{},`${SEL.app} [data-balloons-weather]`);
   assert.equal(await page.$eval(`${SEL.app} [data-balloons-weather]`,e=>e.textContent),'—Your weather');
   // The weather route failing changes nothing on screen.
@@ -278,7 +347,8 @@ try{
   const page=await open({viewport:{width:1280,height:800},geo,path:'/chat?page=balloons',composer:false});
   await drawn(page,SEL.app);
   await page.waitForSelector(`${SEL.app} [data-balloons-weather]`);
-  await page.click(`${SEL.app} [data-balloons-weather-local-button]`);
+  assert.equal(await page.$(`${SEL.app} [data-balloons-weather-local-button]`),null,`${geo}: "Use my location" is only in the panel`);
+  await myLocation(page);
   await page.waitForSelector(`${SEL.app} [data-balloons-weather-note]`);
   assert.match(await page.$eval(`${SEL.app} [data-balloons-weather-note]`,e=>e.textContent),line,geo);
   assert.equal(await page.$eval(`${SEL.app} [data-balloons-weather]`,e=>e.textContent),'68°FNew York',`${geo}: New York's weather stays`);
@@ -299,6 +369,8 @@ try{
    assert.equal(await mode(page,SEL.card),'live');assert.match(await clock(page,SEL.card),/^9:\d\d AM ET$/);
    assert.equal(await page.$eval(`${SEL.card} [data-balloons-open]`,a=>`${a.getAttribute('href')} ${a.target}`),'/chat?page=balloons _blank',`${name}: a way to the full app`);
    assert.equal(await page.$(`${SEL.card} [data-balloons-weather-local-button]`),null,`${name}: a card never offers the location prompt`);
+   assert.equal(await page.$(`${SEL.card} [data-balloons-weather-change]`),null,`${name}: a card never shows "Change weather"`);
+   assert.doesNotMatch(await page.$eval(SEL.card,e=>e.innerText),/Change weather|Use my location/,name);
    assert.equal(await page.$(`${SEL.card} [data-balloons-fullscreen]`),null,`${name}: no full-screen button in a card`);
    assert.equal(await page.$(`${SEL.card} [data-balloons-legend-button]`),null,`${name}: small chrome only`);
    const s=await scene(page,SEL.card);
@@ -391,6 +463,20 @@ try{
   await page.close();
  }
 
+ // A card uses the place typed earlier in the full app, with no prompt and no link.
+ {
+  const page=await open({viewport:{width:1600,height:900},permission:'prompt',path:'/chat/dual'});
+  await page.evaluate(()=>localStorage.setItem('rb-balloons-weather-v1','{"local":false,"unit":"F","place":{"id":"tx:austin","name":"Austin"}}'));
+  await choose(page,2,'app:balloons');
+  await drawn(page,SEL.card);
+  await page.waitForFunction(s=>document.querySelector(s)?.textContent==='86°F',{},`${SEL.card} [data-balloons-weather]`);
+  assert(page.weatherAsks.length>=1&&page.weatherAsks.every(a=>a.search===''&&JSON.stringify(a.body)==='{"place":"tx:austin"}'),'the card asks for the remembered place, in the body');
+  assert.equal(await page.evaluate(()=>window.__geoAsks),0,'and never for the location');
+  assert.equal(await page.$(`${SEL.card} [data-balloons-weather-change]`),null,'no "Change weather" in a card');
+  assert.equal(page.placeAsks.length,0,'a card never searches');
+  await page.close();
+ }
+
  // ---------- No WebGL: a plain list.
  {
   const page=await open({viewport:{width:1280,height:800},webgl:false,path:'/chat?page=balloons',composer:false});
@@ -413,7 +499,19 @@ try{
  // ---------- Phones.
  {
   const page=await open({viewport:{width:390,height:844,isMobile:true,hasTouch:true,deviceScaleFactor:2},path:'/chat?page=balloons',composer:false});
-  const controls=[`${SEL.app} [data-balloons-clock]`,`${SEL.app} [data-balloons-play]`,`${SEL.app} [data-balloons-live]`,`${SEL.app} [data-balloons-scrubber]`,`${SEL.app} [data-balloons-legend-button]`,`${SEL.app} [data-balloons-search-button]`,`${SEL.app} [data-balloons-weather]`];
+  const controls=[`${SEL.app} [data-balloons-clock]`,`${SEL.app} [data-balloons-play]`,`${SEL.app} [data-balloons-live]`,`${SEL.app} [data-balloons-scrubber]`,`${SEL.app} [data-balloons-legend-button]`,`${SEL.app} [data-balloons-search-button]`,`${SEL.app} [data-balloons-weather]`,`${SEL.app} [data-balloons-weather-change]`];
+  /** "Change weather" at this width: the panel, its field, its matches and "Use my location" all fit. */
+  const panelFits=async(what,file)=>{
+   await changeWeather(page);
+   const found=await typePlace(page,'port');
+   assert(found.length>1&&found.length<=6,`${what}: matches (${found})`);
+   const off=await within(page,[PANEL,FIELD,`${PANEL} li:last-child [data-balloons-place]`,`${PANEL} [data-balloons-weather-local-button]`]);
+   assert.deepEqual(off,[],`${what}: the Change weather panel fits (${off})`);
+   assert.equal(await page.$eval(PANEL,(e)=>{const r=e.getBoundingClientRect(),top=document.elementFromPoint(r.left+r.width/2,r.top+12);return e.contains(top);}),true,`${what}: nothing covers the panel`);
+   assert(await noSideScroll(page),`${what}: no sideways scroll with the panel open`);
+   if(file)await shot(page,file);
+   await page.keyboard.press('Escape');await page.waitForSelector(PANEL,{hidden:true});
+  };
   await drawn(page,SEL.app);await picture(page,SEL.app,'phone');
   assert(await noSideScroll(page),'phone: no sideways scroll');
   assert.deepEqual(await within(page,controls),[],'phone: every control is on screen');
@@ -424,14 +522,17 @@ try{
   await page.$eval(`${SEL.app} [data-balloons-legend-button]`,b=>b.click());
   assert.deepEqual(await within(page,[`${SEL.app} [data-balloons-legend]`]),[],'phone: the legend fits');
   await page.$eval(`${SEL.app} [data-balloons-legend] button`,b=>b.click());
+  await panelFits('phone','app-change-weather-phone.png');
   // On its side.
   await page.setViewport({width:844,height:390,isMobile:true,hasTouch:true,deviceScaleFactor:2});await sleep(900);
   await drawn(page,SEL.app);await picture(page,SEL.app,'phone on its side');
   assert(await noSideScroll(page));assert.deepEqual(await within(page,controls),[],'phone on its side: every control is on screen');
+  await panelFits('phone on its side');
   // An unfolded folding phone.
   await page.setViewport({width:768,height:884,isMobile:true,hasTouch:true,deviceScaleFactor:2});await sleep(900);
   await drawn(page,SEL.app);await picture(page,SEL.app,'unfolded');
   assert(await noSideScroll(page));assert.deepEqual(await within(page,controls),[],'unfolded: every control is on screen');
+  await panelFits('unfolded');
   await shot(page,'app-unfolded.png');
   await page.close();
  }
@@ -445,5 +546,5 @@ try{
   await page.close();
  }
  assert.deepEqual(errors,[],'no page errors');
- console.log('Gainer Balloons browser checks passed: app from Apps, picture drawn, Live and replay, keys, details, search, legend, weather (default, local, declined, unavailable, conditions), cards in Dual/Quad/Six, 10 pane and 10 view switches with WebGL intact, hidden card idle, list without WebGL, phone upright/sideways/unfolded, empty day.');
+ console.log('Gainer Balloons browser checks passed: app from Apps, picture drawn, Live and replay, keys, details, search, legend, weather (default, Change weather by typing a place, remembered, local, declined, unavailable, conditions), cards in Dual/Quad/Six, 10 pane and 10 view switches with WebGL intact, hidden card idle, list without WebGL, phone upright/sideways/unfolded, empty day.');
 }finally{await browser.close();}
