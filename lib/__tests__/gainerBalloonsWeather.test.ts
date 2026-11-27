@@ -6,6 +6,7 @@ import { NextRequest } from "next/server";
 // The weather service is a stand-in; nothing real is read.
 const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
 vi.mock("@/lib/chatAuth", () => ({ requireChatUser: auth }));
+vi.mock("server-only", () => ({}));
 import { POST } from "@/app/api/chat/balloons/weather/route";
 import { CONDITION_CLOUD, NEW_YORK, PLAIN_SKY, WEATHER_CONDITIONS, cellKey, cloudFromLayers, conditionFromText, defaultTempUnit, formatTemp, parseCoords, roundCoord, skyWeather, type WeatherNow } from "@/lib/gainerBalloons/weather";
 import { WEATHER_FAILED_TTL_MS, WEATHER_LIMIT, WEATHER_LIMIT_WINDOW_MS, WEATHER_TTL_MS, resetWeather, weatherAllowed, weatherFor } from "@/lib/gainerBalloons/weather.server";

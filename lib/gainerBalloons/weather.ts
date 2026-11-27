@@ -16,7 +16,7 @@ export type WeatherNow = {
   night: boolean;
   /** A town's name when the reading came with one, else null. */
   place: string | null;
-  /** True for the viewer's own area; false for New York (the default). */
+  /** True for the viewer's own area or a place they chose; false for New York (the default). */
   local: boolean;
 };
 

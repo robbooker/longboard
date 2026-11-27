@@ -129,6 +129,7 @@
   color: var(--gb-muted);
 }
 .weatherRow {
+  position: relative;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -185,6 +186,13 @@
   font-weight: 500;
   white-space: nowrap;
   text-decoration: none;
+}
+/* A pill that holds only an icon (full screen). */
+.iconPill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding-inline: 10px;
 }
 .pill:hover,
 .ctrl:hover,
@@ -248,6 +256,38 @@
   padding: 4px 8px;
   color: var(--gb-muted);
   font-size: 12px;
+}
+/* "Change weather" (#531): the same box as Find a ticker, under the weather readout. */
+.weatherBox {
+  top: calc(100% + 12px);
+  left: 0;
+  right: auto;
+  width: min(250px, calc(100cqw - 40px));
+  max-height: calc(100cqh - 96px);
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+.searchBox.weatherBox input {
+  text-transform: none;
+}
+.searchBox.weatherBox li button {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+}
+.useLocation {
+  width: 100%;
+  min-height: 32px;
+  margin-top: 8px;
+  padding: 5px 10px;
+  background: var(--gb-raised);
+  border: 1px solid var(--gb-line);
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.useLocation:hover {
+  border-color: var(--gb-accent);
 }
 
 .legend,
@@ -784,6 +824,17 @@
   .clockRow,
   .weatherRow {
     margin: 0;
+  }
+  /* Little height: the matches sit two across, so the whole box stays on screen. */
+  .weatherBox {
+    top: calc(100% + 8px);
+    width: min(400px, calc(100cqw - 40px));
+  }
+  .searchBox.weatherBox ul {
+    grid-template-columns: 1fr 1fr;
+  }
+  .searchBox.weatherBox li.noMatch {
+    grid-column: 1 / -1;
   }
   .clock {
     font-size: 16px;
