@@ -1,0 +1,835 @@
+/* #528 Gainer Balloons. Everything here is scoped to the feature. The controls and panels use the
+   chat's own --chat-* tokens, so they follow every look (dark, light, Blade Runner, Terminal, Paper
+   Terminal) and keep that look's text contrast: they are solid panels, never see-through glass, so
+   the changing sky behind them can't wash the text out. The sky itself keeps its own colours.
+   The layout follows the component's own box (a container), so the same rules serve the chat page,
+   a phone (390x844 and 844x390), an unfolded folding phone, and a Dual, Quad or Six card. */
+.root {
+  --gb-panel: var(--chat-panel, #17191d);
+  --gb-raised: var(--chat-panel-raised, #20232a);
+  --gb-text: var(--chat-text, #f3f4f6);
+  --gb-muted: var(--chat-muted, #a4a9b3);
+  --gb-line: var(--chat-line, #2c3038);
+  --gb-accent: var(--chat-palm, #5bd6a6);
+  --gb-up: var(--chat-success, #3fb97a);
+  --gb-down: var(--chat-error, #e5604d);
+  --gb-radius: var(--ui-radius-md, 10px);
+  --gb-mono: var(--chat-font-mono, ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace);
+  position: relative;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  container: balloons / size;
+  background: var(--chat-bg, #0f1114);
+  color: var(--gb-text);
+  font: 400 13px/1.4 var(--chat-font-ui, system-ui, sans-serif);
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.root:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--gb-accent);
+}
+.root button,
+.root input,
+.root a {
+  font: inherit;
+  color: inherit;
+}
+.root button {
+  cursor: pointer;
+}
+.root :is(button, a, input):focus-visible {
+  outline: 2px solid var(--gb-accent);
+  outline-offset: 2px;
+}
+
+.stage {
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+}
+/* The canvas covers the stage and takes no part in layout: its drawing size follows the box, never the other way round. */
+.stage canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.status {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  transform: translate(-50%, -50%);
+  max-width: min(360px, 84%);
+  margin: 0;
+  padding: 10px 14px;
+  text-align: center;
+  background: var(--gb-panel);
+  border: 1px solid var(--gb-line);
+  border-radius: var(--gb-radius);
+}
+
+/* --- The full app. */
+.top {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  pointer-events: none;
+}
+.top > * {
+  pointer-events: auto;
+}
+.brand {
+  min-width: 0;
+  padding: 9px 12px 10px;
+  background: var(--gb-panel);
+  border: 1px solid var(--gb-line);
+  border-radius: var(--gb-radius);
+  box-shadow: 0 6px 20px var(--chat-shadow, rgba(0, 0, 0, 0.18));
+}
+.brand h2 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gb-muted);
+}
+.clockRow {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  margin: 2px 0 0;
+}
+.clock {
+  font: 600 20px/1.2 var(--gb-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.session,
+.date {
+  font-size: 12px;
+  color: var(--gb-muted);
+  white-space: nowrap;
+}
+.dayNote {
+  margin: 2px 0 0;
+  max-width: 260px;
+  font-size: 12px;
+  color: var(--gb-muted);
+}
+.weatherRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 6px;
+}
+.weather {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 2px 8px 2px 6px;
+  background: var(--gb-raised);
+  border: 1px solid var(--gb-line);
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.weatherPlace {
+  color: var(--gb-muted);
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.link {
+  padding: 4px 0;
+  background: none;
+  border: 0;
+  font-size: 12px;
+  color: var(--gb-muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.link:hover {
+  color: var(--gb-text);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.pill,
+.ctrl,
+.live,
+.open {
+  min-height: 32px;
+  padding: 5px 12px;
+  background: var(--gb-panel);
+  border: 1px solid var(--gb-line);
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.pill:hover,
+.ctrl:hover,
+.live:hover,
+.open:hover {
+  background: var(--gb-raised);
+}
+.pill[aria-expanded="true"],
+.ctrl[aria-pressed="true"] {
+  border-color: var(--gb-accent);
+  box-shadow: inset 0 0 0 1px var(--gb-accent);
+}
+.search {
+  position: relative;
+}
+.searchBox {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 3;
+  width: 190px;
+  padding: 8px;
+  background: var(--gb-panel);
+  border: 1px solid var(--gb-line);
+  border-radius: var(--gb-radius);
+  box-shadow: 0 10px 28px var(--chat-shadow, rgba(0, 0, 0, 0.25));
+}
+.searchBox input {
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 8px;
+  box-sizing: border-box;
+  text-transform: uppercase;
+  background: var(--gb-raised);
+  border: 1px solid var(--gb-line);
+  border-radius: 6px;
+  font-size: 16px;
+}
+.searchBox ul {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.searchBox li button {
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 8px;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  font: 600 13px var(--gb-mono);
+}
+.searchBox li button:hover,
+.searchBox li button:focus-visible {
+  background: var(--gb-raised);
+}
+.noMatch {
+  padding: 4px 8px;
+  color: var(--gb-muted);
+  font-size: 12px;
+}
+
+.legend,
+.detail {
+  position: absolute;
+  z-index: 2;
+  background: var(--gb-panel);
+  border: 1px solid var(--gb-line);
+  border-radius: var(--gb-radius);
+  box-shadow: 0 10px 28px var(--chat-shadow, rgba(0, 0, 0, 0.25));
+}
+.legend {
+  top: 56px;
+  right: 12px;
+  width: min(380px, calc(100% - 24px));
+  max-height: calc(100% - 190px);
+  overflow: auto;
+  padding: 12px 14px;
+}
+.legend header,
+.detail header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.legend h3 {
+  flex: 1;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.legend ul {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.legend li {
+  display: grid;
+  grid-template-columns: 74px 1fr;
+  gap: 8px;
+}
+.legend li strong {
+  font-weight: 600;
+}
+.legend li span {
+  color: var(--gb-muted);
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin: 12px 0 0;
+  font-size: 12px;
+}
+.chips span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.chips i,
+.swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+}
+.chips i[data-unknown],
+.swatch[data-unknown] {
+  background: transparent;
+  border: 2px solid var(--gb-muted);
+  box-sizing: border-box;
+}
+.keys {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--gb-muted);
+}
+.keys kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--gb-line);
+  border-radius: 4px;
+  font: 11px var(--gb-mono);
+  color: var(--gb-text);
+}
+.close {
+  margin-left: auto;
+  min-height: 28px;
+  padding: 3px 10px;
+  background: var(--gb-raised);
+  border: 1px solid var(--gb-line);
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.detail {
+  top: 56px;
+  right: 12px;
+  width: 270px;
+  padding: 10px 12px 12px;
+}
+.detail h3 {
+  margin: 0;
+  font: 700 18px/1.2 var(--gb-mono);
+  letter-spacing: 0.01em;
+}
+.country {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--gb-muted);
+  font-size: 12px;
+}
+.detail dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+  margin: 10px 0 0;
+}
+.detail dl > div {
+  min-width: 0;
+}
+.detail dt {
+  font-size: 11px;
+  color: var(--gb-muted);
+}
+.detail dd {
+  margin: 0;
+  font: 600 14px/1.3 var(--gb-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.root [data-direction="up"] {
+  color: var(--gb-up);
+}
+.root [data-direction="down"] {
+  color: var(--gb-down);
+}
+.note {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--gb-muted);
+}
+.note:empty {
+  display: none;
+}
+
+.dock {
+  display: contents;
+}
+.bottom {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  padding: 10px 14px 8px;
+  background: var(--gb-panel);
+  border: 1px solid var(--gb-line);
+  border-radius: var(--gb-radius);
+  box-shadow: 0 6px 20px var(--chat-shadow, rgba(0, 0, 0, 0.18));
+}
+.controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-bottom: 8px;
+}
+.group {
+  display: flex;
+  gap: 4px;
+}
+.ctrl {
+  min-width: 44px;
+  padding: 5px 10px;
+  background: var(--gb-raised);
+  font-variant-numeric: tabular-nums;
+}
+.primary {
+  min-width: 68px;
+  background: var(--chat-palm-fill, var(--gb-accent));
+  border-color: transparent;
+  color: var(--chat-on-fill, #0b1512);
+  font-weight: 600;
+}
+.primary:hover {
+  background: var(--chat-palm-fill, var(--gb-accent));
+  filter: brightness(1.08);
+}
+.live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--gb-raised);
+}
+.liveDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--gb-muted);
+}
+.live[aria-pressed="true"] {
+  border-color: var(--gb-down);
+}
+.live[aria-pressed="true"] .liveDot {
+  background: var(--gb-down);
+}
+.modeNote {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--gb-muted);
+  white-space: nowrap;
+}
+
+.track {
+  position: relative;
+  height: 30px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--gb-raised);
+  border: 1px solid var(--gb-line);
+  color: var(--gb-muted);
+}
+.band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+.bandPre {
+  left: 0;
+  width: 34.375%;
+  background: color-mix(in srgb, var(--gb-text) 5%, transparent);
+}
+.bandReg {
+  left: 34.375%;
+  width: 40.625%;
+  background: color-mix(in srgb, var(--gb-accent) 14%, transparent);
+}
+.bandAfter {
+  left: 75%;
+  width: 25%;
+  background: color-mix(in srgb, var(--gb-text) 5%, transparent);
+}
+.spark {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.55;
+}
+.fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  background: color-mix(in srgb, var(--gb-accent) 26%, transparent);
+  border-right: 2px solid var(--gb-accent);
+  pointer-events: none;
+}
+.slider {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: ew-resize;
+  touch-action: none;
+}
+.track:focus-within {
+  outline: 2px solid var(--gb-accent);
+  outline-offset: 2px;
+}
+.axis {
+  position: relative;
+  height: 16px;
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--gb-muted);
+}
+.axis span {
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+.axis span:first-child {
+  transform: none;
+}
+.axis span:last-child {
+  transform: translateX(-100%);
+}
+
+/* --- The plain list (no WebGL). */
+.list {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding: 132px 16px 132px;
+  background: var(--chat-bg, #0f1114);
+}
+.list p {
+  margin: 0 0 10px;
+  color: var(--gb-muted);
+}
+.list p button {
+  padding: 3px 10px;
+  background: var(--gb-raised);
+  border: 1px solid var(--gb-line);
+  border-radius: 999px;
+}
+.list table {
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.list th,
+.list td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--gb-line);
+  text-align: right;
+  white-space: nowrap;
+}
+.list thead th {
+  position: sticky;
+  top: -1px;
+  background: var(--chat-bg, #0f1114);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--gb-muted);
+}
+.list th:first-child {
+  text-align: left;
+}
+.list tbody th {
+  font: 600 13px var(--gb-mono);
+}
+.list td {
+  font-family: var(--gb-mono);
+}
+
+/* --- A card (Dual, Quad, Six): small chrome at the edges, the picture in the middle. */
+.cardTop {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+.cardTop > * {
+  pointer-events: auto;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 2px 4px 2px 9px;
+  background: var(--gb-panel);
+  border: 1px solid var(--gb-line);
+  border-radius: 999px;
+}
+.chip .date {
+  padding-right: 6px;
+}
+.root[data-balloons="card"] .clock {
+  font-size: 13px;
+}
+.root[data-balloons="card"] .live {
+  min-height: 24px;
+  padding: 1px 8px;
+  font-size: 12px;
+  background: var(--gb-raised);
+}
+.root[data-balloons="card"] .weather {
+  min-height: 28px;
+  background: var(--gb-panel);
+  font-size: 12.5px;
+}
+.open {
+  margin-left: auto;
+  min-height: 28px;
+  padding: 3px 10px;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+}
+.cardBottom {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 6px;
+}
+.root[data-balloons="card"] .track {
+  height: 18px;
+  border-radius: 999px;
+}
+.root[data-balloons="card"] .detail {
+  top: auto;
+  right: auto;
+  left: 6px;
+  bottom: 30px;
+  width: min(250px, calc(100% - 12px));
+  padding: 8px 10px 9px;
+}
+.root[data-balloons="card"][data-size="small"] .detail {
+  bottom: 6px;
+}
+.root[data-balloons="card"] .detail h3 {
+  font-size: 15px;
+}
+.root[data-balloons="card"] .detail dl {
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px 10px;
+  margin-top: 6px;
+}
+.root[data-balloons="card"] .detail dd {
+  font-size: 12.5px;
+}
+.root[data-balloons="card"] .detail dt {
+  font-size: 10.5px;
+}
+.root[data-balloons="card"] .list {
+  padding: 44px 8px 32px;
+}
+.root[data-balloons="card"][data-size="small"] .weather span {
+  display: none;
+}
+.root[data-balloons="card"][data-size="small"] .weather {
+  padding: 2px 6px;
+}
+
+/* --- Narrow (a phone held upright, a folded folding phone). */
+@container balloons (max-width: 560px) {
+  .top {
+    top: 8px;
+    left: 8px;
+    right: 8px;
+    gap: 6px;
+  }
+  .brand {
+    padding: 7px 10px 8px;
+  }
+  .clock {
+    font-size: 17px;
+  }
+  .actions {
+    flex-direction: column;
+    align-items: flex-end;
+  }
+  .pill {
+    min-height: 36px;
+  }
+  .bottom {
+    padding: 8px 10px 6px;
+  }
+  .controls {
+    gap: 6px 8px;
+  }
+  .ctrl,
+  .live {
+    min-height: 36px;
+  }
+  .modeNote {
+    display: none;
+  }
+  .axis span:nth-child(3) {
+    display: none;
+  }
+  /* The details sit directly on the timeline, in one stack at the bottom (so neither can cover the other, however the controls wrap). */
+  .dock {
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    pointer-events: none;
+  }
+  .dock > * {
+    pointer-events: auto;
+  }
+  .dock .bottom {
+    position: static;
+  }
+  .root[data-balloons="app"] .detail {
+    position: static;
+    width: auto;
+  }
+  .root[data-balloons="app"] .detail .note {
+    display: none;
+  }
+  .root[data-balloons="app"] .detail dl {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+  .legend {
+    top: 8px;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-height: calc(100% - 16px);
+    z-index: 4;
+  }
+  .legend li {
+    grid-template-columns: 66px 1fr;
+  }
+  .list {
+    padding: 150px 10px 150px;
+  }
+}
+/* --- Short (a phone on its side, 844x390): one line of controls, no axis, panels beside the picture. */
+@container balloons (max-height: 480px) {
+  .brand h2,
+  .dayNote {
+    display: none;
+  }
+  .brand {
+    padding: 5px 10px 6px;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    max-width: 62%;
+  }
+  .clockRow,
+  .weatherRow {
+    margin: 0;
+  }
+  .clock {
+    font-size: 16px;
+  }
+  .bottom {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 10px;
+  }
+  .controls {
+    margin: 0;
+    flex-wrap: nowrap;
+    gap: 6px;
+  }
+  .controls .group[role="group"],
+  .modeNote,
+  .axis {
+    display: none;
+  }
+  .bottom .track {
+    flex: 1;
+  }
+  .root[data-balloons="app"] .detail {
+    top: 52px;
+    bottom: auto;
+    left: auto;
+    right: 8px;
+    width: 250px;
+  }
+  .legend {
+    top: 8px;
+    right: 8px;
+    left: auto;
+    width: min(420px, calc(100% - 16px));
+    max-height: calc(100% - 16px);
+    z-index: 4;
+  }
+  .list {
+    padding: 56px 12px 60px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .root * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

@@ -24,6 +24,13 @@ export const CHAT_APPS = [
     initials: "TD",
     description: "Your TradeZero account: P&L, positions, open orders and the bot's activity",
   },
+  {
+    // #528: the day's gainers as balloons, for the members with the Gainers room.
+    id: "balloons",
+    label: "Gainer Balloons",
+    initials: "GB",
+    description: "The day's gainers as balloons: size is volume, height is percent change",
+  },
 ] as const;
 
 export type ChatApp = (typeof CHAT_APPS)[number];

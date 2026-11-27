@@ -1,4 +1,4 @@
-import type { ChatEntitlements } from "@/lib/chatAccess";
+import { canAccessChatRoom, type ChatEntitlements } from "@/lib/chatAccess";
 import { CHAT_APPS, type ChatAppId } from "@/lib/chatApps";
 import { isChatOwner, type OwnerCheckAuth } from "@/lib/chatOwner";
 import { canUseReader } from "@/lib/readerAccess";
@@ -15,6 +15,8 @@ const APP_ACCESS: Record<ChatAppId, (auth: AppAccessAuth) => Promise<boolean>> =
   reader: (auth) => canUseReader(auth.user.id, auth.access),
   // #468: Rob only (CHAT_OWNER_ACCOUNT_ID, lib/chatOwner.ts): not other admins, members, bots or tokens.
   "trading-desk": async (auth) => isChatOwner(auth),
+  // #528: the same members as the Gainers Table: whoever can open the Gainers room.
+  balloons: async (auth) => canAccessChatRoom(auth.access, "gainers"),
 };
 
 /** The apps this member may use, in sidebar order. */

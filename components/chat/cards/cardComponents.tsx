@@ -20,6 +20,8 @@ const ChatNewsFeed = dynamic(() => import("../ChatNewsFeed"), { ssr: false });
 const ReaderPane = dynamic(() => import("../../reader/ReaderPane"), { ssr: false });
 // #468: the Trading Desk (owner only) on a pane or card.
 const TradingDesk = dynamic(() => import("../tradingDesk/TradingDesk"), { ssr: false });
+// #528: Gainer Balloons on a pane or card (its three.js scene is a further download, made when shown).
+const GainerBalloons = dynamic(() => import("../balloons/GainerBalloons"), { ssr: false });
 
 /** Everything a card body gets from the view around it. */
 export type CardBodyProps = {
@@ -116,10 +118,25 @@ function TradingDeskAppBody() {
   );
 }
 
+/**
+ * #528 Gainer Balloons on a card or pane: the same scene with small chrome. It stops drawing while
+ * the card is hidden (another pane expanded, another tab on a phone) and gives its graphics context
+ * back when the card is closed.
+ */
+function BalloonsAppBody({ active, visible }: Pick<CardBodyProps, "active" | "visible">) {
+  const { theme, palette } = useChatTheme();
+  return (
+    <div className={`${publicStyles.page} ${styles.balloons}`} data-theme={theme} data-palette={palette} data-card-balloons>
+      <GainerBalloons compact active={active} visible={visible} />
+    </div>
+  );
+}
+
 /** #406 How each app (lib/chatApps.ts) draws on a Six card or a Quad pane. */
 export const APP_COMPONENTS: Record<ChatAppId, ComponentType<Pick<CardBodyProps, "active" | "visible">>> = {
   reader: ReaderAppBody,
   "trading-desk": TradingDeskAppBody,
+  balloons: BalloonsAppBody,
 };
 
 function AppCardBody({ source, active, visible }: CardBodyProps) {

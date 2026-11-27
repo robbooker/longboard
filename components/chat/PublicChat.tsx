@@ -122,7 +122,7 @@ import { useRoomPresence } from "./room/useRoomPresence";
 import RoomQuickSwitcher, { publishDmList } from "./room/RoomQuickSwitcher";
 import RoomNav from "./room/RoomNav";
 import type { ChatAppId } from "@/lib/chatApps";
-import { FAQ_CHAT_PAGE, GAINERS_TABLE_PAGE, NEW_CHAT_PAGE, NEWS_FEED_PAGE, READER_PAGE, TRADING_DESK_PAGE, useChatPages, WAITING_CHAT_PAGES, type OpenChatPage } from "./hooks/useChatPages";
+import { BALLOONS_PAGE, FAQ_CHAT_PAGE, GAINERS_TABLE_PAGE, NEW_CHAT_PAGE, NEWS_FEED_PAGE, READER_PAGE, TRADING_DESK_PAGE, useChatPages, WAITING_CHAT_PAGES, type OpenChatPage } from "./hooks/useChatPages";
 import ChatHeader from "./room/ChatHeader";
 import NameGate from "./room/NameGate";
 import RoomMessageList from "./room/RoomMessageList";
@@ -168,6 +168,8 @@ const ChatNewsFeed = dynamic(() => import("./ChatNewsFeed"), { ssr: false });
 const ReaderLibrary = dynamic(() => import("../reader/ReaderLibrary"), { ssr: false });
 // #468: the Trading Desk (owner only), downloaded only when it opens.
 const TradingDesk = dynamic(() => import("./tradingDesk/TradingDesk"), { ssr: false });
+// #528: Gainer Balloons; its 3D scene (three.js) is a further download made only once it is open.
+const GainerBalloons = dynamic(() => import("./balloons/GainerBalloons"), { ssr: false });
 const ChatSuggestImprovement = dynamic(() => import("./ChatSuggestImprovement"), { ssr: false });
 // #501/#502: stage mode (a room's live video), downloaded only when someone opens it.
 const StageMode = dynamic(() => import("./stage/StageMode"), { ssr: false });
@@ -2641,14 +2643,14 @@ function PublicChatContent({
     void deliverRoomMessage(message, []);
   };
 
-  const pageTitle = pageShown ? (shownPage?.name ?? shownSuggestion?.name ?? (chatPage?.id === FAQ_CHAT_PAGE ? "FAQ" : chatPage?.id === GAINERS_TABLE_PAGE ? "Gainers Table" : chatPage?.id === NEWS_FEED_PAGE ? "News Feed" : chatPage?.id === READER_PAGE ? "Reader" : chatPage?.id === TRADING_DESK_PAGE ? "Trading Desk" : chatPage?.id === NEW_CHAT_PAGE ? (canManagePages ? "Add a page" : "Suggest a page") : chatPage?.id === WAITING_CHAT_PAGES ? "Waiting for approval" : "Page")) : null;
+  const pageTitle = pageShown ? (shownPage?.name ?? shownSuggestion?.name ?? (chatPage?.id === FAQ_CHAT_PAGE ? "FAQ" : chatPage?.id === GAINERS_TABLE_PAGE ? "Gainers Table" : chatPage?.id === NEWS_FEED_PAGE ? "News Feed" : chatPage?.id === READER_PAGE ? "Reader" : chatPage?.id === TRADING_DESK_PAGE ? "Trading Desk" : chatPage?.id === BALLOONS_PAGE ? "Gainer Balloons" : chatPage?.id === NEW_CHAT_PAGE ? (canManagePages ? "Add a page" : "Suggest a page") : chatPage?.id === WAITING_CHAT_PAGES ? "Waiting for approval" : "Page")) : null;
   // #438: "Pop out" opens what is on screen (this room, the open DM, or the open page) in a window
   // of its own, so several chats can be popped out at once.
   const popoutPage = !pageShown || !chatPage
     ? null
     : shownPage
       ? shownPage.slug
-      : chatPage.id === FAQ_CHAT_PAGE || chatPage.id === GAINERS_TABLE_PAGE || chatPage.id === NEWS_FEED_PAGE || chatPage.id === READER_PAGE || chatPage.id === TRADING_DESK_PAGE
+      : chatPage.id === FAQ_CHAT_PAGE || chatPage.id === GAINERS_TABLE_PAGE || chatPage.id === NEWS_FEED_PAGE || chatPage.id === READER_PAGE || chatPage.id === TRADING_DESK_PAGE || chatPage.id === BALLOONS_PAGE
         ? chatPage.id
         : null;
   const popoutTarget = useMemo<ChatPopoutTarget>(
@@ -2924,6 +2926,8 @@ function PublicChatContent({
                 <ReaderLibrary />
               ) : chatPage!.id === TRADING_DESK_PAGE ? (
                 <TradingDesk />
+              ) : chatPage!.id === BALLOONS_PAGE ? (
+                <GainerBalloons />
               ) : (
                 <ChatPageView
                   key={chatPage!.id}
@@ -3526,6 +3530,12 @@ export default function PublicChat(props: PublicChatProps) {
     if (wanted === TRADING_DESK_PAGE && !props.pane && !!member && !!props.apps?.includes("trading-desk")) {
       pageLink.current = null;
       showChatPage(TRADING_DESK_PAGE);
+      return;
+    }
+    // #528: Gainer Balloons' link opens for the members the server gave it to (the Gainers room).
+    if (wanted === BALLOONS_PAGE && !props.pane && !!member && !!props.apps?.includes("balloons")) {
+      pageLink.current = null;
+      showChatPage(BALLOONS_PAGE);
       return;
     }
     if ((wanted === GAINERS_TABLE_PAGE || wanted === NEWS_FEED_PAGE) && showGainersPages && currentRooms) {

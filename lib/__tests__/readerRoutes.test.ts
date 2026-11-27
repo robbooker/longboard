@@ -59,11 +59,13 @@ describe("#385/#406 Reader access", () => {
   });
 
   it("#406: shows the Apps section (with the Reader) to every member, including one with only the reader entitlement, never to bots", async () => {
-    expect(await chatAppsFor({ user: { id: "a" }, access: adminUser.access })).toEqual(["reader"]);
-    expect(await chatAppsFor({ user: { id: "a" }, access: member.access })).toEqual(["reader"]);
-    expect(await chatAppsFor({ user: { id: "a" }, access: { longboard: false, shortscout: false, admin: false, member: ["reader"] } })).toEqual(["reader"]);
-    expect(await chatAppsFor({ user: { id: "a" }, access: { longboard: false, shortscout: false, admin: false, member: ["club-room"] } })).toEqual(["reader"]);
-    expect(await chatAppsFor({ user: { id: "a" }, access: outsider.access })).toEqual(["reader"]);
+    // #528: Gainer Balloons is listed too, for everyone with the Gainers room (lib/__tests__/gainerBalloonsApp.test.ts).
+    const apps = async (who: Parameters<typeof chatAppsFor>[0]) => (await chatAppsFor(who)).filter((app) => app !== "balloons");
+    expect(await apps({ user: { id: "a" }, access: adminUser.access })).toEqual(["reader"]);
+    expect(await apps({ user: { id: "a" }, access: member.access })).toEqual(["reader"]);
+    expect(await apps({ user: { id: "a" }, access: { longboard: false, shortscout: false, admin: false, member: ["reader"] } })).toEqual(["reader"]);
+    expect(await apps({ user: { id: "a" }, access: { longboard: false, shortscout: false, admin: false, member: ["club-room"] } })).toEqual(["reader"]);
+    expect(await apps({ user: { id: "a" }, access: outsider.access })).toEqual(["reader"]);
     expect(await chatAppsFor({ user: { id: "a" }, access: bot.access })).toEqual([]);
   });
 });

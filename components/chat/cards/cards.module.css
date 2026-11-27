@@ -16,6 +16,10 @@
 /* #468: the Trading Desk on a card or Quad pane: it scrolls inside the card and lays itself out for the
    card's width (container queries in TradingDesk.module.css). */
 .tradingDesk.tradingDesk { height: 100%; min-height: 0; padding: 0; overflow: auto; background: var(--chat-bg); display: flex; flex-direction: column; }
+/* #528: Gainer Balloons on a card or Quad pane: the scene covers the card's body exactly (positioned
+   against it, so the picture's own size can never push the card taller); nothing scrolls. Never taller
+   than the screen, for a view whose cards are (Six, two across, with a long chat beside it). */
+.balloons.balloons { position: absolute; inset: 0; max-height: 100dvh; height: auto; min-height: 0; padding: 0; overflow: hidden; background: var(--chat-bg); display: flex; flex-direction: column; }
 /* #506: a card that is just a room's live video. The player (StageVideo's fill mode) covers this box;
    while the room is not live it holds one short line instead. */
 /* #510: while the room is not live the card is a panel in the member's theme; once it is, the player covers it (dark in every theme). */
