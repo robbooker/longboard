@@ -86,6 +86,9 @@ export const TESTS = [
   { name: 'chat-clipboard', fixture: 'none' },
   // #457: chat admins post in Booker Stock Club; members stay read-only.
   { name: 'chat-club-admin-posts', timeout: 300 },
+  // #535: the club's chat opens to members while a webinar is live there; LiveKit and Ably are stand-ins inside the test.
+  // About 90s here (it waits out the real 20 seconds after a broadcast stops, twice over with a short drop).
+  { name: 'chat-club-webinar-chat', env: ['ably', 'livekit'], timeout: 600, weight: 200 },
   { name: 'chat-ai-insights', timeout: 300 },
   { name: 'chat-delete-replies' },
   { name: 'chat-device-store' },
