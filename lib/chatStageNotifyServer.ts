@@ -98,6 +98,9 @@ export function stageNoticeStore(db: SupabaseClient, actor?: string | null): Sta
     close: async (room, id, body, endedAt) => {
       const closed = (await call("chat_stage_broadcast_close", { p_id: id, p_body: body, p_ended_at: new Date(endedAt).toISOString() }, "close")) === true;
       if (closed) await changed(room);
+      // #535: Booker Stock Club's chat locks at this moment (lib/chatClubLive.ts), so every page
+      // showing the club asks its status again and puts the read-only notice back.
+      if (closed && room === "club") await publishRoomEvent(room, { kind: "changed", topics: ["stage"] });
       return closed;
     },
     reopen: async (room, id, body) => {

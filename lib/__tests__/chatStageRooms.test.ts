@@ -130,7 +130,10 @@ describe("a room that does not offer live video", () => {
 
 describe("a room that offers it", () => {
   it.each([...STAGE_ROOMS])("%s: status, key and token work", async (room) => {
-    expect(await (await status(get(`/api/chat/stage/status?room=${room}`))).json()).toEqual({ state: "off", video: true, onScreen: null });
+    expect(await (await status(get(`/api/chat/stage/status?room=${room}`))).json()).toEqual(
+      // #535: Booker Stock Club's answer also says whether its chat is open to members (lib/__tests__/chatClubWebinarChat.test.ts).
+      { state: "off", video: true, onScreen: null, ...(room === "club" ? { chat: false } : {}) },
+    );
     const opened = await livePost(post("/api/chat/stage/live", { room, action: "open" }));
     expect(opened.status).toBe(200);
     expect(mocks.lk.calls).toContain(`create:chat-${room}`);

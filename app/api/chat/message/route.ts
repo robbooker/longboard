@@ -4,7 +4,8 @@ import { publishRoomEventAfterResponse } from "@/lib/chatRealtimePublish";
 import { requireChatUser } from "@/lib/chatAuth";
 import { isChatAdmin } from "@/lib/chatRole";
 import { createChatAdminClient, requestOriginAllowed } from "@/lib/chatAdmin";
-import { canAccessChatRoom, canWriteChatRoom } from "@/lib/chatAccess";
+import { canAccessChatRoom } from "@/lib/chatAccess";
+import { chatWriteNow, clubRefusal } from "@/lib/chatClubLiveServer";
 import { CHAT_UUID } from "@/lib/chatMembers";
 import { parseChatRoom } from "@/lib/publicChat";
 import { CHAT_MESSAGE_MAX_LENGTH, isOverMessageLimit } from "@/lib/chatMessageLimit";
@@ -25,14 +26,17 @@ export async function POST(req: NextRequest) {
   )
     return json({ error: "invalid_action" }, 400);
   if (!canAccessChatRoom(auth.access, room)) return json({ error: "room_forbidden" }, 403);
-  if (!canWriteChatRoom(auth.access, room, auth))
+  // #535: in Booker Stock Club a member edits or deletes their own post only while a webinar is
+  // live there (the same answer as posting). Once it has ended their posts stay as they are.
+  const write = await chatWriteNow(auth.access, room, auth);
+  if (!write.allowed)
     return json(
       {
         error:
           room === "gainers"
             ? "Gainers is a read-only broadcast channel."
             : room === "club"
-              ? "Booker Stock Club is a read-only channel."
+              ? clubRefusal(write)
               : room === "whats-new"
                 ? "Only admins can change What's New? notes."
                 : "Only admins can change announcements and recordings.",
@@ -55,17 +59,30 @@ export async function POST(req: NextRequest) {
     return json({ error: "invalid_action" }, 400);
   const admin = createChatAdminClient();
   if (!admin) return json({ error: "unavailable" }, 503);
-  const { data, error } = await admin.rpc("change_chat_message", {
+  // #457: in Booker Stock Club an admin changes only their own posts (never a stock-pick card).
+  // #535: now that members post there during a webinar, an admin can also remove a person's post
+  // (moderation, as in any room). Never a bot's: the stock-pick cards and the live-video notices
+  // are looked up here and left alone.
+  let moderator = isChatAdmin(auth);
+  if (room === "club" && moderator) {
+    moderator = false;
+    if (p.action === "delete") {
+      const target = await admin.from("longboard_chat_messages").select("guest_id,bot_slug").eq("id", p.messageId).eq("room_slug", "club").maybeSingle();
+      moderator = !target.error && !!target.data?.guest_id && !target.data.bot_slug;
+    }
+  }
+  const changes = {
     p_actor: auth.user.id,
     p_message: p.messageId,
-    p_room: room,
     p_action: p.action,
     p_body: p.action === "edit" ? p.body : null,
     p_expected_body: p.action === "edit" ? p.expectedBody : null,
-    // #457: in Booker Stock Club an admin changes only their own posts (never a stock-pick card).
-    p_admin: room !== "club" && isChatAdmin(auth),
     p_expected_revision: p.expectedRevision ?? null,
-  });
+  };
+  const { data, error } = write.webinar
+    ? // #535: a member's own post during a webinar (never as a moderator), with the club's guard told so.
+      await admin.rpc("change_chat_club_live_message", changes)
+    : await admin.rpc("change_chat_message", { ...changes, p_room: room, p_admin: moderator });
   if (error) {
     const codes: Record<string, number> = {
       room_forbidden: 403,

@@ -1,7 +1,9 @@
 import { isRecordingRoom, isWhatsNewRoom } from "@/lib/publicChat";
 import { processChatPushJobs } from "@/lib/chatPush";
 import { stageRecordingAfterPost } from "@/lib/chatStageRecordingServer";
-import { canAccessChatRoom, canStartChatPost, canWriteChatRoom } from "@/lib/chatAccess";
+import { canAccessChatRoom, canStartChatPost } from "@/lib/chatAccess";
+import { CLUB_READ_ONLY } from "@/lib/chatClubLive";
+import { chatWriteNow, clubRefusal } from "@/lib/chatClubLiveServer";
 import { AI_INSIGHTS_REPLIES_ONLY } from "@/lib/chatAiInsightsText";
 import { answerAiInsightsReply } from "@/lib/chatAiInsightsAnswers";
 import { readPublicRoomState, requestOriginAllowed } from "@/lib/chatAdmin";
@@ -68,6 +70,8 @@ async function send(
   payload: ChatPayload,
   timing: ChatServerTiming,
   agent?: ChatAgentIdentity,
+  // #535: a member's post in Booker Stock Club while a webinar is live there (never an agent's).
+  webinar = false,
 ) {
   let files: string[];
   try {
@@ -103,19 +107,23 @@ async function send(
   const { data, error } = await timing.time("send", () =>
     agent
       ? admin.rpc("send_chat_agent_message", { p_agent: agent.id, ...sendArgs })
-      : admin.rpc("send_chat_room_message", { p_user: userId, ...sendArgs }),
+      : webinar && roomSlug === "club"
+        ? // #535: the same send, with the club's guard told a webinar is live (the server decided that).
+          admin.rpc("send_chat_club_live_message", { p_user: userId, p_body: sendArgs.p_body, p_reply: sendArgs.p_reply, p_files: sendArgs.p_files, p_client: sendArgs.p_client })
+        : admin.rpc("send_chat_room_message", { p_user: userId, ...sendArgs }),
   );
   const refused = agent && data && typeof data.status === "string" ? agentSendError(data.status, data) : null;
   if (refused) return json({ error: refused.error, message: refused.message }, refused.status, timing);
   const result = data as SendResult | null;
   // #457: the club's database guard (enforce_chat_club_post) refuses everything but an admin's own
-  // post, and replies under the stock-pick cards.
+  // post, and replies under the stock-pick cards. #535: during a webinar, members' posts too; the
+  // replies under the cards (and Longboard Bot's posts) stay refused.
   if (error?.message === "club_read_only")
     return json(
       {
         error: sendArgs.p_reply
           ? "Replies are off under the stock-pick cards."
-          : "Booker Stock Club is a read-only channel.",
+          : CLUB_READ_ONLY,
       },
       403,
       timing,
@@ -242,14 +250,17 @@ export async function POST(request: NextRequest) {
     return json({ error: "Replies are disabled in recording channels." }, 403);
   if (isWhatsNewRoom(roomSlug) && payload.replyTo != null)
     return json({ error: "Replies are off in What's New?" }, 403);
-  if (action !== "session" && action !== "react" && !canWriteChatRoom(auth.access, roomSlug, auth))
+  // #535: in Booker Stock Club a member writes only while a webinar is live there, which the
+  // server decides here (lib/chatClubLiveServer.ts); everywhere else nothing is asked.
+  const write = action !== "session" && action !== "react" ? await chatWriteNow(auth.access, roomSlug, auth) : null;
+  if (write && !write.allowed)
     return json(
       {
         error:
           roomSlug === "gainers"
             ? "Gainers is a read-only broadcast channel."
             : roomSlug === "club"
-              ? "Booker Stock Club is a read-only channel."
+              ? clubRefusal(write)
               : roomSlug === "whats-new"
                 ? "Only admins can post in What's New?"
                 : "Only admins can post in announcement and recording channels.",
@@ -258,7 +269,7 @@ export async function POST(request: NextRequest) {
     );
 
   // #482: members only reply in AI Insights; new posts are the AI's and admins' (browser only).
-  if (action === "send" && payload.replyTo == null && !canStartChatPost(auth.access, roomSlug, auth))
+  if (action === "send" && payload.replyTo == null && !write?.webinar && !canStartChatPost(auth.access, roomSlug, auth))
     return json({ error: "replies_only", message: AI_INSIGHTS_REPLIES_ONLY }, 403);
 
   const admin = createClient(supabaseUrl, serviceRoleKey, {
@@ -277,7 +288,7 @@ export async function POST(request: NextRequest) {
   }
   if (agent && action === "react" && !agent.react)
     return json({ error: "reactions_not_allowed", message: "This agent may not react." }, 403);
-  if (action === "send") return send(admin, auth.user.id, roomSlug, payload, timing, agent);
+  if (action === "send") return send(admin, auth.user.id, roomSlug, payload, timing, agent, !agent && write?.webinar === true);
 
   if (action !== "session") {
     try {

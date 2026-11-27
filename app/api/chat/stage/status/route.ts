@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { canAccessChatRoom } from "@/lib/chatAccess";
 import { requireChatUser } from "@/lib/chatAuth";
+import { clubChatFor } from "@/lib/chatClubLiveServer";
 import { isChatAdmin } from "@/lib/chatRole";
 import { stageCloseAfterResponse } from "@/lib/chatStageChange";
 import { stageVideoApi } from "@/lib/chatStageLiveKit";
@@ -58,6 +59,10 @@ const json = (body: unknown, status = 200) =>
  * #522: the room named must be there, as text (400 otherwise); and when this server, which had
  * read "live", reads that the broadcast has stopped, the LiveKit room is closed half a minute later
  * if it is still stopped (lib/chatStageChange.ts).
+ * #535: for Booker Stock Club the answer also says whether the room's chat is open to members
+ * (`chat`: a webinar is live, or stopped so recently that it has not been marked ended; the rule
+ * is lib/chatClubLive.ts). It is the same answer the post routes act on, read here so the page can
+ * show the composer or the read-only notice; the page's word is never taken for it.
  */
 const MOST_ROOMS = 8;
 const MOST_NOTICE_CHECKS = 1;
@@ -144,5 +149,6 @@ export async function GET(req: NextRequest) {
       : state === "waiting" && isChatAdmin(auth)
         ? await sharedStageOnScreen(room, () => readStageOnScreen(api, room), undefined, { longMemory })
         : null;
+  if (room === "club") return json({ state, video: true, onScreen, chat: (await clubChatFor(state, { longMemory })).open });
   return json({ state, video: true, onScreen });
 }

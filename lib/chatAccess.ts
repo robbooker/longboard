@@ -108,11 +108,24 @@ export type ChatWriteSource = { apiToken?: boolean; agent?: unknown };
  * Who may post in a room. #457: in Booker Stock Club only a chat admin signed in through the
  * browser posts (members read and react). An API token, even an admin's own, and an agent never
  * do, and leaving out the sign-in source counts as a token (fails closed).
+ * #535: this is the club's rule at rest. While a webinar is live there the chat opens to everyone
+ * in the room; routes ask chatWriteNow (lib/chatClubLiveServer.ts), which starts from this.
  */
 export function canWriteChatRoom(access: ChatEntitlements, room: ChatRoom, source?: ChatWriteSource) {
   if (room === "gainers" || !canAccessChatRoom(access, room)) return false;
   if (room === "club") return access.admin && !access.botRooms && !!source && !source.apiToken && !source.agent;
   return !isAnnouncementRoom(room) || access.admin;
+}
+
+/**
+ * #535: who Booker Stock Club's chat opens to while a webinar is live there: everyone who can open
+ * the room, signed in through the browser. Never a bot account, an API token (even an admin's own)
+ * or an agent, and leaving out the sign-in source counts as a token (fails closed), exactly as in
+ * canWriteChatRoom. Whether a webinar IS live is the server's to say (lib/chatClubLiveServer.ts);
+ * this is only who it would open the chat to.
+ */
+export function canChatInClubWebinar(access: ChatEntitlements, source?: ChatWriteSource) {
+  return canAccessChatRoom(access, "club") && !access.botRooms && !!source && !source.apiToken && !source.agent;
 }
 
 /**

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ChatAuthResult } from "./chatAuth";
-import { canAccessChatRoom, canWriteChatRoom } from "./chatAccess";
+import { canAccessChatRoom } from "./chatAccess";
+import { chatWriteNow, clubRefusal } from "./chatClubLiveServer";
 import { readPublicRoomState } from "./chatAdmin";
 import { findChatMember, CHAT_UUID } from "./chatMembers";
 import { parseChatRoom } from "./publicChat";
@@ -63,12 +64,14 @@ export async function attachmentAccess(
   } else if (scope.room_slug) {
     const room = parseChatRoom(scope.room_slug);
     if (!room || !canAccessChatRoom(auth.access, room)) throw new AttachmentError("File unavailable.", 404);
-    if (write && !canWriteChatRoom(auth.access, room, auth))
+    // #535: in Booker Stock Club a member attaches files only while a webinar is live there.
+    const allowed = write ? await chatWriteNow(auth.access, room, auth) : null;
+    if (allowed && !allowed.allowed)
       throw new AttachmentError(
         room === "gainers"
           ? "Gainers is a read-only broadcast channel."
           : room === "club"
-            ? "Booker Stock Club is a read-only channel."
+            ? clubRefusal(allowed)
             : "Only admins can attach files in announcement and recording channels.",
         403,
       );
