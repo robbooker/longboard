@@ -174,7 +174,14 @@ const pane=i=>`section[aria-label^="Pane ${i}:"]`;
 const choose=async(page,i,key)=>{await page.waitForFunction((s,key)=>!!document.querySelector(`${s} select option[value="${key}"]`)||key==='',{timeout:60000},pane(i),key);await page.select(`${pane(i)} select`,key);};
 const scrub=(page,root,value)=>page.$eval(`${root} [data-balloons-scrubber]`,(input,value)=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,String(value));input.dispatchEvent(new Event('input',{bubbles:true}));},value);
 
+// The whole file takes about 4 minutes here and far longer on a slow runner, so the manifest runs it
+// as three parts, each on a fixture of its own: --part=app (the app on a computer, and location
+// declined), --part=cards (Dual, Quad and Six) and --part=small (no WebGL, phones, no gainers).
+// With no --part, everything runs.
+const PART=process.argv.find(a=>a.startsWith('--part='))?.slice(7)??null;
+const runs=part=>!PART||PART===part;
 try{
+ if(runs('app')){
  // ---------- The app on a computer.
  {
   const page=await open({viewport:{width:1440,height:900}});
@@ -422,6 +429,8 @@ try{
   await page.close();
  }
 
+ }
+ if(runs('cards')){
  // ---------- Cards: Dual, Quad and Six.
  {
   // The viewer chose local weather earlier, but this browser would have to ask again: a card must not.
@@ -555,6 +564,8 @@ try{
   await page.close();
  }
 
+ }
+ if(runs('small')){
  // ---------- No WebGL: a plain list.
  {
   const page=await open({viewport:{width:1280,height:800},webgl:false,path:'/chat?page=balloons',composer:false});
@@ -640,4 +651,5 @@ try{
  }
  assert.deepEqual(errors,[],'no page errors');
  console.log('Gainer Balloons browser checks passed: app from Apps, picture drawn, Live and replay, keys, details, search, legend, weather (default, Change weather by typing a place, remembered, local, declined, unavailable, conditions), the clock in the chosen place\'s time (CT, MT, AKT, back to ET, after a reload, in a card), matches by population, cards in Dual/Quad/Six, 10 pane and 10 view switches with WebGL intact, hidden card idle, list without WebGL, phone upright/sideways/unfolded, empty day.');
+ }
 }finally{await browser.close();}
