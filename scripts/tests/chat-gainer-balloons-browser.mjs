@@ -19,6 +19,11 @@
 //    so; "Use my location" in the panel asks only on that tap and sends the position rounded to one
 //    decimal, in the body, never in the address; declined and unavailable both fall back to New York
 //    with a line saying so; rain, snow, overcast and a clear night all draw;
+//  - the clock (#532): New York time ("ET") by default; with a Central-time place chosen the clock
+//    reads "8:0x AM CT" and the timeline runs 3:00 AM to 7:00 PM, after a reload too, and in a card;
+//    New York brings "ET" back; "Use my location" with no zone in the reading uses the browser's
+//    own; a long label ("AKT") fits on every phone shape; a time zone's name is never on screen;
+//    matches are listed by population ("port": Portland, OR first);
 //  - a card in Dual, Quad and Six draws, shows an in-card detail and an Open link, never shows
 //    "Change weather" or triggers a location prompt, uses a remembered typed place, stops drawing while hidden, ignores keys typed in another pane, and
 //    still has WebGL after its pane is switched away and back 10 times and after 10 moves between
@@ -28,7 +33,7 @@
 //    sideways scroll, every control on screen, a tap selects;
 //  - no gainers: a line saying so; no page errors anywhere.
 //  - full screen: an icon button in the app (never a card) fills the screen and comes back;
-// CHAT_SHOT_DIR saves app-change-weather.png, app-change-weather-phone.png, app-fullscreen.png, app-desktop.png, app-selected.png, app-legend.png, app-phone.png,
+// CHAT_SHOT_DIR saves app-city-clock.png, app-change-weather-port.png, app-change-weather.png, app-change-weather-phone.png, app-fullscreen.png, app-desktop.png, app-selected.png, app-legend.png, app-phone.png,
 // app-unfolded.png, card-dual.png, card-quad.png, card-six.png, fallback.png, weather-rain.png,
 // weather-snow.png, weather-overcast.png and weather-clear-night.png.
 import assert from 'node:assert/strict';
@@ -59,7 +64,7 @@ assert.equal((await fetch(`${base}/api/chat/balloons/weather`,{method:'POST',hea
 
 const browser=await puppeteer.launch({headless:true,executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',args:['--no-sandbox','--enable-unsafe-swiftshader','--ignore-gpu-blocklist']});
 const errors=[];
-const WEATHER={newYork:{condition:'partly',cloud:0.4,tempC:20,night:false,place:'New York',local:false},chicago:{condition:'cloudy',cloud:0.9,tempC:10,night:false,place:'Chicago',local:true},austin:{condition:'clear',cloud:0.1,tempC:30,night:false,place:'Austin',local:true}};
+const WEATHER={newYork:{condition:'partly',cloud:0.4,tempC:20,night:false,place:'New York',local:false,zone:'America/New_York'},chicago:{condition:'cloudy',cloud:0.9,tempC:10,night:false,place:'Chicago',local:true,zone:'America/Chicago'},austin:{condition:'clear',cloud:0.1,tempC:30,night:false,place:'Austin',local:true,zone:'America/Chicago'}};
 /**
  * A signed-in page. `geo`: what the browser's location does when asked (granted, denied, unavailable)
  * and whether it would answer without a prompt (`permission`). Every ask is counted in the page.
@@ -122,10 +127,18 @@ const newYork=async page=>{
  await page.$eval(`${SEL.app} [data-balloons-place="ny:new york"]`,b=>b.click());
  await page.waitForFunction(s=>document.querySelector(s)?.textContent.includes('New York'),{},`${SEL.app} [data-balloons-weather]`);
  assert.equal(await page.evaluate(()=>{const v=JSON.parse(localStorage.getItem('rb-balloons-weather-v1'));return v.local===false&&!('place' in v);}),true,'New York is the default: nothing is remembered');
+ await clockIn(page,SEL.app,'ET');
+ if((await axis(page)).length)assert.deepEqual(await axis(page),['4:00 AM','9:30 AM','12:00 PM','4:00 PM','8:00 PM'],'New York: the timeline is in New York time again');
 };
 const scene=(page,root)=>page.$eval(root,el=>({...el.__balloons.scene(),mode:el.__balloons.mode(),time:el.__balloons.time()}));
 const clock=(page,root)=>page.$eval(`${root} [data-balloons-clock]`,e=>e.textContent);
 const mode=(page,root)=>page.$eval(root,e=>e.dataset.mode);
+/** Waits for the clock to read in a zone ("CT"), and answers what it reads. */
+const clockIn=async(page,root,letters)=>{await page.waitForFunction((s,l)=>document.querySelector(s)?.textContent.endsWith(' '+l),{},`${root} [data-balloons-clock]`,letters);return clock(page,root);};
+/** The timeline's labels, left to right. */
+const axis=page=>page.$$eval(`${SEL.app} [data-balloons-axis] span`,list=>list.map(e=>e.textContent));
+/** Everything a member could read or hear in the app: text, tooltips and labels. */
+const allWords=(page,root)=>page.$eval(root,e=>e.innerText+' '+[...e.querySelectorAll('[title],[aria-label]')].map(x=>`${x.title} ${x.getAttribute('aria-label')??''}`).join(' '));
 /** The canvas as the viewer sees it, shrunk to 200 pixels wide: how many different colours it has. A blank canvas has one. */
 async function colours(page,root){
  const canvas=await page.$(`${root} canvas[data-balloons-canvas]`);assert(canvas,`${root} has a canvas`);
@@ -171,6 +184,8 @@ try{
   assert.equal(await page.$$eval('canvas[data-balloons-canvas]',c=>c.length),1,'one canvas');
   assert.equal(await mode(page,SEL.app),'live','it starts Live');
   assert.match(await clock(page,SEL.app),/^9:\d\d AM ET$/,'the market clock');
+  assert.deepEqual(await axis(page),['4:00 AM','9:30 AM','12:00 PM','4:00 PM','8:00 PM'],'the timeline in New York time');
+  assert.match(await page.$eval(`${SEL.app} [data-balloons-scrubber]`,e=>e.getAttribute('aria-label')),/: 4:00 AM to 8:00 PM New York time$/);
   const today=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',weekday:'short',month:'short',day:'numeric'}).format(new Date());
   assert.equal(await page.$eval(`${SEL.app} [data-balloons-date]`,e=>e.textContent),today,'the day is dated');
   // Weather: New York's, with nothing asked of the browser, and nothing about the place in the address.
@@ -203,6 +218,12 @@ try{
   assert.equal(await page.evaluate(s=>{const p=getComputedStyle(document.querySelector(s)).backgroundColor.match(/[\d.]+/g);return p.length<4||Number(p[3])===1;},PANEL),true,'a solid panel');
   assert.doesNotMatch(await page.$eval(PANEL,e=>e.innerText+' '+[...e.querySelectorAll('*')].map(x=>`${x.title} ${x.getAttribute('aria-label')??''} ${x.getAttribute('placeholder')??''}`).join(' ')),/source|census|gazetteer|weather\.gov|national weather/i);
   await shot(page,'app-change-weather.png');
+  // Matches are listed by population (#532): the big Portland first, no tiny Alaska place near the top.
+  places=await typePlace(page,'port');
+  assert.equal(places[0],'Portland, OR');assert(places.includes('Portsmouth, VA'),`"port" lists Portsmouth, VA (${places})`);
+  assert(!places.some(label=>label.endsWith(', AK')),`no small Alaska place among the first six (${places})`);
+  await shot(page,'app-change-weather-port.png');
+  assert.deepEqual((await typePlace(page,'san')).slice(0,3),['San Antonio, TX','San Diego, CA','San Jose, CA']);
   // Not a U.S. place: one plain line.
   assert.deepEqual(await typePlace(page,'zzyzxq'),[]);
   assert.equal(await page.$eval(`${SEL.app} [data-balloons-place-none]`,e=>e.textContent),'No U.S. place by that name.');
@@ -215,12 +236,24 @@ try{
   await page.waitForFunction(s=>document.querySelector(s)?.textContent.includes('Austin'),{},`${SEL.app} [data-balloons-weather]`);
   assert.deepEqual(page.weatherAsks.at(-1),{search:'',body:{place:'tx:austin'},method:'POST'},'the chosen place is sent in the body');
   assert.equal(await page.$eval(`${SEL.app} [data-balloons-weather]`,e=>e.textContent),'86°FAustin','the readout shows the place\'s name');
-  assert.equal(await page.evaluate(()=>localStorage.getItem('rb-balloons-weather-v1')),'{"local":false,"unit":"F","place":{"id":"tx:austin","name":"Austin"}}','the typed place is remembered');
+  assert.equal(await page.evaluate(()=>localStorage.getItem('rb-balloons-weather-v1')),'{"local":false,"unit":"F","place":{"id":"tx:austin","name":"Austin","zone":"America/Chicago"}}','the typed place is remembered, with its time zone for the clock');
   assert.equal(await page.$eval(link,e=>e.textContent),'Change weather','the link stays beside the readout');
+  // The clock follows the place (#532): Austin is an hour behind New York, so 9:00 AM reads 8:00 AM CT
+  // and the day runs 3:00 AM to 7:00 PM. The day itself hasn't moved: still Live, same session.
+  assert.match(await clockIn(page,SEL.app,'CT'),/^8:0\d AM CT$/,'the clock in Austin\'s time');
+  assert.deepEqual(await axis(page),['3:00 AM','8:30 AM','11:00 AM','3:00 PM','7:00 PM'],'the timeline in Austin\'s time');
+  assert.match(await page.$eval(`${SEL.app} [data-balloons-scrubber]`,e=>e.getAttribute('aria-label')),/: 3:00 AM to 7:00 PM CT$/);
+  assert.equal(await mode(page,SEL.app),'live','still Live');
+  {const words=await allWords(page,SEL.app);
+   assert.match(words,/Pre-market, 3:00 AM to 8:30 AM CT/);assert.match(words,/After hours, 3:00 PM to 7:00 PM CT/);
+   assert.doesNotMatch(words,/America\/|Chicago|\bCST\b|\bCDT\b|time ?zone| ET\b/i,'no zone name, and nothing left in ET');}
+  await shot(page,'app-city-clock.png');
   // Remembered after a reload, with nothing asked of the browser.
   await page.reload();await drawn(page,SEL.app);
   await page.waitForFunction(s=>document.querySelector(s)?.textContent==='86°FAustin',{},`${SEL.app} [data-balloons-weather]`);
   assert.deepEqual(page.weatherAsks.at(-1).body,{place:'tx:austin'},'the remembered place after a reload');
+  assert.match(await clockIn(page,SEL.app,'CT'),/^8:0\d AM CT$/,'the clock holds after a reload');
+  assert.deepEqual(await axis(page),['3:00 AM','8:30 AM','11:00 AM','3:00 PM','7:00 PM'],'and so does the timeline');
   assert.equal(await page.evaluate(()=>window.__geoAsks),0,'typing a place never asks for the location');
   // Enter picks the first match.
   await changeWeather(page);
@@ -237,6 +270,7 @@ try{
   assert.equal(await page.evaluate(()=>window.__geoAsks),1,'asked once, on the tap');
   assert.deepEqual(page.weatherAsks.at(-1),{search:'',body:{lat:41.9,lon:-87.6},method:'POST'},'the place is rounded to one decimal and sent in the body');
   assert.equal(await page.$eval(`${SEL.app} [data-balloons-weather]`,e=>e.textContent),'50°FChicago');
+  assert.match(await clockIn(page,SEL.app,'CT'),/^8:0\d AM CT$/,'the viewer\'s own area: its time');
   assert.equal(await page.evaluate(()=>localStorage.getItem('rb-balloons-weather-v1')),'{"local":true,"unit":"F"}','only the choice is stored, never the position (and the typed place is forgotten)');
   assert.equal(await page.$eval(link,e=>e.textContent),'Change weather','the link is always there');
   assert.doesNotMatch(await page.$eval(SEL.app,e=>e.innerText),/Use New York weather/);
@@ -311,12 +345,12 @@ try{
   // The legend.
   await page.click(`${SEL.app} [data-balloons-legend-button]`);
   const legend=await page.$eval(`${SEL.app} [data-balloons-legend]`,e=>e.textContent);
-  for(const word of ['Size','Stretch','Height','Movement','Matte','float not known','China / Hong Kong','follows New York','not advice'])assert(legend.includes(word),`the legend says "${word}"`);
+  for(const word of ['Size','Stretch','Height','Movement','Matte','float not known','China / Hong Kong','follows New York','show that place’s time','not advice'])assert(legend.includes(word),`the legend says "${word}"`);
   await shot(page,'app-legend.png');
   await page.keyboard.press('Escape');await page.waitForSelector(`${SEL.app} [data-balloons-legend]`,{hidden:true});
   // Never where data came from, and no trading words.
-  const words=await page.$eval(SEL.app,e=>e.innerText+' '+[...e.querySelectorAll('[title],[aria-label]')].map(x=>`${x.title} ${x.getAttribute('aria-label')??''}`).join(' '));
-  assert.doesNotMatch(words,/source|census|polygon|dilution|weather\.gov|from the gainers|\bbuy|\bsell|pump/i);
+  const words=await allWords(page,SEL.app);
+  assert.doesNotMatch(words,/source|census|polygon|dilution|weather\.gov|from the gainers|\bbuy|\bsell|pump|America\//i);
 
   // Weather the sky draws: each answer comes back from the faked route on the next read.
   const sky=async(answer,name,progress)=>{
@@ -333,11 +367,20 @@ try{
   await sky({condition:'snow',cloud:1,tempC:-3,night:false,place:'Denver',local:true},'weather-snow');
   await sky({condition:'cloudy',cloud:1,tempC:9,night:false,place:'Cleveland',local:true},'weather-overcast');
   await sky({condition:'clear',cloud:0,tempC:4,night:true,place:'Anchorage',local:true},'weather-clear-night',4);
-  // A reading with no temperature: a dash, never a made-up number.
+  // A reading with no temperature: a dash, never a made-up number. It has no time zone either:
+  // for the viewer's own area the clock then uses this browser's own (here: Denver's).
+  await page.emulateTimezone('America/Denver');
   page.weatherAnswer={condition:'fog',cloud:0.8,tempC:null,night:false,place:null,local:true};
   await myLocation(page);
   await page.waitForFunction(s=>document.querySelector(s)?.dataset.balloonsWeather==='fog',{},`${SEL.app} [data-balloons-weather]`);
   assert.equal(await page.$eval(`${SEL.app} [data-balloons-weather]`,e=>e.textContent),'—Your weather');
+  assert.match(await clockIn(page,SEL.app,'MT'),/^\d{1,2}:\d\d [AP]M MT$/,'no zone in the reading: the browser\'s own');
+  // A zone the clock doesn't know (or a reading for New York): New York time.
+  page.weatherAnswer={condition:'fog',cloud:0.8,tempC:null,night:false,place:'Somewhere',local:true,zone:'Europe/London'};
+  await page.emulateTimezone('Europe/London');
+  await myLocation(page);
+  await page.waitForFunction(s=>document.querySelector(s)?.textContent.includes('Somewhere'),{},`${SEL.app} [data-balloons-weather]`);
+  assert.match(await clockIn(page,SEL.app,'ET'),/^\d{1,2}:\d\d [AP]M ET$/,'an unknown zone stays on New York time');
   // The weather route failing changes nothing on screen.
   assert.equal((await scene(page,SEL.app)).contextLost,false);
   await page.close();
@@ -460,6 +503,7 @@ try{
   await drawn(page,SEL.card);
   await page.waitForFunction(s=>document.querySelector(s)?.textContent==='50°F',{},`${SEL.card} [data-balloons-weather]`);
   assert.deepEqual(page.weatherAsks.at(-1).body,{lat:41.9,lon:-87.6},'the remembered choice, rounded');
+  assert.match(await clockIn(page,SEL.card,'CT'),/^8:0\d AM CT$/,'the card\'s clock is in the viewer\'s own time');
   await page.close();
  }
 
@@ -474,6 +518,14 @@ try{
   assert.equal(await page.evaluate(()=>window.__geoAsks),0,'and never for the location');
   assert.equal(await page.$(`${SEL.card} [data-balloons-weather-change]`),null,'no "Change weather" in a card');
   assert.equal(page.placeAsks.length,0,'a card never searches');
+  // The card's clock follows the remembered place too (#532), and fits in the card.
+  assert.match(await clockIn(page,SEL.card,'CT'),/^8:0\d AM CT$/,'the card shows the place\'s time');
+  assert.equal(await mode(page,SEL.card),'live');
+  assert.deepEqual(await within(page,[`${SEL.card} [data-balloons-clock]`,`${SEL.card} [data-balloons-weather]`,`${SEL.card} [data-balloons-open]`]),[],'the card\'s top row fits');
+  assert.doesNotMatch(await allWords(page,SEL.card),/America\/|Chicago/);
+  await shot(page,'card-city-clock.png');
+  // Remembered with its zone: the next time, the clock is right before any weather is read.
+  assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('rb-balloons-weather-v1')).place.zone),'America/Chicago');
   await page.close();
  }
 
@@ -514,6 +566,19 @@ try{
   };
   await drawn(page,SEL.app);await picture(page,SEL.app,'phone');
   assert(await noSideScroll(page),'phone: no sideways scroll');
+  assert.deepEqual(await within(page,controls),[],'phone: every control is on screen (ET)');
+  // The longest clock (#532), "5:0x AM AKT", for every shape below: Anchorage is four hours behind New York.
+  page.weatherAnswer={condition:'snow',cloud:1,tempC:-8,night:false,place:'Anchorage',local:true,zone:'America/Anchorage'};
+  await changeWeather(page);
+  assert.equal((await typePlace(page,'anchorage'))[0],'Anchorage, AK');
+  await page.$eval(`${SEL.app} [data-balloons-place="ak:anchorage"]`,b=>b.click());
+  assert.match(await clockIn(page,SEL.app,'AKT'),/^5:0\d AM AKT$/,'phone: Anchorage\'s time');
+  assert.deepEqual(await axis(page).then(list=>[list[0],list.at(-1)]),['12:00 AM','4:00 PM']);
+  const clockFits=async what=>{
+   const row=await page.$eval(`${SEL.app} [data-balloons-clock]`,e=>{const r=e.getBoundingClientRect(),box=e.closest('header > div').getBoundingClientRect();return {text:e.textContent,inside:r.left>=box.left-1&&r.right<=box.right+1,lines:Math.round(r.height/parseFloat(getComputedStyle(e).lineHeight))};});
+   assert.match(row.text,/ AKT$/,what);assert(row.inside&&row.lines===1,`${what}: the clock stays inside its box, on one line (${JSON.stringify(row)})`);
+  };
+  await clockFits('phone');
   assert.deepEqual(await within(page,controls),[],'phone: every control is on screen');
   await tap(page,SEL.app,'UNKF',true);
   assert.deepEqual(await within(page,[`${SEL.app} [data-balloons-detail]`]),[]);
@@ -527,11 +592,13 @@ try{
   await page.setViewport({width:844,height:390,isMobile:true,hasTouch:true,deviceScaleFactor:2});await sleep(900);
   await drawn(page,SEL.app);await picture(page,SEL.app,'phone on its side');
   assert(await noSideScroll(page));assert.deepEqual(await within(page,controls),[],'phone on its side: every control is on screen');
+  await clockFits('phone on its side');
   await panelFits('phone on its side');
   // An unfolded folding phone.
   await page.setViewport({width:768,height:884,isMobile:true,hasTouch:true,deviceScaleFactor:2});await sleep(900);
   await drawn(page,SEL.app);await picture(page,SEL.app,'unfolded');
   assert(await noSideScroll(page));assert.deepEqual(await within(page,controls),[],'unfolded: every control is on screen');
+  await clockFits('unfolded');
   await panelFits('unfolded');
   await shot(page,'app-unfolded.png');
   await page.close();
@@ -546,5 +613,5 @@ try{
   await page.close();
  }
  assert.deepEqual(errors,[],'no page errors');
- console.log('Gainer Balloons browser checks passed: app from Apps, picture drawn, Live and replay, keys, details, search, legend, weather (default, Change weather by typing a place, remembered, local, declined, unavailable, conditions), cards in Dual/Quad/Six, 10 pane and 10 view switches with WebGL intact, hidden card idle, list without WebGL, phone upright/sideways/unfolded, empty day.');
+ console.log('Gainer Balloons browser checks passed: app from Apps, picture drawn, Live and replay, keys, details, search, legend, weather (default, Change weather by typing a place, remembered, local, declined, unavailable, conditions), the clock in the chosen place\'s time (CT, MT, AKT, back to ET, after a reload, in a card), matches by population, cards in Dual/Quad/Six, 10 pane and 10 view switches with WebGL intact, hidden card idle, list without WebGL, phone upright/sideways/unfolded, empty day.');
 }finally{await browser.close();}

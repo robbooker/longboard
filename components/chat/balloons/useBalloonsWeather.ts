@@ -12,22 +12,28 @@
 //  - The choice and the °F/°C choice are remembered on this device. On a later
 //    visit (and in a card) local weather is used only when the browser already has permission, so
 //    nothing ever prompts without a tap.
+//  - The clock (#532) follows the place whose weather is showing: a reading comes with its place's
+//    time zone, and a typed place's zone is remembered with it on this device, so the clock is
+//    right at once on the next visit and in a card. "Use my location" uses the reading's zone, or
+//    this browser's own when the reading has none. New York, or no zone known: New York time.
 //  - Declined, unavailable, outside the covered area, or any failure: New York's weather, or the
 //    plain time-of-day sky when even that can't be read. The scene never waits on any of this.
 import { useCallback, useEffect, useRef, useState } from "react";
+import { clockZone } from "@/lib/gainerBalloons/clock";
 import { defaultTempUnit, parseCoords, type TempUnit, type WeatherNow } from "@/lib/gainerBalloons/weather";
 
 const STORE = "rb-balloons-weather-v1";
 export const WEATHER_REFRESH_MS = 15 * 60_000;
 
-/** A place chosen by typing its name: "tx:austin", "Austin", "Austin, TX". */
-export type ChosenPlace = { id: string; name: string; label?: string };
+/** A place chosen by typing its name: "tx:austin", "Austin", "Austin, TX"; `zone` once its weather has been read. */
+export type ChosenPlace = { id: string; name: string; label?: string; zone?: string };
 type Saved = { local?: boolean; unit?: TempUnit; place?: ChosenPlace };
 function chosenPlace(value: unknown): ChosenPlace | undefined {
   if (!value || typeof value !== "object") return undefined;
-  const { id, name } = value as { id?: unknown; name?: unknown };
+  const { id, name, zone } = value as { id?: unknown; name?: unknown; zone?: unknown };
   if (typeof id !== "string" || typeof name !== "string" || !id || !name || id.length > 80 || name.length > 80) return undefined;
-  return { id, name };
+  const known = clockZone(zone);
+  return known ? { id, name, zone: known } : { id, name };
 }
 function readSaved(): Saved {
   try {
@@ -76,6 +82,15 @@ async function alreadyAllowed(): Promise<boolean> {
   }
 }
 
+/** This browser's own time zone, when the clock can follow it. */
+function browserZone(): string | null {
+  try {
+    return clockZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  } catch {
+    return null;
+  }
+}
+
 /** What the weather route is asked for: a rounded position, a chosen place's id, or (null) New York. */
 type Where = Place | { place: string };
 
@@ -95,7 +110,7 @@ export async function searchWeatherPlaces(q: string, signal?: AbortSignal): Prom
     return body.places.flatMap((entry) => {
       const place = chosenPlace(entry);
       const label = (entry as { label?: unknown } | null)?.label;
-      return place ? [{ ...place, label: typeof label === "string" ? label : place.name }] : [];
+      return place ? [{ id: place.id, name: place.name, label: typeof label === "string" ? label : place.name }] : [];
     });
   } catch {
     return null;
@@ -128,6 +143,8 @@ export type BalloonsWeather = {
   toggleUnit: () => void;
   /** The viewer chose local weather on this device. */
   local: boolean;
+  /** The time zone the clock shows (#532): the showing place's. Null: New York time. */
+  zone: string | null;
   /** One short line after a choice didn't work out (declined, unavailable, not covered). */
   note: string;
   /** Asks the browser for the location. Call only from a tap. */
@@ -141,6 +158,8 @@ export function useBalloonsWeather(active: boolean): BalloonsWeather {
   const [unit, setUnit] = useState<TempUnit>("F");
   const [local, setLocal] = useState(false);
   const [note, setNote] = useState("");
+  /** The remembered typed place's time zone, known from its last reading. */
+  const [placeZone, setPlaceZone] = useState<string | null>(null);
   const place = useRef<Place | null>(null);
   const controller = useRef<AbortController | null>(null);
 
@@ -151,6 +170,15 @@ export function useBalloonsWeather(active: boolean): BalloonsWeather {
     if (mine.signal.aborted) return;
     // A failed refresh keeps the weather already showing.
     setWeather((before) => answer.weather ?? before);
+    // A typed place's zone is remembered with it, so the clock is right before the next reading.
+    if (where && "place" in where && answer.weather?.local) {
+      const zone = clockZone(answer.weather.zone);
+      const saved = readSaved().place;
+      if (zone && saved?.id === where.place) {
+        if (saved.zone !== zone) save({ place: { id: saved.id, name: saved.name, zone } });
+        setPlaceZone(zone);
+      }
+    }
     if (where && !answer.covered)
       setNote(
         name
@@ -163,6 +191,7 @@ export function useBalloonsWeather(active: boolean): BalloonsWeather {
     const saved = readSaved();
     setUnit(saved.unit ?? defaultTempUnit(typeof navigator === "undefined" ? null : navigator.language));
     setLocal(!!saved.local);
+    setPlaceZone(saved.place?.zone ?? null);
   }, []);
 
   useEffect(() => {
@@ -214,6 +243,7 @@ export function useBalloonsWeather(active: boolean): BalloonsWeather {
       place.current = found.place;
       // Only the choice is stored, never the position; a typed place is forgotten.
       save({ local: true, place: undefined });
+      setPlaceZone(null);
       setLocal(true);
       void load(found.place);
     });
@@ -224,6 +254,7 @@ export function useBalloonsWeather(active: boolean): BalloonsWeather {
       setNote("");
       place.current = null;
       setLocal(false);
+      setPlaceZone(null);
       // New York, NY is the default: nothing to remember.
       const newYork = chosen.id === "ny:new york";
       save({ local: false, place: newYork ? undefined : { id: chosen.id, name: chosen.name } });
@@ -233,5 +264,13 @@ export function useBalloonsWeather(active: boolean): BalloonsWeather {
     [load],
   );
 
-  return { weather, unit, toggleUnit, local, note, chooseLocal, choosePlace };
+  // The clock follows the reading that is showing: its own zone, else the remembered place's, else
+  // (for the viewer's own area) this browser's. New York's weather, or none yet and no place: New York time.
+  const zone = !weather
+    ? placeZone
+    : !weather.local
+      ? null
+      : (clockZone(weather.zone) ?? (local ? browserZone() : placeZone));
+
+  return { weather, unit, toggleUnit, local, zone, note, chooseLocal, choosePlace };
 }
