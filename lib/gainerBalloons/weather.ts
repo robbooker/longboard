@@ -18,6 +18,8 @@ export type WeatherNow = {
   place: string | null;
   /** True for the viewer's own area or a place they chose; false for New York (the default). */
   local: boolean;
+  /** #532: the time zone where the reading was taken ("America/Chicago"), for the clock. Never shown. Null when not known. */
+  zone?: string | null;
 };
 
 /** New York, where the market is: the weather shown to anyone who hasn't shared a location. */

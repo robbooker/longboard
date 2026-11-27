@@ -26,7 +26,8 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { DEFAULT_SPEED_ID, PLAYBACK_SPEEDS, type PlaybackSpeedId } from "@/lib/gainerBalloons/config";
+import { placeClock, type PlaceClock } from "@/lib/gainerBalloons/clock";
+import { DEFAULT_SPEED_ID, MARKET_HOURS, PLAYBACK_SPEEDS, type PlaybackSpeedId } from "@/lib/gainerBalloons/config";
 import {
   createMarketData,
   type MarketData,
@@ -37,7 +38,6 @@ import {
   DASH,
   SESSION_LABELS,
   formatCompactNumber,
-  formatEasternClock,
   formatMarketDay,
   formatPct,
   formatPrice,
@@ -326,6 +326,10 @@ export default function GainerBalloons({
   const weather = useBalloonsWeather(onScreen);
   const sky = useRef<SkyWeather>(PLAIN_SKY);
   sky.current = skyWeather(weather.weather);
+  // The clock and every time label read in the showing place's time (#532); the trading day itself stays New York's.
+  const times = useMemo(() => placeClock(weather.zone), [weather.zone]);
+  const timesRef = useRef<PlaceClock>(times);
+  timesRef.current = times;
 
   // --- The scene (three.js), loaded on demand.
   const sceneRef = useRef<BalloonScene | null>(null);
@@ -455,7 +459,7 @@ export default function GainerBalloons({
         snapNext.current = false;
       }
 
-      const clock = formatEasternClock(snapshot.timeMs);
+      const clock = timesRef.current.clock(snapshot.timeMs);
       if (clock !== lastClock) {
         lastClock = clock;
         if (clockText.current) clockText.current.textContent = clock;
@@ -668,6 +672,18 @@ export default function GainerBalloons({
   const dayLabel = day ? formatMarketDay(day) : "";
   const pastDay = !!feed && feed.day !== feed.today;
   const modeLabel = mode === "live" ? "Live" : liveCapable ? "Replay" : dayLabel;
+  // The day's marks (4:00 AM, 9:30 AM, noon, 4:00 PM and 8:00 PM in New York) as the showing place reads them.
+  const span = MARKET_HOURS.dayEndMin - MARKET_HOURS.dayStartMin;
+  const markAt = (minute: number) =>
+    bounds ? times.time(bounds.startMs + ((minute - MARKET_HOURS.dayStartMin) / span) * (bounds.endMs - bounds.startMs)) : "";
+  const marks = {
+    start: markAt(MARKET_HOURS.dayStartMin),
+    open: markAt(MARKET_HOURS.regularStartMin),
+    noon: markAt(12 * 60),
+    close: markAt(MARKET_HOURS.regularEndMin),
+    end: markAt(MARKET_HOURS.dayEndMin),
+  };
+  const zoneWords = times.letters === "ET" ? "New York time" : times.letters;
   const w = weather.weather;
   const weatherButton = w && (
     <button
@@ -703,9 +719,9 @@ export default function GainerBalloons({
     <div className={styles.track}>
       {!compact && (
         <>
-          <span className={`${styles.band} ${styles.bandPre}`} title="Pre-market, 4:00 AM to 9:30 AM ET" />
-          <span className={`${styles.band} ${styles.bandReg}`} title="Regular hours, 9:30 AM to 4:00 PM ET" />
-          <span className={`${styles.band} ${styles.bandAfter}`} title="After hours, 4:00 PM to 8:00 PM ET" />
+          <span className={`${styles.band} ${styles.bandPre}`} title={`Pre-market, ${marks.start} to ${marks.open} ${times.letters}`} />
+          <span className={`${styles.band} ${styles.bandReg}`} title={`Regular hours, ${marks.open} to ${marks.close} ${times.letters}`} />
+          <span className={`${styles.band} ${styles.bandAfter}`} title={`After hours, ${marks.close} to ${marks.end} ${times.letters}`} />
           <canvas ref={spark} className={styles.spark} width={320} height={36} aria-hidden="true" />
         </>
       )}
@@ -718,7 +734,7 @@ export default function GainerBalloons({
         max={1000}
         step={1}
         defaultValue={0}
-        aria-label={`Time of day${dayLabel ? `, ${dayLabel}` : ""}: 4:00 AM to 8:00 PM New York time`}
+        aria-label={`Time of day${dayLabel ? `, ${dayLabel}` : ""}: ${marks.start} to ${marks.end} ${zoneWords}`}
         onChange={(event) => scrubTo(Number(event.target.value) / 1000)}
         onPointerUp={(event) => (event.target as HTMLInputElement).blur()}
         data-balloons-scrubber
@@ -1126,8 +1142,9 @@ export default function GainerBalloons({
                 <li>
                   <strong>Sky</strong>
                   <span>
-                    The time of day follows New York, the market’s clock. The weather is New York’s, or that of a
-                    U.S. city or place you choose with “Change weather”.
+                    The light follows New York, the market’s clock. The weather is New York’s, or that of a U.S.
+                    city or place you choose with “Change weather”; the clock and the timeline then show that
+                    place’s time.
                   </span>
                 </li>
               </ul>
@@ -1215,12 +1232,12 @@ export default function GainerBalloons({
                 </span>
               </div>
               {range}
-              <div className={styles.axis} aria-hidden="true">
-                <span style={{ left: "0%" }}>4:00 AM</span>
-                <span style={{ left: "34.375%" }}>9:30 AM</span>
-                <span style={{ left: "50%" }}>12:00 PM</span>
-                <span style={{ left: "75%" }}>4:00 PM</span>
-                <span style={{ left: "100%" }}>8:00 PM</span>
+              <div className={styles.axis} aria-hidden="true" data-balloons-axis>
+                <span style={{ left: "0%" }}>{marks.start}</span>
+                <span style={{ left: "34.375%" }}>{marks.open}</span>
+                <span style={{ left: "50%" }}>{marks.noon}</span>
+                <span style={{ left: "75%" }}>{marks.close}</span>
+                <span style={{ left: "100%" }}>{marks.end}</span>
               </div>
             </footer>
           </div>

@@ -3,8 +3,9 @@ import "server-only";
 //
 // The list is the U.S. Census Bureau's 2024 Gazetteer "places" file (public domain), made small by
 // scripts/gainers/build-balloon-places.mjs into placesData.json: about 32,000 cities, towns and
-// villages, each with its state, its middle rounded to one decimal place (about 10 km) and its land
-// area. The file has no population, so places with the same name are ranked by land area.
+// villages, each with its state, its middle rounded to one decimal place (about 10 km) and its
+// population (#532: the Census Bureau's 2024 estimates, or the 2010 count for places the estimates
+// leave out), so the largest places are listed first.
 // Server only: the list is read here and never sent to a browser; a search answers six names at most.
 import data from "./placesData.json";
 import { NEW_YORK } from "./weather";
@@ -35,7 +36,7 @@ export type Place = {
   lat: number;
   lon: number;
 };
-type Row = Place & { folded: string; area: number };
+type Row = Place & { folded: string; people: number };
 
 /** Lower case, no accents, letters and digits only: "Cañon City" and "canon city" are the same. */
 export function foldPlaceText(text: string): string {
@@ -49,14 +50,15 @@ export function foldPlaceText(text: string): string {
 
 let rows: Row[] | null = null;
 let byId: Map<string, Row> | null = null;
-/** Every place, largest first. Unpacked on first use. */
+/** Every place, most populous first. Unpacked on first use. */
 function all(): Row[] {
   if (rows) return rows;
   const list: Row[] = [];
   for (const [state, packed] of Object.entries(data as Record<string, string>)) {
     for (const entry of packed.split("|")) {
-      const name = entry.slice(0, -6);
-      const num = (from: number) => parseInt(entry.slice(entry.length - from, entry.length - from + 2), 36);
+      // The name, then seven characters: population (3), latitude (2), longitude (2).
+      const name = entry.slice(0, -7);
+      const num = (from: number, width = 2) => parseInt(entry.slice(entry.length - from, entry.length - from + width), 36);
       const folded = foldPlaceText(name);
       const west = (num(2) - 1900) / 10;
       list.push({
@@ -68,11 +70,11 @@ function all(): Row[] {
         // A place past the date line is stored counted on west.
         lon: west < -180 ? Math.round((west + 360) * 10) / 10 : west,
         folded,
-        area: num(6),
+        people: num(7, 3),
       });
     }
   }
-  list.sort((a, b) => b.area - a.area || a.label.localeCompare(b.label, "en"));
+  list.sort((a, b) => b.people - a.people || a.label.localeCompare(b.label, "en"));
   byId = new Map(list.map((row) => [row.id, row]));
   rows = list;
   return list;
@@ -105,7 +107,7 @@ function statesFor(text: string, prefix: boolean): string[] {
     .map(([code]) => code);
 }
 
-/** Places whose name is the text (`exact`), or starts with it, or has a word starting with it; largest first. */
+/** Places whose name is the text (`exact`), or starts with it, or has a word starting with it; most populous first. */
 function named(text: string, states: readonly string[] | null, how: "exact" | "starts"): Row[] {
   if (!text) return [];
   const within = states ? new Set(states) : null;
@@ -125,7 +127,7 @@ function named(text: string, states: readonly string[] | null, how: "exact" | "s
 /**
  * Up to six places for what was typed: "Austin", "austin tx", "Austin, TX", "Portland, Maine",
  * "new york". Names that are exactly the text come first, then names starting with it, then names
- * with a word starting with it; within each, the largest place first. Nothing for under two
+ * with a word starting with it; within each, the most populous place first. Nothing for under two
  * letters or over 60 characters.
  */
 export function searchPlaces(typed: unknown, limit = PLACE_MATCHES_MAX): Place[] {
