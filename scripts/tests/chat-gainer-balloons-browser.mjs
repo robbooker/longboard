@@ -39,8 +39,8 @@
 //  - full screen: an icon button in the app (never a card) fills the screen and comes back;
 // CHAT_SHOT_DIR saves app-city-clock.png, app-change-weather-port.png, app-change-weather.png, app-change-weather-phone.png, app-fullscreen.png, app-desktop.png, app-selected.png, app-legend.png, app-phone.png,
 // app-unfolded.png, card-dual.png, card-quad.png, card-six.png, fallback.png, weather-rain.png,
-// weather-snow.png, weather-overcast.png, weather-clear-night.png, weather-storm.png, weather-fog.png,
-// weather-rain-night.png and card-six-small-rain.png.
+// weather-snow.png, weather-overcast.png, weather-clear-night.png, weather-storm.png, weather-fog.png
+// and weather-rain-night.png (card-six.png is drawn in the rain).
 import assert from 'node:assert/strict';
 import puppeteer from 'puppeteer';
 import sharp from 'sharp';
@@ -550,7 +550,6 @@ try{
   // #539: rain in a small card is still clouds and rain, with fewer streaks than the full app's 900.
   await page.waitForFunction(s=>{const w=document.querySelector(s).__balloons.scene().weather;return w.cloudShapes>0&&w.rainStreaks>0;},{timeout:30000},SEL.card).catch(async()=>assert.fail(`a small card in the rain shows clouds and rain (${JSON.stringify((await scene(page,SEL.card)).weather)})`));
   {const w=(await scene(page,SEL.card)).weather;assert(w.rainStreaks<=500&&w.fogDensity<=0.0103,`a card draws fewer streaks, and no haze (${JSON.stringify(w)})`);}
-  if(shots){await sleep(700);await (await page.$(SEL.card)).screenshot({path:`${shots}/card-six-small-rain.png`});} // the card alone: the page behind it is scrolled
 
   // Ten moves between the three views: every one draws, none loses WebGL.
   await page.setViewport({width:1600,height:900});
