@@ -72,13 +72,22 @@ describe("searchPlaces", () => {
     expect(labels("san an")[0]).toBe("San Antonio, TX");
     expect(labels("las vegas")[0]).toBe("Las Vegas, NV");
   });
-  it("ranks places of the same name by land area, and an exact name ahead of a longer one", () => {
+  it("ranks places by population, largest first, and an exact name ahead of a longer one (#532)", () => {
     const portlands = labels("Portland");
     expect(portlands.indexOf("Portland, OR")).toBeLessThan(portlands.indexOf("Portland, ME"));
     const springfields = searchPlaces("Springfield");
     expect(springfields).toHaveLength(6);
     expect(springfields.every((place) => place.name === "Springfield")).toBe(true);
-    expect(springfields[0].label).toBe("Springfield, MO");
+    expect(springfields.slice(0, 4).map((place) => place.label)).toEqual(["Springfield, MO", "Springfield, MA", "Springfield, IL", "Springfield, OR"]);
+    // "port": the big Portland first, and no tiny Alaska place above Portsmouth, VA.
+    const ports = labels("port");
+    expect(ports[0]).toBe("Portland, OR");
+    expect(ports).toContain("Portsmouth, VA");
+    expect(ports.slice(0, ports.indexOf("Portsmouth, VA")).filter((label) => label.endsWith(", AK"))).toEqual([]);
+    expect(ports).not.toContain("Port Heiden, AK");
+    expect(labels("san").slice(0, 3)).toEqual(["San Antonio, TX", "San Diego, CA", "San Jose, CA"]);
+    expect(labels("los")[0]).toBe("Los Angeles, CA");
+    expect(labels("col")[0]).toBe("Columbus, OH");
     // Miami is far smaller than Miami Gardens' neighbours combined, but it is the name typed.
     expect(labels("Miami")[0]).toBe("Miami, FL");
     // A word inside the name counts, after names that start with the text.
@@ -135,7 +144,7 @@ describe("the place list", () => {
     for (const [state, packed] of Object.entries(data)) {
       for (const entry of packed.split("|")) {
         count++;
-        const place = placeById(`${state.toLowerCase()}:${foldPlaceText(entry.slice(0, -6))}`);
+        const place = placeById(`${state.toLowerCase()}:${foldPlaceText(entry.slice(0, -7))}`);
         if (!place || place.lat < 17 || place.lat > 72 || !(place.lon < -64 || place.lon > 172)) throw new Error(`bad place: ${state} ${entry}`);
       }
     }
@@ -203,7 +212,7 @@ describe("POST /api/chat/balloons/weather for a chosen place", () => {
       if (point) {
         points.push(`${point[1]},${point[2]}`);
         // The nearest town the service names is not always the place that was typed.
-        return json({ properties: { relativeLocation: { properties: { city: "Rollingwood", state: "TX" } }, observationStations: `https://api.weather.gov/gridpoints/XXX/1,1/stations?p=${point[1]}`, forecastHourly: null } });
+        return json({ properties: { relativeLocation: { properties: { city: "Rollingwood", state: "TX" } }, timeZone: point[1] === "40.7" ? "America/New_York" : "America/Chicago", observationStations: `https://api.weather.gov/gridpoints/XXX/1,1/stations?p=${point[1]}`, forecastHourly: null } });
       }
       if (address.includes("/stations?")) return json({ features: [{ properties: { stationIdentifier: address.includes("p=40.7") ? "KNYC" : "KAUS" } }] });
       if (address.endsWith("/stations/KAUS/observations/latest")) return json({ properties: { temperature: { value: 31 }, textDescription: "Sunny" } });
@@ -215,13 +224,13 @@ describe("POST /api/chat/balloons/weather for a chosen place", () => {
   it("answers the place's weather under the name that was chosen", async () => {
     const response = await weather({ place: "tx:austin" });
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ covered: true, weather: { condition: "clear", cloud: 0.05, tempC: 31, night: false, place: "Austin", local: true } });
+    expect(await response.json()).toEqual({ covered: true, weather: { condition: "clear", cloud: 0.05, tempC: 31, night: false, place: "Austin", local: true, zone: "America/Chicago" } });
     expect(points).toEqual(["30.3,-97.8"]);
     // The browser's own position still reads the nearest town's name.
     expect(await (await weather({ lat: 30.3, lon: -97.8 })).json()).toMatchObject({ weather: { place: "Rollingwood", local: true } });
   });
   it("treats New York, NY as the default again", async () => {
-    expect(await (await weather({ place: "ny:new york" })).json()).toMatchObject({ covered: true, weather: { place: "New York", local: false, condition: "cloudy" } });
+    expect(await (await weather({ place: "ny:new york" })).json()).toMatchObject({ covered: true, weather: { place: "New York", local: false, condition: "cloudy", zone: "America/New_York" } });
     expect(points).toEqual(["40.7,-74.0"]);
   });
   it("refuses a place it doesn't know, and a place together with a position", async () => {
