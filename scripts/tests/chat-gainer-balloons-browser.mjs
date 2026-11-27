@@ -19,6 +19,10 @@
 //    so; "Use my location" in the panel asks only on that tap and sends the position rounded to one
 //    decimal, in the body, never in the address; declined and unavailable both fall back to New York
 //    with a line saying so; rain, snow, overcast and a clear night all draw;
+//  - weather you can see (#539): rain shows cloud shapes and rain streaks, snow shows flakes, overcast
+//    shows cloud shapes, fog shows mist banks, a storm and a rainy night draw too, a clear night shows
+//    none of them; in every one the haze over the field stays close to a clear day's and a balloon
+//    keeps its colour; a small Six card in the rain shows clouds and rain as well;
 //  - the clock (#532): New York time ("ET") by default; with a Central-time place chosen the clock
 //    reads "8:0x AM CT" and the timeline runs 3:00 AM to 7:00 PM, after a reload too, and in a card;
 //    New York brings "ET" back; "Use my location" with no zone in the reading uses the browser's
@@ -35,7 +39,8 @@
 //  - full screen: an icon button in the app (never a card) fills the screen and comes back;
 // CHAT_SHOT_DIR saves app-city-clock.png, app-change-weather-port.png, app-change-weather.png, app-change-weather-phone.png, app-fullscreen.png, app-desktop.png, app-selected.png, app-legend.png, app-phone.png,
 // app-unfolded.png, card-dual.png, card-quad.png, card-six.png, fallback.png, weather-rain.png,
-// weather-snow.png, weather-overcast.png and weather-clear-night.png.
+// weather-snow.png, weather-overcast.png, weather-clear-night.png, weather-storm.png, weather-fog.png,
+// weather-rain-night.png and card-six-small-rain.png.
 import assert from 'node:assert/strict';
 import puppeteer from 'puppeteer';
 import sharp from 'sharp';
@@ -150,6 +155,15 @@ async function colours(page,root){
  return seen.size;
 }
 const picture=async(page,root,what)=>{const count=await colours(page,root);assert(count>=40,`${what}: the canvas shows a picture (${count} colours)`);return count;};
+/** #539: how strong a balloon's colour is on screen (brightest channel less the dullest, 0-255), from a patch at its middle. */
+async function colourOf(page,root,ticker){
+ const at=await page.$eval(root,(el,ticker)=>el.__balloons.where(ticker),ticker);assert(at,`${ticker} is on screen`);
+ const canvas=await page.$(`${root} canvas[data-balloons-canvas]`),png=await canvas.screenshot(),meta=await sharp(png).metadata();
+ const left=Math.min(meta.width-13,Math.max(0,Math.round(at.x)-6)),top=Math.min(meta.height-13,Math.max(0,Math.round(at.y)-6));
+ const {data,info}=await sharp(png).extract({left,top,width:13,height:13}).raw().toBuffer({resolveWithObject:true});
+ const mean=[0,0,0];for(let i=0;i<data.length;i+=info.channels)for(let k=0;k<3;k++)mean[k]+=data[i+k]/(data.length/info.channels);
+ return Math.max(...mean)-Math.min(...mean);
+}
 const within=(page,selectors)=>page.evaluate(list=>list.flatMap(s=>{const e=[...document.querySelectorAll(s)].find(x=>x.checkVisibility());if(!e)return [`${s} missing`];const r=e.getBoundingClientRect();return r.left>=-1&&r.top>=-1&&r.right<=innerWidth+1&&r.bottom<=innerHeight+1?[]:[`${s} off screen ${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.right)},${Math.round(r.bottom)}`];}),selectors);
 const noSideScroll=page=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1);
 /**
@@ -375,20 +389,32 @@ try{
   assert.doesNotMatch(words,/source|census|polygon|dilution|weather\.gov|from the gainers|\bbuy|\bsell|pump|America\//i);
 
   // Weather the sky draws: each answer comes back from the faked route on the next read.
-  const sky=async(answer,name,progress)=>{
+  // #539: weather is drawn as clouds, rain, snow and mist (`drawn`: which of them, by the scene's own
+  // count), never as haze over the balloons: the field's haze stays close to a clear day's (0.0086),
+  // the sun keeps most of its light, and by day a balloon keeps the colour it has under New York's sky.
+  const plainColour=await colourOf(page,SEL.app,'CHNA');
+  assert(plainColour>30,`a balloon has colour to keep (${plainColour})`);
+  const sky=async(answer,name,progress,drawn={})=>{
    page.weatherAnswer=answer;
    await myLocation(page);
    await page.waitForFunction((s,c)=>document.querySelector(s)?.dataset.balloonsWeather===c,{},`${SEL.app} [data-balloons-weather]`,answer.condition);
    if(progress!==undefined)await scrub(page,SEL.app,progress);
    await sleep(2600);await picture(page,SEL.app,name);
+   const w=(await scene(page,SEL.app)).weather;
+   for(const key of ['cloudShapes','rainStreaks','snowFlakes','mistBanks'])assert.equal(w[key]>0,!!drawn[key],`${name}: ${key} ${drawn[key]?'are drawn':'are not drawn'} (${JSON.stringify(w)})`);
+   assert(w.fogDensity<=0.0103&&w.sunShare>=0.7,`${name}: the balloons are not hazed or dimmed (${JSON.stringify(w)})`);
+   if(progress===undefined){const colour=await colourOf(page,SEL.app,'CHNA');assert(colour>=plainColour*0.85,`${name}: a balloon keeps its colour (${Math.round(colour)} against ${Math.round(plainColour)} under a plain sky)`);}
    assert.equal(await page.$eval(`${SEL.app} [data-weather-icon]`,e=>e.dataset.weatherIcon),answer.condition+(answer.night?'-night':''));
    await shot(page,`${name}.png`);
    await newYork(page);
   };
-  await sky({condition:'rain',cloud:1,tempC:12,night:false,place:'Seattle',local:true},'weather-rain');
-  await sky({condition:'snow',cloud:1,tempC:-3,night:false,place:'Denver',local:true},'weather-snow');
-  await sky({condition:'cloudy',cloud:1,tempC:9,night:false,place:'Cleveland',local:true},'weather-overcast');
+  await sky({condition:'rain',cloud:1,tempC:12,night:false,place:'Seattle',local:true},'weather-rain',undefined,{cloudShapes:1,rainStreaks:1});
+  await sky({condition:'snow',cloud:1,tempC:-3,night:false,place:'Denver',local:true},'weather-snow',undefined,{cloudShapes:1,snowFlakes:1});
+  await sky({condition:'cloudy',cloud:1,tempC:9,night:false,place:'Cleveland',local:true},'weather-overcast',undefined,{cloudShapes:1});
   await sky({condition:'clear',cloud:0,tempC:4,night:true,place:'Anchorage',local:true},'weather-clear-night',4);
+  await sky({condition:'thunder',cloud:1,tempC:21,night:false,place:'Tulsa',local:true},'weather-storm',undefined,{cloudShapes:1,rainStreaks:1});
+  await sky({condition:'fog',cloud:0.8,tempC:11,night:false,place:'Eureka',local:true},'weather-fog',undefined,{cloudShapes:1,mistBanks:1});
+  await sky({condition:'rain',cloud:1,tempC:8,night:true,place:'Portland',local:true},'weather-rain-night',4,{cloudShapes:1,rainStreaks:1});
   // A reading with no temperature: a dash, never a made-up number. It has no time zone either:
   // for the viewer's own area the clock then uses this browser's own (here: Denver's).
   await page.emulateTimezone('America/Denver');
@@ -485,7 +511,9 @@ try{
   assert.equal((await scene(page,SEL.card)).contextLost,false);
   assert.equal(await page.$$eval('canvas[data-balloons-canvas]',c=>c.length),1,'the old canvases are gone');
 
-  // Six.
+  // Six. #539: from here on it is raining in New York, so the small card, and the ten moves
+  // between the views after it, are drawn with clouds and rain.
+  page.weatherAnswer={...WEATHER.newYork,condition:'rain',cloud:1};
   await page.setViewport({width:1920,height:1080});
   await page.goto(`${base}/chat/six`);
   // Six starts from the Quad cards, so Balloons is already on a card; remove it and choose it again with the picker.
@@ -509,6 +537,10 @@ try{
   const small=await page.$eval(SEL.card,e=>({size:e.dataset.size,w:e.clientWidth,h:e.clientHeight,scrubber:!!e.querySelector('[data-balloons-scrubber]')}));
   assert.equal(small.scrubber,small.size!=='small',`the scrubber follows the room (${JSON.stringify(small)})`);
   assert((await scene(page,SEL.card)).labelsShown<=Math.round(Math.max(5,small.w*small.h/22000)),'a smaller card shows fewer tickers');
+  // #539: rain in a small card is still clouds and rain, with fewer streaks than the full app's 900.
+  await page.waitForFunction(s=>{const w=document.querySelector(s).__balloons.scene().weather;return w.cloudShapes>0&&w.rainStreaks>0;},{timeout:30000},SEL.card).catch(async()=>assert.fail(`a small card in the rain shows clouds and rain (${JSON.stringify((await scene(page,SEL.card)).weather)})`));
+  {const w=(await scene(page,SEL.card)).weather;assert(w.rainStreaks<=500&&w.fogDensity<=0.0103,`a card draws fewer streaks, and no haze (${JSON.stringify(w)})`);}
+  if(shots){await sleep(700);await (await page.$(SEL.card)).screenshot({path:`${shots}/card-six-small-rain.png`});} // the card alone: the page behind it is scrolled
 
   // Ten moves between the three views: every one draws, none loses WebGL.
   await page.setViewport({width:1600,height:900});
