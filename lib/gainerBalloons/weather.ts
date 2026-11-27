@@ -112,36 +112,40 @@ export const CONDITION_LABELS: Readonly<Record<WeatherCondition, string>> = {
   thunder: "Thunderstorm",
 };
 
-/** How the scene draws a reading. All 0..1 except fogDensity (the scene's fog) and particles. */
+/** How the scene draws a reading. All 0..1 except fogDensity (the scene's fog). */
 export type SkyWeather = {
   /** Cloud layers' cover, and how far the sky's colour is pulled to grey. */
   cloud: number;
-  /** How much the sun is dimmed and the light flattened. */
+  /** How dark the clouds are and how soft the light is. The balloons themselves stay well lit (#539). */
   dim: number;
+  /** Haze over the field itself. Kept close to a clear day's in every weather (#539): the balloons stay easy to see. */
   fogDensity: number;
+  /** Fog as weather: mist banks far off and a whited-out horizon, around the field and not over it. */
+  mist: number;
   rain: number;
   snow: number;
   thunder: boolean;
 };
 
 /** The plain time-of-day sky: what the scene shows without a reading. */
-export const PLAIN_SKY: SkyWeather = { cloud: 0, dim: 0, fogDensity: 0.0086, rain: 0, snow: 0, thunder: false };
+export const PLAIN_SKY: SkyWeather = { cloud: 0, dim: 0, fogDensity: 0.0086, mist: 0, rain: 0, snow: 0, thunder: false };
 
 export function skyWeather(weather: WeatherNow | null | undefined): SkyWeather {
   if (!weather) return PLAIN_SKY;
   const cloud = Math.min(1, Math.max(0, Number.isFinite(weather.cloud) ? weather.cloud : CONDITION_CLOUD[weather.condition]));
-  const base: SkyWeather = { cloud, dim: cloud * 0.7, fogDensity: 0.0086 + cloud * 0.002, rain: 0, snow: 0, thunder: false };
+  // #539: the weather is in the sky (clouds, rain, snow, mist), not a haze over the balloons.
+  const base: SkyWeather = { cloud, dim: cloud * 0.7, fogDensity: 0.0086 + cloud * 0.0004, mist: 0, rain: 0, snow: 0, thunder: false };
   switch (weather.condition) {
     case "fog":
-      return { ...base, cloud: Math.max(cloud, 0.7), dim: 0.6, fogDensity: 0.021 };
+      return { ...base, cloud: Math.max(cloud, 0.7), dim: 0.6, fogDensity: 0.0102, mist: 1 };
     case "drizzle":
-      return { ...base, cloud: Math.max(cloud, 0.8), dim: 0.65, fogDensity: 0.0115, rain: 0.4 };
+      return { ...base, cloud: Math.max(cloud, 0.8), dim: 0.65, rain: 0.4 };
     case "rain":
-      return { ...base, cloud: Math.max(cloud, 0.9), dim: 0.8, fogDensity: 0.013, rain: 1 };
+      return { ...base, cloud: Math.max(cloud, 0.9), dim: 0.8, rain: 1 };
     case "snow":
-      return { ...base, cloud: Math.max(cloud, 0.9), dim: 0.6, fogDensity: 0.0135, snow: 1 };
+      return { ...base, cloud: Math.max(cloud, 0.9), dim: 0.6, snow: 1 };
     case "thunder":
-      return { ...base, cloud: 1, dim: 0.9, fogDensity: 0.013, rain: 1, thunder: true };
+      return { ...base, cloud: 1, dim: 0.9, rain: 1, thunder: true };
     default:
       return base;
   }

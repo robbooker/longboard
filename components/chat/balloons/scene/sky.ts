@@ -1,11 +1,12 @@
 // #528 Gainer Balloons: the sky, the light, the ground and the weather.
 // The time of day follows New York (the market's clock): eight keyframes from 4:00 AM to 8:00 PM.
 // The conditions come from a weather reading (lib/gainerBalloons/weather.ts): cloud cover pulls the
-// sky to grey and paints drifting cloud layers into the dome, the sun dims and the light flattens,
-// fog thickens, rain or snow falls (one draw call each, moved in the shader, none in the smallest
-// cards or with reduced motion), and a thunderstorm glows softly once every several seconds.
+// sky to grey and paints drifting cloud layers into the dome, the light softens, rain or snow falls
+// and a thunderstorm glows softly once every several seconds.
+// #539: weather is something you can see, not a grey filter. An overcast sky is a cloud deck with
+// heavy and thin parts, cloud shapes stand around the field, rain falls in streaks (weatherFx.ts),
+// fog is mist far off; and the balloons keep close to a clear day's light and haze in all of it.
 import {
-  BufferAttribute,
   BufferGeometry,
   CanvasTexture,
   CircleGeometry,
@@ -15,16 +16,13 @@ import {
   HemisphereLight,
   Line,
   LineDashedMaterial,
-  LineSegments,
   Mesh,
   MeshStandardMaterial,
-  Points,
   RingGeometry,
   SRGBColorSpace,
   BackSide,
   ShaderMaterial,
   SphereGeometry,
-  Vector2,
   Vector3,
   type Scene,
 } from "three";
@@ -32,6 +30,7 @@ import { LAYOUT, MARKET_HOURS, SCALES } from "@/lib/gainerBalloons/config";
 import { PLAIN_SKY, type SkyWeather } from "@/lib/gainerBalloons/weather";
 import { lightningPulse } from "./lightning";
 import type { SceneQuality } from "./quality";
+import { createCloudShapes, createRain, createSnow } from "./weatherFx";
 
 type Keyframe = {
   hour: number;
@@ -274,6 +273,8 @@ const SKY_FRAGMENT = /* glsl */ `
   uniform vec3 uCloudShade;
   uniform float uCloudTime;
   uniform float uFlash;
+  uniform float uMist;
+  uniform vec3 uMistColor;
   varying vec3 vWorldDir;
 
   float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -287,10 +288,12 @@ const SKY_FRAGMENT = /* glsl */ `
     for (int i = 0; i < OCTAVES; i++) { v += a * noise(p); p = p * 2.03 + vec2(17.3, 9.1); a *= 0.5; }
     return v;
   }
-  // One flat cloud layer seen from below: thicker with more cover, thinning out at the horizon.
-  float layer(vec3 d, float scale, vec2 drift, float cover) {
-    vec2 uv = d.xz / (d.y + 0.16) * scale + drift;
-    float n = fbm(uv);
+  // One flat cloud layer seen from below: its thickness at this spot of the sky.
+  float thickness(vec3 d, float scale, vec2 drift) {
+    return fbm(d.xz / (d.y + 0.16) * scale + drift);
+  }
+  // How much of the layer is there: more with more cover.
+  float covered(float n, float cover) {
     float edge = 1.02 - cover * 0.86;
     return smoothstep(edge, edge + 0.3, n + cover * 0.28);
   }
@@ -306,70 +309,30 @@ const SKY_FRAGMENT = /* glsl */ `
     col += uSunColor * pow(sunAmt, 96.0) * 0.45 * uSunGlow;
 
     if (uCloud > 0.01 && d.y > -0.02) {
-      float c = layer(d, 0.55, vec2(uCloudTime * 0.012, uCloudTime * 0.004), uCloud);
+      float n = thickness(d, 0.55, vec2(uCloudTime * 0.012, uCloudTime * 0.004));
+      float c = covered(n, uCloud);
+      float heavy = smoothstep(0.36, 0.64, n);
       #ifdef TWO_LAYERS
-        float c2 = layer(d, 1.25, vec2(-uCloudTime * 0.02, uCloudTime * 0.009) + 31.0, uCloud * 0.9);
-        c = clamp(c + c2 * 0.55, 0.0, 1.0);
+        float n2 = thickness(d, 1.25, vec2(-uCloudTime * 0.02, uCloudTime * 0.009) + 31.0);
+        c = clamp(c + covered(n2, uCloud * 0.9) * 0.55, 0.0, 1.0);
+        heavy = mix(heavy, smoothstep(0.38, 0.62, n2), 0.38);
       #endif
       float fade = smoothstep(-0.02, 0.07, d.y);
-      vec3 cloudCol = mix(uCloudShade, uCloudLit, clamp(0.35 + 0.65 * (1.0 - c) + sunAmt * 0.25, 0.0, 1.0));
+      // Broken cloud: lit edges, shaded middles. A full deck covers everything, so its shapes are
+      // its own heavy and thin parts: dark bellies with brighter seams between them (#539).
+      float broken = 0.35 + 0.65 * (1.0 - c) + sunAmt * 0.25;
+      float deck = 0.96 - heavy * 0.9 + sunAmt * 0.18;
+      float lit = clamp(mix(broken, deck, smoothstep(0.5, 0.9, uCloud)), 0.0, 1.0);
+      vec3 cloudCol = mix(uCloudShade, uCloudLit, lit);
       cloudCol += vec3(0.55, 0.6, 0.78) * uFlash * 0.55;
       col = mix(col, cloudCol, c * fade * (0.55 + 0.4 * uCloud));
     }
     col += vec3(0.3, 0.33, 0.45) * uFlash * 0.22;
+    // Fog: the far distance whites out, low in the sky.
+    col = mix(col, uMistColor, uMist * (1.0 - smoothstep(0.0, 0.34, d.y)) * 0.9);
 
-    col = mix(uHorizon, col, smoothstep(-0.08, 0.02, d.y));
+    col = mix(mix(uHorizon, uMistColor, uMist * 0.9), col, smoothstep(-0.08, 0.02, d.y));
     gl_FragColor = vec4(col, 1.0);
-  }
-`;
-
-const RAIN_VERTEX = /* glsl */ `
-  attribute float aEnd;
-  attribute float aSeed;
-  uniform float uTime;
-  uniform float uLen;
-  uniform vec2 uWind;
-  varying float vFade;
-  void main() {
-    float tall = 44.0;
-    float y = mod(position.y - uTime * (26.0 + aSeed * 12.0), tall);
-    vec3 p = vec3(position.x, y + aEnd * uLen, position.z);
-    p.xz += uWind * (aEnd * uLen * 0.3 + (tall - y) * 0.06);
-    vec4 mv = modelViewMatrix * vec4(p, 1.0);
-    vFade = (1.0 - smoothstep(60.0, 150.0, -mv.z)) * smoothstep(0.0, 2.5, y);
-    gl_Position = projectionMatrix * mv;
-  }
-`;
-const RAIN_FRAGMENT = /* glsl */ `
-  uniform vec3 uColor;
-  uniform float uAlpha;
-  varying float vFade;
-  void main() { gl_FragColor = vec4(uColor, uAlpha * vFade); }
-`;
-const SNOW_VERTEX = /* glsl */ `
-  attribute float aSeed;
-  uniform float uTime;
-  uniform float uPointScale;
-  uniform vec2 uWind;
-  varying float vFade;
-  void main() {
-    float tall = 40.0;
-    float y = mod(position.y - uTime * (1.7 + aSeed * 1.5), tall);
-    vec3 p = vec3(position.x + sin(uTime * 0.6 + aSeed * 40.0) * 1.1, y, position.z + cos(uTime * 0.45 + aSeed * 23.0) * 0.9);
-    p.xz += uWind * (tall - y) * 0.12;
-    vec4 mv = modelViewMatrix * vec4(p, 1.0);
-    vFade = (1.0 - smoothstep(50.0, 140.0, -mv.z)) * smoothstep(0.0, 1.5, y);
-    gl_PointSize = clamp((0.16 + aSeed * 0.12) * uPointScale / -mv.z, 1.0, 9.0);
-    gl_Position = projectionMatrix * mv;
-  }
-`;
-const SNOW_FRAGMENT = /* glsl */ `
-  uniform vec3 uColor;
-  uniform float uAlpha;
-  varying float vFade;
-  void main() {
-    float r = length(gl_PointCoord - 0.5);
-    gl_FragColor = vec4(uColor, uAlpha * vFade * (1.0 - smoothstep(0.15, 0.5, r)));
   }
 `;
 
@@ -388,6 +351,8 @@ export function createSkySystem(scene: Scene, quality: SceneQuality) {
     uCloudShade: { value: new Color("#9aa4b2") },
     uCloudTime: { value: 0 },
     uFlash: { value: 0 },
+    uMist: { value: 0 },
+    uMistColor: { value: new Color("#e6edf2") },
   };
   const skyMat = new ShaderMaterial({
     uniforms: skyUniforms,
@@ -465,83 +430,18 @@ export function createSkySystem(scene: Scene, quality: SceneQuality) {
   zeroRing.computeLineDistances();
   scene.add(zeroRing);
 
-  // Rain and snow: one draw call each, every drop moved by the shader. None at all when the
-  // quality level has no particles (the smallest cards).
-  const count = quality.particles;
-  const fxUniforms = { uTime: { value: 0 }, uWind: { value: new Vector2(0.6, 0.25) } };
-  let rain: LineSegments<BufferGeometry, ShaderMaterial> | null = null;
-  let snow: Points<BufferGeometry, ShaderMaterial> | null = null;
-  if (count > 0) {
-    // A fixed scatter (the same every time, so a picture can be compared with another).
-    let seed = 1234567;
-    const rand = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
-    const rainPos = new Float32Array(count * 2 * 3);
-    const rainEnd = new Float32Array(count * 2);
-    const rainSeed = new Float32Array(count * 2);
-    for (let i = 0; i < count; i++) {
-      const x = (rand() - 0.5) * 110;
-      const y = rand() * 44;
-      const z = (rand() - 0.5) * 110;
-      const s = rand();
-      for (let v = 0; v < 2; v++) {
-        rainPos.set([x, y, z], (i * 2 + v) * 3);
-        rainEnd[i * 2 + v] = v;
-        rainSeed[i * 2 + v] = s;
-      }
-    }
-    const rainGeo = new BufferGeometry();
-    rainGeo.setAttribute("position", new BufferAttribute(rainPos, 3));
-    rainGeo.setAttribute("aEnd", new BufferAttribute(rainEnd, 1));
-    rainGeo.setAttribute("aSeed", new BufferAttribute(rainSeed, 1));
-    rain = new LineSegments(
-      rainGeo,
-      new ShaderMaterial({
-        uniforms: {
-          ...fxUniforms,
-          uLen: { value: 1.3 },
-          uColor: { value: new Color("#dfe8f4") },
-          uAlpha: { value: 0 },
-        },
-        vertexShader: RAIN_VERTEX,
-        fragmentShader: RAIN_FRAGMENT,
-        transparent: true,
-        depthWrite: false,
-      }),
-    );
-    rain.frustumCulled = false;
-    rain.renderOrder = 4;
-    rain.visible = false;
-    scene.add(rain);
-
-    const snowPos = new Float32Array(count * 3);
-    const snowSeed = new Float32Array(count);
-    for (let i = 0; i < count; i++) {
-      snowPos.set([(rand() - 0.5) * 100, rand() * 40, (rand() - 0.5) * 100], i * 3);
-      snowSeed[i] = rand();
-    }
-    const snowGeo = new BufferGeometry();
-    snowGeo.setAttribute("position", new BufferAttribute(snowPos, 3));
-    snowGeo.setAttribute("aSeed", new BufferAttribute(snowSeed, 1));
-    snow = new Points(
-      snowGeo,
-      new ShaderMaterial({
-        uniforms: {
-          ...fxUniforms,
-          uPointScale: { value: 600 },
-          uColor: { value: new Color("#ffffff") },
-          uAlpha: { value: 0 },
-        },
-        vertexShader: SNOW_VERTEX,
-        fragmentShader: SNOW_FRAGMENT,
-        transparent: true,
-        depthWrite: false,
-      }),
-    );
-    snow.frustumCulled = false;
-    snow.renderOrder = 4;
-    snow.visible = false;
-    scene.add(snow);
-  }
+  // #539: cloud shapes around the field, rain and snow: one draw call each (rain has a second for
+  // the rings on the ground), every vertex moved by its shader.
+  const fxTime = { value: 0 };
+  const clouds = createCloudShapes(scene, quality.cloudShapes, {
+    uCloudLit: skyUniforms.uCloudLit,
+    uCloudShade: skyUniforms.uCloudShade,
+    uFlash: skyUniforms.uFlash,
+  });
+  const rain = quality.particles > 0 ? createRain(scene, quality.particles, fxTime) : null;
+  const snow = quality.particles > 0 ? createSnow(scene, quality.particles, fxTime) : null;
+  /** What the weather is drawing now (for the browser test, and for looking into a problem). */
+  const drawn = { cloudShapes: 0, mistBanks: 0, rainStreaks: 0, snowFlakes: 0, fogDensity: 0, sunShare: 1 };
 
   const sunDirOut = new Vector3();
   const grey = new Color();
@@ -550,6 +450,7 @@ export function createSkySystem(scene: Scene, quality: SceneQuality) {
   const shown: SkyWeather = { ...PLAIN_SKY };
   let first = true;
   let cloudTime = 0;
+  let fallTime = 0;
 
   /** Pulls a colour towards the grey of the same brightness. */
   function overcast(color: Color, amount: number) {
@@ -570,10 +471,15 @@ export function createSkySystem(scene: Scene, quality: SceneQuality) {
     shown.cloud += (weather.cloud - shown.cloud) * ease;
     shown.dim += (weather.dim - shown.dim) * ease;
     shown.fogDensity += (weather.fogDensity - shown.fogDensity) * ease;
+    shown.mist += (weather.mist - shown.mist) * ease;
     shown.rain += (weather.rain - shown.rain) * ease;
     shown.snow += (weather.snow - shown.snow) * ease;
     shown.thunder = weather.thunder;
-    if (!reducedMotion) cloudTime += dt;
+    // Reduced motion: the clouds stand still, and so do the rain and the snow (a still picture of them).
+    if (!reducedMotion) {
+      cloudTime += dt;
+      fallTime += dt;
+    }
 
     const hour =
       (MARKET_HOURS.dayStartMin + progress * (MARKET_HOURS.dayEndMin - MARKET_HOURS.dayStartMin)) / 60;
@@ -620,20 +526,30 @@ export function createSkySystem(scene: Scene, quality: SceneQuality) {
 
     sunLight.position.copy(sunDirOut).multiplyScalar(68);
     sunLight.color.copy(skyUniforms.uSunColor.value);
-    overcast(sunLight.color, dim * 0.7);
-    // Under cloud the sun is dimmer and the sky's own light does more of the work: flatter, softer.
-    sunLight.intensity = (k0.sunInt + (k1.sunInt - k0.sunInt) * st) * (1 - dim * 0.62);
+    overcast(sunLight.color, dim * 0.5);
+    // Under cloud the sun is softer and the sky's own light does more of the work. #539: only a
+    // little: the balloons keep their shape and colour in any weather, the mood is in the sky.
+    drawn.sunShare = 1 - dim * 0.3;
+    sunLight.intensity = (k0.sunInt + (k1.sunInt - k0.sunInt) * st) * drawn.sunShare;
     hemiLight.color.copy(k0.hemiSky).lerp(k1.hemiSky, st);
     overcast(hemiLight.color, cloud * 0.6);
     hemiLight.groundColor.copy(k0.hemiGnd).lerp(k1.hemiGnd, st);
-    hemiLight.intensity = (k0.hemiInt + (k1.hemiInt - k0.hemiInt) * st) * (1 + dim * 0.14) + flash * 0.3;
+    const hemiBase = k0.hemiInt + (k1.hemiInt - k0.hemiInt) * st;
+    hemiLight.intensity = hemiBase * (1 + dim * 0.26) + flash * 0.3;
 
     // The clouds take the sky's light: bright by day, slate at night, darker when it rains.
     skyUniforms.uCloudLit.value
       .copy(hemiLight.color)
       .lerp(tmp.set("#ffffff"), 0.35)
-      .multiplyScalar(Math.min(1, 0.55 + hemiLight.intensity * 0.42) * (1 - dim * 0.3));
-    skyUniforms.uCloudShade.value.copy(skyUniforms.uCloudLit.value).multiplyScalar(0.62).lerp(mid, 0.25);
+      .multiplyScalar(Math.min(1, 0.55 + hemiBase * (1 + dim * 0.14) * 0.42) * (1 - dim * 0.3));
+    // Rain clouds have darker undersides than a dry overcast.
+    const wet = Math.min(1, shown.rain + (shown.thunder ? 0.4 : 0));
+    skyUniforms.uCloudShade.value
+      .copy(skyUniforms.uCloudLit.value)
+      .multiplyScalar(0.62 - 0.2 * wet * cloud)
+      .lerp(mid, 0.25);
+    skyUniforms.uMist.value = shown.mist;
+    skyUniforms.uMistColor.value.copy(horizon).lerp(skyUniforms.uCloudLit.value, 0.55);
 
     groundMat.color.copy(k0.groundTint).lerp(k1.groundTint, st);
     overcast(groundMat.color, cloud * 0.5);
@@ -643,35 +559,30 @@ export function createSkySystem(scene: Scene, quality: SceneQuality) {
     skirtMat.roughness = groundMat.roughness;
 
     const isTwilight = hour < 6.1 || hour > 17.0;
-    rimLight.intensity = (isTwilight ? 0.72 : 0.48) * (1 - dim * 0.25);
+    rimLight.intensity = (isTwilight ? 0.72 : 0.48) * (1 - dim * 0.1);
     rimLight.color.set(isTwilight ? "#9bb8f0" : "#c6dff5");
     zeroRingMat.opacity = isTwilight ? 0.22 : 0.3;
 
-    fxUniforms.uTime.value = elapsedSec;
-    if (rain) {
-      const on = !reducedMotion && shown.rain > 0.03;
-      rain.visible = on;
-      if (on) {
-        rain.geometry.setDrawRange(0, Math.max(2, Math.round(count * Math.min(1, shown.rain)) * 2));
-        rain.material.uniforms.uAlpha.value =
-          (isTwilight ? 0.26 : 0.34) * Math.min(1, 0.5 + shown.rain * 0.5);
-        rain.material.uniforms.uLen.value = 0.7 + shown.rain * 0.8;
-      }
-    }
-    if (snow) {
-      const on = !reducedMotion && shown.snow > 0.03;
-      snow.visible = on;
-      if (on) {
-        snow.geometry.setDrawRange(0, Math.max(1, Math.round(count * Math.min(1, shown.snow))));
-        snow.material.uniforms.uAlpha.value = 0.82 * Math.min(1, shown.snow);
-      }
-    }
+    drawn.fogDensity = fog.density;
+    const shapes = Math.min(1, Math.max(0, (cloud - 0.55) / 0.3));
+    const shapesOn = clouds.set(shapes * 0.92, shown.mist * 0.8, 0.22 * wet, cloudTime * 0.0035, skyUniforms.uMistColor.value);
+    drawn.cloudShapes = shapesOn && shapes > 0.01 ? clouds.count : 0;
+    drawn.mistBanks = shapesOn && shown.mist > 0.02 ? clouds.mistCount : 0;
+
+    // A streak or a flake over a pale ground is drawn darker there, or it could not be seen.
+    const g = groundMat.color;
+    const groundLum = g.r * 0.299 + g.g * 0.587 + g.b * 0.114;
+    const brightGround = Math.min(1, Math.max(0, (groundLum - 0.1) / 0.25));
+    fxTime.value = fallTime;
+    drawn.rainStreaks = rain ? rain.set(shown.rain, brightGround, isTwilight, reducedMotion) : 0;
+    drawn.snowFlakes = snow ? snow.set(shown.snow, brightGround) : 0;
     return { sunDir: sunDirOut, darkSky: isTwilight || dim > 0.75 };
   }
 
   /** Flakes keep their size on screen: `scale` is the canvas height in pixels over 2·tan(fov/2). */
   function setPointScale(scale: number) {
-    if (snow) snow.material.uniforms.uPointScale.value = scale;
+    rain?.setPointScale(scale);
+    snow?.setPointScale(scale);
   }
 
   function dispose() {
@@ -689,16 +600,13 @@ export function createSkySystem(scene: Scene, quality: SceneQuality) {
       zeroRingMat,
     ])
       item.dispose();
-    for (const fx of [rain, snow]) {
-      if (!fx) continue;
-      scene.remove(fx);
-      fx.geometry.dispose();
-      fx.material.dispose();
-    }
+    clouds.dispose();
+    rain?.dispose();
+    snow?.dispose();
     hemiLight.dispose();
     sunLight.dispose();
     rimLight.dispose();
   }
 
-  return { update, setPointScale, dispose };
+  return { update, setPointScale, dispose, drawn };
 }
