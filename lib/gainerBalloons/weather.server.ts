@@ -45,13 +45,14 @@ async function cell(coords: { lat: number; lon: number }, now: number): Promise<
 /**
  * The weather to show: the viewer's own area when a place is given and the provider covers it,
  * otherwise New York's. `covered` is false when a place was given but isn't covered. Null when
- * nothing could be read: the page then keeps its plain time-of-day sky.
+ * nothing could be read: the page then keeps its plain time-of-day sky. `name` (#531): the name of
+ * a place the member chose by typing it, shown instead of the nearest town the reading came with.
  */
-export async function weatherFor(coords: { lat: number; lon: number } | null, now = Date.now()): Promise<{ weather: WeatherNow | null; covered: boolean }> {
+export async function weatherFor(coords: { lat: number; lon: number } | null, now = Date.now(), name?: string): Promise<{ weather: WeatherNow | null; covered: boolean }> {
   let covered = true;
   if (coords) {
     const local = await cell(coords, now);
-    if (local.ok) return { weather: { ...local.weather, local: true }, covered: true };
+    if (local.ok) return { weather: { ...local.weather, place: name ?? local.weather.place, local: true }, covered: true };
     covered = local.reason !== "unsupported";
   }
   const newYork = await cell(NEW_YORK, now);
