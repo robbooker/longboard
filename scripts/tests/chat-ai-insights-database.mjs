@@ -22,6 +22,9 @@ const eligible=async(account,room)=>(await one('select public.chat_account_room_
 const NAME='20261121130000_chat_ai_insights';
 const up=await readFile(`${root}supabase/migrations/${NAME}.sql`,'utf8');
 const down=await readFile(`${root}supabase/rollbacks/${NAME}.down.sql`,'utf8');
+// #537 (the Webinars room) changed functions and checks after this migration: it is rolled back first,
+// so this checks the migration against the definitions it was written for.
+await db.exec(await readFile(`${root}supabase/rollbacks/20261127130000_chat_webinars_room.down.sql`,'utf8'));
 const [alice,bob]=people;
 const scout=(await one(`select m.user_id account,m.id member from longboard_chat_members m where m.display_name='Scout Tester'`));
 assert(scout,'the fixture has a ShortScout mastermind member');
