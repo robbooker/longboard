@@ -411,9 +411,10 @@ try{
   await sky({condition:'rain',cloud:1,tempC:12,night:false,place:'Seattle',local:true},'weather-rain',undefined,{cloudShapes:1,rainStreaks:1});
   await sky({condition:'snow',cloud:1,tempC:-3,night:false,place:'Denver',local:true},'weather-snow',undefined,{cloudShapes:1,snowFlakes:1});
   await sky({condition:'cloudy',cloud:1,tempC:9,night:false,place:'Cleveland',local:true},'weather-overcast',undefined,{cloudShapes:1});
-  await sky({condition:'clear',cloud:0,tempC:4,night:true,place:'Anchorage',local:true},'weather-clear-night',4);
   await sky({condition:'thunder',cloud:1,tempC:21,night:false,place:'Tulsa',local:true},'weather-storm',undefined,{cloudShapes:1,rainStreaks:1});
   await sky({condition:'fog',cloud:0.8,tempC:11,night:false,place:'Eureka',local:true},'weather-fog',undefined,{cloudShapes:1,mistBanks:1});
+  // The two night skies come last: scrubbing to 4:00 AM leaves Live, so everything after them is at night.
+  await sky({condition:'clear',cloud:0,tempC:4,night:true,place:'Anchorage',local:true},'weather-clear-night',4);
   await sky({condition:'rain',cloud:1,tempC:8,night:true,place:'Portland',local:true},'weather-rain-night',4,{cloudShapes:1,rainStreaks:1});
   // A reading with no temperature: a dash, never a made-up number. It has no time zone either:
   // for the viewer's own area the clock then uses this browser's own (here: Denver's).
