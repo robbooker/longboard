@@ -92,6 +92,13 @@ async function open({viewport,geo='granted',permission='prompt',webgl=true,theme
 }
 const SEL={app:'[data-balloons="app"]',card:'[data-balloons="card"]'};
 const drawn=(page,root)=>page.waitForFunction(s=>{const el=document.querySelector(s);return el?.dataset.webgl==='on'&&(el.__balloons?.scene()?.frames??0)>8;},{timeout:90000},root);
+/** Back to New York's weather: the app has no control for it, so the saved choice is cleared and the page reloaded. */
+const newYork=async page=>{
+ page.weatherAnswer=null;
+ await page.evaluate(()=>{const k='rb-balloons-weather-v1';localStorage.setItem(k,JSON.stringify({...JSON.parse(localStorage.getItem(k)||'{}'),local:false}));});
+ await page.reload();await drawn(page,SEL.app);
+ await page.waitForFunction(s=>document.querySelector(s)?.textContent.includes('New York'),{},`${SEL.app} [data-balloons-weather]`);
+};
 const scene=(page,root)=>page.$eval(root,el=>({...el.__balloons.scene(),mode:el.__balloons.mode(),time:el.__balloons.time()}));
 const clock=(page,root)=>page.$eval(`${root} [data-balloons-clock]`,e=>e.textContent);
 const mode=(page,root)=>page.$eval(root,e=>e.dataset.mode);
@@ -160,9 +167,11 @@ try{
   assert.deepEqual(page.weatherAsks.at(-1),{search:'',body:{lat:41.9,lon:-87.6},method:'POST'},'the place is rounded to one decimal and sent in the body');
   assert.equal(await page.$eval(`${SEL.app} [data-balloons-weather]`,e=>e.textContent),'50°FChicago');
   assert.equal(await page.evaluate(()=>localStorage.getItem('rb-balloons-weather-v1')),'{"local":true,"unit":"F"}','only the choice is stored, never the place');
-  await page.click(`${SEL.app} [data-balloons-weather-off]`);
-  await page.waitForFunction(s=>document.querySelector(s)?.textContent.includes('New York'),{},`${SEL.app} [data-balloons-weather]`);
-  assert.deepEqual(page.weatherAsks.at(-1).body,{},'turned off: New York again');
+  // With a local reading showing, there is no link beside it: not "Use my local weather", and none back to New York.
+  assert.equal(await page.$(`${SEL.app} [data-balloons-weather-local-button]`),null,'no link once local weather shows');
+  assert.doesNotMatch(await page.$eval(SEL.app,e=>e.innerText),/Use New York weather/);
+  await newYork(page);
+  assert.deepEqual(page.weatherAsks.at(-1).body,{},'New York again');
 
   // The scrubber replays the day so far; Live comes back with one tap.
   await scrub(page,SEL.app,300);
@@ -236,7 +245,7 @@ try{
    await sleep(2600);await picture(page,SEL.app,name);
    assert.equal(await page.$eval(`${SEL.app} [data-weather-icon]`,e=>e.dataset.weatherIcon),answer.condition+(answer.night?'-night':''));
    await shot(page,`${name}.png`);
-   await page.click(`${SEL.app} [data-balloons-weather-off]`);
+   await newYork(page);
   };
   await sky({condition:'rain',cloud:1,tempC:12,night:false,place:'Seattle',local:true},'weather-rain');
   await sky({condition:'snow',cloud:1,tempC:-3,night:false,place:'Denver',local:true},'weather-snow');

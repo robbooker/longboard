@@ -826,16 +826,7 @@ export default function GainerBalloons({
               {pastDay && <p className={styles.dayNote}>Most recent trading day</p>}
               <div className={styles.weatherRow}>
                 {weatherButton}
-                {weather.local ? (
-                  <button
-                    type="button"
-                    className={styles.link}
-                    onClick={weather.chooseNewYork}
-                    data-balloons-weather-off
-                  >
-                    Use New York weather
-                  </button>
-                ) : (
+                {!w?.local && (
                   <button
                     type="button"
                     className={styles.link}

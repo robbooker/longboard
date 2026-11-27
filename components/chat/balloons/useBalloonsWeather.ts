@@ -93,8 +93,6 @@ export type BalloonsWeather = {
   note: string;
   /** Asks the browser for the location. Call only from a tap. */
   chooseLocal: () => void;
-  /** Back to New York's weather. */
-  chooseNewYork: () => void;
 };
 
 export function useBalloonsWeather(active: boolean): BalloonsWeather {
@@ -170,13 +168,5 @@ export function useBalloonsWeather(active: boolean): BalloonsWeather {
     });
   }, [load]);
 
-  const chooseNewYork = useCallback(() => {
-    place.current = null;
-    save({ local: false });
-    setLocal(false);
-    setNote("");
-    void load(null);
-  }, [load]);
-
-  return { weather, unit, toggleUnit, local, note, chooseLocal, chooseNewYork };
+  return { weather, unit, toggleUnit, local, note, chooseLocal };
 }
