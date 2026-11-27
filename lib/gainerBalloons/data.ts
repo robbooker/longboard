@@ -15,6 +15,10 @@ export type RawStock = {
   country: string | null;
   floatShares: number | null;
   prevClose: number | null;
+  /** #533: institutional ownership, in percent; null (or missing) when it was never looked up. */
+  instOwnPct?: number | null;
+  /** #533: shares outstanding, for the market cap at the time shown; null (or missing) when not known. */
+  sharesOutstanding?: number | null;
   bars: RawBar[];
 };
 export type RawDay = {
@@ -44,6 +48,8 @@ export type StockState = {
   floatShares: number | null;
   floatKnown: boolean;
   prevClose: number | null;
+  instOwnPct: number | null;
+  sharesOutstanding: number | null;
   refPrice: number;
   agility: number;
   hasTraded: boolean;
@@ -189,6 +195,8 @@ type PreparedStock = {
   floatShares: number | null;
   floatKnown: boolean;
   prevClose: number | null;
+  instOwnPct: number | null;
+  sharesOutstanding: number | null;
   refPrice: number;
   dayVolume: number;
   agility: number;
@@ -270,6 +278,9 @@ function prepareStock(raw: RawStock, index: number, barMs: number, asOfMs: numbe
     floatShares,
     floatKnown: floatShares !== null,
     prevClose,
+    // 0% is a real answer (nobody holds it); anything else that isn't a count of percent is "not known".
+    instOwnPct: typeof raw.instOwnPct === "number" && Number.isFinite(raw.instOwnPct) && raw.instOwnPct >= 0 ? raw.instOwnPct : null,
+    sharesOutstanding: positive(raw.sharesOutstanding) ? raw.sharesOutstanding : null,
     refPrice,
     dayVolume: cum,
     agility: mapAgility(floatShares),
@@ -357,6 +368,8 @@ export function createMarketData(raw: RawDay): MarketData {
       floatShares: s.floatShares,
       floatKnown: s.floatKnown,
       prevClose: s.prevClose,
+      instOwnPct: s.instOwnPct,
+      sharesOutstanding: s.sharesOutstanding,
       refPrice: s.refPrice,
       agility: s.agility,
     } as StockState;

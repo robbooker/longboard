@@ -7,6 +7,8 @@
 //  ISRL Israel, float unknown                                          USAA/USBB/USCC U.S.
 //  UNKF U.S., float unknown                                            NOPC no previous close (no daily bars)
 //  FADE ran early and has fallen back                                  DOWN Polygon answers 500 for its bars
+// #533 shares outstanding (ticker details), for the market cap on a balloon's card: CHNA 10M, USAA 250M
+// (weighted), HKGO 4M (its share class only); every other stock has no count, so its market cap is a dash.
 // (How often Polygon is asked is checked by the unit tests, lib/__tests__/gainerBalloonsFeed.test.ts.)
 const STOCKS = {
   CHNA: { prev: 1.0, top: 2.9, volume: 4_200_000 },
@@ -23,6 +25,7 @@ const STOCKS = {
   FADE: { prev: 1.0, top: 2.2, volume: 2_000_000, fade: true },
   DOWN: { prev: 1.0, top: 1.2, volume: 300_000, broken: true },
 };
+const SHARES = { CHNA: { weighted_shares_outstanding: 10_000_000 }, USAA: { weighted_shares_outstanding: 250_000_000, share_class_shares_outstanding: 200_000_000 }, HKGO: { share_class_shares_outstanding: 4_000_000 } };
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 // A small repeatable random number per ticker and bar.
 const noise = (ticker, i) => { let h = 2166136261; for (const c of `${ticker}:${i}`) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return ((h >>> 0) % 1000) / 1000; };
@@ -66,6 +69,8 @@ globalThis.fetch = async (url, init) => {
     if (multiplier !== '2') return json({ status: 'NOT_STUBBED' }, 404);
     return json({ status: 'OK', results: bars(ticker, Number(from), Number(to)) });
   }
+  const details = parsed.pathname.match(/^\/v3\/reference\/tickers\/([A-Z.]+)$/);
+  if (details) return STOCKS[details[1]] ? json({ status: 'OK', results: { ticker: details[1], ...SHARES[details[1]] } }) : json({ status: 'NOT_FOUND' }, 404);
   if (parsed.pathname === '/v2/snapshot/locale/us/markets/stocks/tickers') return json({ status: 'OK', tickers: [] });
   return json({ status: 'NOT_STUBBED' }, 404);
 };

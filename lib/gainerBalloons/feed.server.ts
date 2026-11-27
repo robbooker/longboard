@@ -9,6 +9,11 @@
 // Bars and yesterday's close: Polygon, read once per stock for everyone on this server:
 //   - bars for today: at most once a minute per stock (BARS_TTL_MS); a finished day: once in six hours;
 //   - yesterday's close: once a day per stock (an hour when Polygon had none).
+// Institutional ownership (#533): saved with the stock's company facts, like the country and the float.
+// Shares outstanding (#533), for the market cap on a balloon's card (the price shown times the
+// shares, worked out in the browser so it follows the scrubbed time): the Gainers Table's own read
+// (lib/chatGainersShares.ts), once a day per stock per server (an hour when there was no count),
+// and it answers within three seconds whatever Polygon does: a missing count is a dash on the card.
 // So with the list full, the most this server asks Polygon while the market is open is 60 bar reads
 // a minute (one a second), however many members are watching, plus 60 daily-bar reads once a day.
 // A slow or failed read never holds the picture up: the stock keeps the bars it had (or comes back
@@ -17,6 +22,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { easternDay, gainersRowLeftOff, type GainersTableDbRow } from "@/lib/chatGainersFacts";
 import { gainersSnapshots } from "@/lib/chatGainersQuotes";
+import { gainersShares } from "@/lib/chatGainersShares";
 import { nyClockToUtcMs, polygonAggsAll } from "@/lib/polygon/client";
 import { MAX_BALLOONS } from "./config";
 import type { BalloonsFeed, RawBar } from "./data";
@@ -37,7 +43,7 @@ const PARALLEL = 8;
 const BAR_MINUTES = 2;
 
 type Db = Pick<SupabaseClient, "rpc">;
-type Row = Pick<GainersTableDbRow, "ticker" | "alerts" | "country" | "float_shares" | "any_not_after_hours" | "after_hours_high">;
+type Row = Pick<GainersTableDbRow, "ticker" | "alerts" | "country" | "float_shares" | "inst_own_pct" | "inst_own_checked_at" | "any_not_after_hours" | "after_hours_high">;
 
 const dayParts = (day: string) => day.split("-").map(Number) as [number, number, number];
 function shiftDay(day: string, days: number) {
@@ -179,6 +185,13 @@ const num = (value: number | string | null | undefined) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 };
 
+/** A percent that was looked up: 0 is a real answer; null when there was none. */
+const percent = (value: number | string | null | undefined) => {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+};
+
 /**
  * At most `cap` rows. Over the cap, the stocks with the most volume today stay (from the Gainers
  * Table's own quotes when it is today); without a volume, the ones that alerted most.
@@ -215,6 +228,8 @@ export async function balloonsFeed(db: Db, { since = null, now = Date.now() }: {
     rows = capRows(rows, volumes);
   }
 
+  // Asked alongside the bars; it gives up by itself after three seconds, well inside FEED_WAIT_MS.
+  const sharesRead = gainersShares(rows.map((row) => row.ticker)).catch(() => new Map<string, number | null>());
   const waits: Promise<void>[] = [];
   for (const row of rows) {
     const key = `${day}:${row.ticker}`;
@@ -228,6 +243,7 @@ export async function balloonsFeed(db: Db, { since = null, now = Date.now() }: {
     await Promise.race([Promise.all(waits), new Promise((resolve) => (timer = setTimeout(resolve, FEED_WAIT_MS)))]);
     clearTimeout(timer);
   }
+  const shares = await sharesRead;
   sweep(now);
 
   const { startMs } = dayWindow(day);
@@ -246,6 +262,8 @@ export async function balloonsFeed(db: Db, { since = null, now = Date.now() }: {
       country: typeof row.country === "string" && row.country.trim() ? row.country.trim().slice(0, 60) : null,
       floatShares: num(row.float_shares),
       prevClose,
+      instOwnPct: row.inst_own_checked_at ? percent(row.inst_own_pct) : null,
+      sharesOutstanding: shares.get(row.ticker) ?? null,
       earlier: bars.length - sent.length,
       bars: sent,
     });
