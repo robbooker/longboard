@@ -186,6 +186,13 @@
   white-space: nowrap;
   text-decoration: none;
 }
+/* A pill that holds only an icon (full screen). */
+.iconPill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding-inline: 10px;
+}
 .pill:hover,
 .ctrl:hover,
 .live:hover,

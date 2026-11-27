@@ -24,7 +24,8 @@
 //  - a phone upright (390x844), on its side (844x390) and an unfolded folding phone (768x884): no
 //    sideways scroll, every control on screen, a tap selects;
 //  - no gainers: a line saying so; no page errors anywhere.
-// CHAT_SHOT_DIR saves app-desktop.png, app-selected.png, app-legend.png, app-phone.png,
+//  - full screen: an icon button in the app (never a card) fills the screen and comes back;
+// CHAT_SHOT_DIR saves app-fullscreen.png, app-desktop.png, app-selected.png, app-legend.png, app-phone.png,
 // app-unfolded.png, card-dual.png, card-quad.png, card-six.png, fallback.png, weather-rain.png,
 // weather-snow.png, weather-overcast.png and weather-clear-night.png.
 import assert from 'node:assert/strict';
@@ -172,6 +173,18 @@ try{
   assert.doesNotMatch(await page.$eval(SEL.app,e=>e.innerText),/Use New York weather/);
   await newYork(page);
   assert.deepEqual(page.weatherAsks.at(-1).body,{},'New York again');
+  // Full screen: one icon button; the app itself fills the screen, keeps drawing, and comes back.
+  const fs=`${SEL.app} [data-balloons-fullscreen]`;
+  assert.equal(await page.$eval(fs,e=>`${e.dataset.balloonsFullscreen} ${e.getAttribute('aria-label')}`),'off Full screen');
+  await page.click(fs);
+  await page.waitForFunction(s=>document.querySelector(s)?.dataset.balloonsFullscreen==='on',{},fs);
+  assert.equal(await page.evaluate(s=>document.fullscreenElement===document.querySelector(s),SEL.app),true,'the app is the full-screen element');
+  assert.equal(await page.$eval(fs,e=>e.getAttribute('aria-label')),'Leave full screen');
+  await sleep(600);await picture(page,SEL.app,'full screen');
+  await shot(page,'app-fullscreen.png');
+  await page.click(fs);
+  await page.waitForFunction(s=>document.querySelector(s)?.dataset.balloonsFullscreen==='off',{},fs);
+  assert.equal(await page.evaluate(()=>document.fullscreenElement),null,'back out of full screen');
 
   // The scrubber replays the day so far; Live comes back with one tap.
   await scrub(page,SEL.app,300);
@@ -286,6 +299,7 @@ try{
    assert.equal(await mode(page,SEL.card),'live');assert.match(await clock(page,SEL.card),/^9:\d\d AM ET$/);
    assert.equal(await page.$eval(`${SEL.card} [data-balloons-open]`,a=>`${a.getAttribute('href')} ${a.target}`),'/chat?page=balloons _blank',`${name}: a way to the full app`);
    assert.equal(await page.$(`${SEL.card} [data-balloons-weather-local-button]`),null,`${name}: a card never offers the location prompt`);
+   assert.equal(await page.$(`${SEL.card} [data-balloons-fullscreen]`),null,`${name}: no full-screen button in a card`);
    assert.equal(await page.$(`${SEL.card} [data-balloons-legend-button]`),null,`${name}: small chrome only`);
    const s=await scene(page,SEL.card);
    const room=await page.$eval(SEL.card,e=>Math.round(Math.min(60,Math.max(5,e.clientWidth*e.clientHeight/22000))));

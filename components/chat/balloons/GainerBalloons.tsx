@@ -109,6 +109,14 @@ function webglAvailable() {
   }
 }
 
+/** The standard full-screen calls, plus the prefixed ones older Safari still uses. */
+type FullScreenDocument = Document & {
+  webkitFullscreenEnabled?: boolean;
+  webkitFullscreenElement?: Element | null;
+  webkitExitFullscreen?: () => Promise<void> | void;
+};
+type FullScreenElement = HTMLDivElement & { webkitRequestFullscreen?: () => Promise<void> | void };
+
 export default function GainerBalloons({
   compact = false,
   visible = true,
@@ -524,6 +532,40 @@ export default function GainerBalloons({
 
   // --- Search and legend (the full app only).
   const [legendOpen, setLegendOpen] = useState(false);
+  // Full screen (the full app only): the browser's own full screen for this component. The button is
+  // left out where the browser can't do it (an iPhone), and Escape or the same button leaves it.
+  const [canFullScreen, setCanFullScreen] = useState(false);
+  const [fullScreen, setFullScreen] = useState(false);
+  useEffect(() => {
+    if (compact) return;
+    const doc = document as FullScreenDocument;
+    setCanFullScreen(!!(doc.fullscreenEnabled ?? doc.webkitFullscreenEnabled));
+    const changed = () => {
+      const el = doc.fullscreenElement ?? doc.webkitFullscreenElement ?? null;
+      setFullScreen(!!el && el === root.current);
+    };
+    changed();
+    document.addEventListener("fullscreenchange", changed);
+    document.addEventListener("webkitfullscreenchange", changed);
+    return () => {
+      document.removeEventListener("fullscreenchange", changed);
+      document.removeEventListener("webkitfullscreenchange", changed);
+    };
+  }, [compact]);
+  const toggleFullScreen = () => {
+    const doc = document as FullScreenDocument;
+    const el = root.current as FullScreenElement | null;
+    if (!el) return;
+    try {
+      if (doc.fullscreenElement ?? doc.webkitFullscreenElement) {
+        void (doc.exitFullscreen ? doc.exitFullscreen() : doc.webkitExitFullscreen?.())?.catch?.(() => {});
+      } else {
+        void (el.requestFullscreen ? el.requestFullscreen() : el.webkitRequestFullscreen?.())?.catch?.(() => {});
+      }
+    } catch {
+      // Refused by the browser: the app stays as it is.
+    }
+  };
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const matches = useMemo(() => {
@@ -898,6 +940,25 @@ export default function GainerBalloons({
                   data-balloons-reset
                 >
                   Reset view
+                </button>
+              )}
+              {canFullScreen && (
+                <button
+                  type="button"
+                  className={`${styles.pill} ${styles.iconPill}`}
+                  onClick={toggleFullScreen}
+                  aria-label={fullScreen ? "Leave full screen" : "Full screen"}
+                  title={fullScreen ? "Leave full screen" : "Full screen"}
+                  aria-pressed={fullScreen}
+                  data-balloons-fullscreen={fullScreen ? "on" : "off"}
+                >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    {fullScreen ? (
+                      <path d="M6 2v4H2M10 2v4h4M6 14v-4H2M10 14v-4h4" />
+                    ) : (
+                      <path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4" />
+                    )}
+                  </svg>
                 </button>
               )}
               <button
