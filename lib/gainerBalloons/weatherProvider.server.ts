@@ -5,7 +5,7 @@
 // asks only for a User-Agent naming the application, and covers the United States. A place it
 // doesn't cover answers "unsupported", and the caller shows New York instead.
 // Three reads for a new place, then one per refresh:
-//   /points/{lat},{lon}                 the nearest town, the stations list and the hourly forecast (kept a day)
+//   /points/{lat},{lon}                 the nearest town, its time zone (#532, for the clock), the stations list and the hourly forecast (kept a day)
 //   <stations list>                     the nearest station (kept a day, with the above)
 //   /stations/{id}/observations/latest  temperature, sky and weather in plain words
 // and, only when the station has no temperature or no description, the hourly forecast's current hour.
@@ -24,10 +24,12 @@ export type ProviderWeather = {
   tempC: number | null;
   night: boolean;
   place: string | null;
+  /** The place's time zone ("America/Chicago"), or null when the answer had none. */
+  zone: string | null;
 };
 export type ProviderResult = { ok: true; weather: ProviderWeather } | { ok: false; reason: "unsupported" | "unavailable" };
 
-type Place = { at: number; station: string | null; hourly: string | null; place: string | null };
+type Place = { at: number; station: string | null; hourly: string | null; place: string | null; zone: string | null };
 const places = new Map<string, Place>();
 
 type Json = Record<string, unknown>;
@@ -64,7 +66,14 @@ async function placeFor(key: string, lat: number, lon: number): Promise<Place | 
     station = /^[A-Z0-9]{3,8}$/.test(id) ? id : null;
   }
   const town = str(where.city).trim().slice(0, 40);
-  const place: Place = { at: Date.now(), station, hourly: ownAddress(props.forecastHourly), place: town || null };
+  const zone = str(props.timeZone);
+  const place: Place = {
+    at: Date.now(),
+    station,
+    hourly: ownAddress(props.forecastHourly),
+    place: town || null,
+    zone: zone.length <= 40 && /^[A-Za-z]+\/[A-Za-z0-9_+\-/]+$/.test(zone) ? zone : null,
+  };
   if (places.size > 5_000) places.clear();
   places.set(key, place);
   return place;
@@ -124,7 +133,7 @@ export async function currentWeather(coords: { lat: number; lon: number }, key: 
     if (condition === null && observed.cloud !== null) condition = observed.cloud >= 0.7 ? "cloudy" : observed.cloud >= 0.3 ? "partly" : "clear";
     if (condition === null) return { ok: false, reason: "unavailable" };
     const cloud = condition === "clear" || condition === "partly" || condition === "cloudy" ? (observed.cloud ?? CONDITION_CLOUD[condition]) : Math.max(observed.cloud ?? 0, CONDITION_CLOUD[condition]);
-    return { ok: true, weather: { condition, cloud, tempC, night: night ?? false, place: place.place } };
+    return { ok: true, weather: { condition, cloud, tempC, night: night ?? false, place: place.place, zone: place.zone } };
   } catch {
     return { ok: false, reason: "unavailable" };
   }
