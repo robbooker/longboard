@@ -720,7 +720,7 @@
   right: auto;
   left: 6px;
   bottom: 30px;
-  width: min(250px, calc(100% - 12px));
+  width: min(270px, calc(100% - 12px));
   padding: 8px 10px 9px;
 }
 .root[data-balloons="card"][data-size="small"] .detail {
@@ -733,10 +733,14 @@
   gap: 5px 8px;
   margin-top: 5px;
 }
+/* In a card the change drops under the price when the line is too narrow for both; it is never cut short. */
 .root[data-balloons="card"] .quote {
+  flex-wrap: wrap;
+  gap: 0 6px;
   font-size: 13px;
 }
 .root[data-balloons="card"] .quote span:last-child {
+  overflow: visible;
   font-size: 12px;
 }
 .root[data-balloons="card"] .country {
