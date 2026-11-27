@@ -137,9 +137,15 @@ function CardPicker({
                 checked={type === t.type}
                 onChange={() => {
                   setType(t.type);
-                  const next = t.sources(options).find(
-                    (s) => t.allowDuplicates || !taken.has(cardKey({ type: t.type, source: s.source })),
-                  );
+                  // #538: switching between a room's chat and its live video keeps the same room
+                  // (Booker Stock Club's chat -> Booker Stock Club's video), when the new type
+                  // offers it; otherwise, and on an empty card, the first one free.
+                  const free = t
+                    .sources(options)
+                    .filter((s) => t.allowDuplicates || !taken.has(cardKey({ type: t.type, source: s.source })));
+                  const same =
+                    !!current && ((type === "room" && t.type === "video") || (type === "video" && t.type === "room"));
+                  const next = (same ? free.find((s) => s.source === source) : undefined) ?? free[0];
                   setSource(next?.source ?? "");
                 }}
               />
