@@ -643,7 +643,11 @@ export default function GainerBalloons({
   );
 
   const panel = detail && (
-    <aside className={styles.detail} aria-label={`${detail.ticker} details`} data-balloons-detail={detail.ticker}>
+    <aside
+      className={styles.detail}
+      aria-label={`${detail.ticker} details`}
+      data-balloons-detail={detail.ticker}
+    >
       <header>
         <span
           className={styles.swatch}

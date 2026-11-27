@@ -213,7 +213,6 @@ export function createBalloonScene(
   const pointer = new Vector2();
   let downX = 0;
   let downY = 0;
-  let downAt = 0;
   let moved = false;
   const toPointer = (event: PointerEvent) => {
     const rect = canvas.getBoundingClientRect();
@@ -228,7 +227,6 @@ export function createBalloonScene(
     if (event.pointerType === "mouse" && event.button !== 0) return;
     downX = event.clientX;
     downY = event.clientY;
-    downAt = performance.now();
     moved = false;
   };
   const onPointerMove = (event: PointerEvent) => {
@@ -244,14 +242,9 @@ export function createBalloonScene(
   };
   const onPointerUp = (event: PointerEvent) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
-    // A tap, not the end of a drag or a long press.
-    if (
-      moved ||
-      Math.hypot(event.clientX - downX, event.clientY - downY) > 8 ||
-      performance.now() - downAt > 420 ||
-      !field
-    )
-      return;
+    // A tap is a press that didn't move. How long it took isn't counted: on a slow phone a quick tap can
+    // take a while to arrive, and a long press on a balloon may as well select it.
+    if (moved || Math.hypot(event.clientX - downX, event.clientY - downY) > 8 || !field) return;
     toPointer(event);
     onSelect(field.resolveHit(raycaster));
   };

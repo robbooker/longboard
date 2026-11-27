@@ -31,6 +31,8 @@ export const PAST_DAY_TTL_MS = 5 * 60_000;
 export const FEED_WAIT_MS = 8_000;
 /** How many days back to look for the most recent day with gainers. */
 export const LOOK_BACK_DAYS = 10;
+/** A Polygon read that hasn't answered by now counts as failed, so it can't hold a place in the queue. */
+export const UPSTREAM_TIMEOUT_MS = 12_000;
 const PARALLEL = 8;
 const BAR_MINUTES = 2;
 
@@ -50,6 +52,12 @@ const isWeekend = (day: string) => {
 export function dayWindow(day: string) {
   const [y, m, d] = dayParts(day);
   return { startMs: nyClockToUtcMs(y, m, d, 4, 0), endMs: nyClockToUtcMs(y, m, d, 20, 0) };
+}
+
+function inTime<T>(work: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new Error("timed out")), UPSTREAM_TIMEOUT_MS)));
+  return Promise.race([work, late]).finally(() => clearTimeout(timer));
 }
 
 // --- A small work queue, so a cold start asks Polygon for a few stocks at a time, not sixty at once.
@@ -131,7 +139,7 @@ function readBars(ticker: string, day: string): Promise<void> {
   const read = enqueue(async () => {
     const previous = barsCache.get(key);
     try {
-      const aggs = await polygonAggsAll(ticker, BAR_MINUTES, "minute", startMs, endMs - 1);
+      const aggs = await inTime(polygonAggsAll(ticker, BAR_MINUTES, "minute", startMs, endMs - 1));
       const bars = aggs.filter((a) => a.t >= startMs && a.t < endMs).map((a): RawBar => [a.t, a.o, a.h, a.l, a.c, a.v]);
       const at = Date.now();
       // A day is finished five minutes after 8:00 PM: its bars no longer change.
@@ -153,7 +161,7 @@ function readPrevClose(ticker: string, day: string): Promise<void> {
     let close: number | null = null;
     try {
       // The last daily bar before the day: yesterday's close, or Friday's on a Monday, whatever the holidays.
-      const daily = await polygonAggsAll(ticker, 1, "day", shiftDay(day, -10), shiftDay(day, -1));
+      const daily = await inTime(polygonAggsAll(ticker, 1, "day", shiftDay(day, -10), shiftDay(day, -1)));
       const last = daily[daily.length - 1];
       close = last && last.c > 0 ? last.c : null;
     } catch {

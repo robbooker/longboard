@@ -106,12 +106,18 @@ async function colours(page,root){
 const picture=async(page,root,what)=>{const count=await colours(page,root);assert(count>=40,`${what}: the canvas shows a picture (${count} colours)`);return count;};
 const within=(page,selectors)=>page.evaluate(list=>list.flatMap(s=>{const e=[...document.querySelectorAll(s)].find(x=>x.checkVisibility());if(!e)return [`${s} missing`];const r=e.getBoundingClientRect();return r.left>=-1&&r.top>=-1&&r.right<=innerWidth+1&&r.bottom<=innerHeight+1?[]:[`${s} off screen ${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.right)},${Math.round(r.bottom)}`];}),selectors);
 const noSideScroll=page=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1);
-/** Taps where a balloon is. Another balloon may be in front of it, so the answer is whichever one the tap selected. */
+/**
+ * Taps where a balloon is. Another balloon may be in front of it, so the answer is whichever one the
+ * tap selected. Balloons sway, and on a slow machine one can drift from under the spot between
+ * looking and tapping: a tap that lands on sky selects nothing, so it is simply aimed again.
+ */
 const tap=async(page,root,ticker,touch=false)=>{
- const at=await page.$eval(root,(el,ticker)=>{const p=el.__balloons.where(ticker),r=el.getBoundingClientRect();return p&&{x:r.left+p.x,y:r.top+p.y};},ticker);
- assert(at,`${ticker} is on screen`);
- if(touch)await page.touchscreen.tap(at.x,at.y);else await page.mouse.click(at.x,at.y);
- await page.waitForSelector(`${root} [data-balloons-detail]`,{timeout:10000});
+ for(let attempt=1;;attempt++){
+  const at=await page.$eval(root,(el,ticker)=>{const p=el.__balloons.where(ticker),r=el.getBoundingClientRect();return p&&{x:r.left+p.x,y:r.top+p.y};},ticker);
+  assert(at,`${ticker} is on screen`);
+  if(touch)await page.touchscreen.tap(at.x,at.y);else await page.mouse.click(at.x,at.y);
+  try{await page.waitForSelector(`${root} [data-balloons-detail]`,{timeout:4000});break;}catch(e){if(attempt===6)throw e;}
+ }
  const selected=await page.$eval(`${root} [data-balloons-detail]`,e=>e.dataset.balloonsDetail);
  assert(selected in STOCKS,`a tap selects a balloon (${selected})`);
  return selected;

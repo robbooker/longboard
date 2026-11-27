@@ -152,7 +152,7 @@ try {
 
   // 1. Rob: Trading Desk sits in the Apps section and opens the desk.
   await p.goto(base + '/chat'); await p.waitForSelector(ROW);
-  assert.deepEqual(await p.$$eval('a[data-chat-app]', (a) => a.map((e) => e.dataset.chatApp)), ['reader', 'trading-desk'], 'Apps: the Reader, then the Trading Desk');
+  assert.deepEqual(await p.$$eval('a[data-chat-app]', (a) => a.map((e) => e.dataset.chatApp)), ['reader', 'trading-desk', 'balloons'], 'Apps: the Reader, then the Trading Desk (#528: then Gainer Balloons)');
   assert.match(await p.$eval(ROW, (a) => a.textContent), /Trading Desk/);
   if (shots) {
     await p.setViewport({ width: 1440, height: 1000 });
@@ -280,7 +280,7 @@ try {
   // 6. On a Quad pane.
   const pane = (i) => `section[aria-label^="Pane ${i}:"]`;
   await p.goto(base + '/chat/quad'); await p.waitForSelector(`${pane(2)} select`);
-  assert.deepEqual(await p.$$eval(`${pane(2)} select optgroup[label="Apps"] option`, (o) => o.map((e) => e.value)), ['app:reader', 'app:trading-desk'], 'Trading Desk is a pane choice for Rob');
+  assert.deepEqual(await p.$$eval(`${pane(2)} select optgroup[label="Apps"] option`, (o) => o.map((e) => e.value)), ['app:reader', 'app:trading-desk', 'app:balloons'], 'Trading Desk is a pane choice for Rob');
   await p.select(`${pane(2)} select`, 'app:trading-desk');
   await p.waitForSelector(`${pane(2)} ${DESK}`);
   const inPane = await p.$eval(pane(2), (s) => { const a = s.getBoundingClientRect(), b = s.querySelector('[data-trading-desk]').getBoundingClientRect(); return b.left >= a.left - 1 && b.right <= a.right + 1; });
@@ -303,7 +303,7 @@ try {
   }
   globalThis.__deskTest.auth = MEMBER;
   await p.goto(base + '/chat/quad'); await p.waitForSelector(`${pane(2)} select`);
-  assert.deepEqual(await p.$$eval(`${pane(2)} select optgroup[label="Apps"] option`, (o) => o.map((e) => e.value)), ['app:reader'], 'a member has no Trading Desk pane');
+  assert.deepEqual(await p.$$eval(`${pane(2)} select optgroup[label="Apps"] option`, (o) => o.map((e) => e.value)), ['app:reader', 'app:balloons'], 'a member has no Trading Desk pane');
 
   assert.deepEqual(errors, []);
   console.log('Trading Desk browser checks passed: Apps row for Rob, sample badge, a real paper snapshot with its badge, — for missing fields and the feed\'s error, read-only automation pill, account strip with day P&L first, positions with totals, every order type and time in force, range low – high, activity newest first, no controls, sticky headings, tabular right-aligned numbers, gain/loss colours in all five looks, amber stale state, phone strip and pinned symbols with no sideways scroll, Quad pane, and no row, no page and a 404 for another admin, a member and a bot.');
