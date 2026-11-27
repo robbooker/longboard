@@ -40,8 +40,14 @@ export function useStageStatus(room: ChatRoom | null): {
   refresh: () => void;
   /** #507: the stock the host put on screen (null: none). Comes with the same answer and signal. */
   onScreen: string | null;
+  /**
+   * #535: Booker Stock Club only: the server says the room's chat is open to members right now (a
+   * webinar is live there, or stopped a moment ago and may come back; lib/chatClubLive.ts). It only
+   * decides what the page shows: the server decides again, by itself, for every post.
+   */
+  chatOpen: boolean;
 } {
-  const [known, setKnown] = useState<{ room: ChatRoom; state: StageState; onScreen: StageOnScreen | null } | null>(null);
+  const [known, setKnown] = useState<{ room: ChatRoom; state: StageState; onScreen: StageOnScreen | null; chatOpen: boolean } | null>(null);
   const read = useRef<() => void>(() => undefined);
   useEffect(() => {
     if (!room) return;
@@ -60,14 +66,15 @@ export function useStageStatus(room: ChatRoom | null): {
       checkedAt = Date.now();
       fetch(`/api/chat/stage/status?room=${encodeURIComponent(room)}${fresh ? "&fresh=1" : ""}`, { cache: "no-store", signal: controller.signal })
         .then((response) => (response.ok ? response.json() : null))
-        .then((body: { state?: unknown; onScreen?: unknown } | null) => {
+        .then((body: { state?: unknown; onScreen?: unknown; chat?: unknown } | null) => {
           if (controller.signal.aborted || !body) return;
           const state = parseStageState(body.state);
           const read = parseStageOnScreen(body.onScreen);
+          const chatOpen = body.chat === true;
           setKnown((current) => {
             // Off: nothing is on screen. Otherwise the newest heard of, from an answer or a signal.
             const onScreen = state === "off" ? null : newerStageOnScreen(current?.room === room ? current.onScreen : null, read);
-            return current?.room === room && current.state === state && current.onScreen === onScreen ? current : { room, state, onScreen };
+            return current?.room === room && current.state === state && current.onScreen === onScreen && current.chatOpen === chatOpen ? current : { room, state, onScreen, chatOpen };
           });
         })
         .catch(() => undefined);
@@ -117,5 +124,5 @@ export function useStageStatus(room: ChatRoom | null): {
   const refresh = useCallback(() => read.current(), []);
   // Another room's answer is never shown for this one.
   const answered = !!room && known?.room === room;
-  return { state: answered ? known.state : "off", answered, refresh, onScreen: answered ? (known.onScreen?.symbol ?? null) : null };
+  return { state: answered ? known.state : "off", answered, refresh, onScreen: answered ? (known.onScreen?.symbol ?? null) : null, chatOpen: answered && known.chatOpen };
 }

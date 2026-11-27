@@ -110,6 +110,7 @@ export default function ChatReplyPanel({
   room,
   paused,
   readOnly = false,
+  polls = true,
   depth,
   draft,
   onBack,
@@ -131,6 +132,8 @@ export default function ChatReplyPanel({
   room: ChatRoom;
   paused: boolean;
   readOnly?: boolean;
+  /** #535: false where this member may reply but not start a poll (Booker Stock Club during a webinar). */
+  polls?: boolean;
   depth: number;
   draft: ReplyDraft;
   onBack: () => void;
@@ -1346,7 +1349,8 @@ export default function ChatReplyPanel({
         {readOnly && (
           <p>
             {room === "club"
-              ? "Only admins can reply in Booker Stock Club."
+              ? // #535: the panel is read-only here only while no webinar is live.
+                "Booker Stock Club is read-only. Replies open here during a live webinar."
               : "Only admins can reply in this announcement channel."}
           </p>
         )}
@@ -1404,7 +1408,7 @@ export default function ChatReplyPanel({
                       ]
                     : []),
                   // #328: a poll in this thread.
-                  ...(memberId ? [{ key: "poll", label: "📊 Poll", onSelect: () => setPollOpen(true) }] : []),
+                  ...(memberId && polls ? [{ key: "poll", label: "📊 Poll", onSelect: () => setPollOpen(true) }] : []),
                 ]}
                 onAttach={() => uploads.input.current?.click()}
                 onAdd={(url) => {

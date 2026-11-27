@@ -7,6 +7,8 @@ import {
 import { takeEarlyDraft } from "@/lib/chatEarlyDraft";
 import { useChatScrollIntent } from "./hooks/useChatScrollIntent";
 import { useStageStatus } from "./hooks/useStageStatus";
+import { useStageRoomsContext } from "./hooks/useStageLiveRooms";
+import { CLUB_CHAT_OPENS_LIVE } from "@/lib/chatClubLive";
 import { useStagePhone } from "./hooks/useStagePhone";
 import { STAGE_PHONE_QUERY, isStageRoom, stageLiveBadge, stagePhoneReachable, stageReachable } from "@/lib/chatStageLive";
 import { CHAT_STAGE_OPEN_EVENT } from "@/lib/chatStageNotice";
@@ -387,7 +389,6 @@ function PublicChatContent({
   // #386: Booker Stock Club is read-only for members; its bot posts the picks. #457: chat admins post
   // there too, as in the announcement rooms (the server refuses everyone else).
   const club = room === "club";
-  const readOnlyAnnouncement = gainers || ((club || announcement) && !isAdmin);
   // #482: AI Insights takes replies from members (the Reply button) but no new posts: only the AI and
   // admins start one. The reply panel stays open; only the room's own composer is hidden.
   const aiInsights = room === "ai-insights";
@@ -479,6 +480,13 @@ function PublicChatContent({
   const stageAdmin = stageMode && isAdmin && !pane && !popout && stageRoom;
   const stageVideoHere = stageVideo && !pane && !popout && stageRoom;
   const stage = useStageStatus(stageVideo && !pane && !inlineDm && stageRoom ? room : null);
+  // #535: Booker Stock Club's chat opens to every member while a webinar is live there, and is
+  // read-only again when it ends. The server says which (the room's status answer, asked again when
+  // the room's "stage" signal arrives, so this follows the broadcast without a reload), and decides
+  // again by itself for every post. On a Dual, Quad or Six card the card's own live state is used.
+  const cardStage = useStageRoomsContext();
+  const clubChatOpen = club && (pane ? cardStage.of(room).state === "live" : stage.chatOpen);
+  const readOnlyAnnouncement = gainers || (club && !isAdmin && !clubChatOpen) || (announcement && !isAdmin);
   const [stageWanted, setStageOpen] = useState(false);
   const stagePhone = useStagePhone(stageAdmin || stageVideoHere);
   const stageOpen =
@@ -2369,7 +2377,10 @@ function PublicChatContent({
               : room === "runner-watch"
                 ? "Risk checks on small-cap runners"
               : room === "club"
-                ? "The #1 stock of the day · Read-only"
+                ? // #535: while a webinar is live there the chat is open to everyone in the room.
+                  clubChatOpen
+                  ? "The #1 stock of the day · Chat is open for the webinar"
+                  : "The #1 stock of the day · Read-only"
               : room === "ai-insights"
                 ? "What the AI learned from SS · Replies only"
               : room === "admins"
@@ -2606,6 +2617,9 @@ function PublicChatContent({
       return null;
     } catch (caught) {
       const reason = caught instanceof Error ? caught.message : "That message was not sent.";
+      // #535: refused in Booker Stock Club (the webinar ended as it was sent): ask the room's status
+      // again, so the composer gives way to the read-only notice even if the signal was missed.
+      if (club && !isAdmin) stage.refresh();
       // Lost connection mid-send: move it to the outbox (same clientId) instead of "Not sent".
       if (
         !attachmentIds.length &&
@@ -3186,6 +3200,8 @@ function PublicChatContent({
                       pane={!!pane}
                       recordings={recordings}
                       announcement={announcement}
+                      // #535: polls in Booker Stock Club stay the admins' (members chat, reply and react).
+                      polls={!club || isAdmin}
                     />
                   ) : !gainers ? (
                     <div className={styles.readOnlyFooter}>
@@ -3200,7 +3216,7 @@ function PublicChatContent({
                         {repliesOnly && !roomPaused
                           ? "The AI posts here each trading day at 8:30 PM New York time. Tap Reply under a post to ask it a question; it answers in the thread."
                           : club && !roomPaused
-                          ? "The #1 stock of the day posts here from 6:45 AM Central, with updates every 15 minutes until 8:45 AM Central if it changes. Admins post club announcements here too. You can react."
+                          ? `The #1 stock of the day posts here from 6:45 AM Central, with updates every 15 minutes until 8:45 AM Central if it changes. Admins post club announcements here too. You can react. ${CLUB_CHAT_OPENS_LIVE}`
                           : recordings && !roomPaused
                           ? "You can react to recordings. Only admins can post. Replies are disabled."
                           : whatsNew && !roomPaused
@@ -3287,6 +3303,7 @@ function PublicChatContent({
             room={room}
             paused={roomPaused}
             readOnly={readOnlyAnnouncement}
+            polls={!club || isAdmin}
             depth={replyDepth}
             onBack={backReplies}
             onOpen={openReplies}

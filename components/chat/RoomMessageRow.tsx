@@ -171,6 +171,9 @@ const RoomMessageRow = memo(function RoomMessageRow({
   // #450: a member who muted this agent doesn't see its posts.
   if (agentMuted) return null;
   const own = !!memberId && message.member_id === memberId && !agent;
+  // #535: in Booker Stock Club a member changes their own post only while a webinar is live there
+  // (readOnlyAnnouncement is false then); afterwards it stays as it is. An admin's own post always.
+  const ownActions = own && !(room === "club" && readOnlyAnnouncement);
   const canReply =
     !messageRepliesOff(room, message) &&
     !!memberId &&
@@ -342,9 +345,10 @@ const RoomMessageRow = memo(function RoomMessageRow({
         <MessageActions
           message={message}
           room={room}
-          own={own}
+          own={ownActions}
           // #457: in Booker Stock Club an admin changes only their own posts, never a stock-pick card.
-          admin={isAdmin && room !== "gainers" && room !== "club"}
+          // #535: and removes a member's post (members chat there during a webinar); never a bot's.
+          admin={isAdmin && room !== "gainers" && (room !== "club" || !message.bot_slug)}
           paused={roomPaused}
           onEdited={onEdited}
           onDeleted={onDeleted}

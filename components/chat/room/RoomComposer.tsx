@@ -41,6 +41,8 @@ export type RoomComposerProps = {
   pane: boolean;
   recordings: boolean;
   announcement: boolean;
+  /** #535: false where this member may write but not start a poll (Booker Stock Club during a webinar). */
+  polls?: boolean;
 };
 
 /** The room composer: attachments, GIFs, mentions, send, voice and the hint/privacy line. */
@@ -64,6 +66,7 @@ export default function RoomComposer({
   pane,
   recordings,
   announcement,
+  polls = true,
 }: RoomComposerProps) {
   const aboutRef = useRef<HTMLDetailsElement>(null);
   const voiceStart = useRef<(() => void) | null>(null);
@@ -103,7 +106,7 @@ export default function RoomComposer({
                 ]
               : []),
             // #328: a poll in this room.
-            ...(member ? [{ key: "poll", label: "📊 Poll", onSelect: () => setPollOpen(true) }] : []),
+            ...(member && polls ? [{ key: "poll", label: "📊 Poll", onSelect: () => setPollOpen(true) }] : []),
             ...(!pane && !recordings && !announcement
               ? [
                   {
