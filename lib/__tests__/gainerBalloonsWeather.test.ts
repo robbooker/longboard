@@ -21,7 +21,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 
 type Station = { temp?: number | null; text?: string; icon?: string; layers?: string[]; status?: number };
 /** A stand-in weather service. Each place: a town, a station and what that station reports; null = not covered. */
-function service(places: Record<string, (Station & { town?: string; hourly?: unknown }) | null>) {
+function service(places: Record<string, (Station & { town?: string; zone?: string | null; hourly?: unknown }) | null>) {
   fetchMock.mockImplementation(async (url: unknown, init?: RequestInit) => {
     const address = String(url);
     expect(address.startsWith("https://api.weather.gov/")).toBe(true);
@@ -33,7 +33,7 @@ function service(places: Record<string, (Station & { town?: string; hourly?: unk
       if (place === undefined) return json({}, 500);
       if (place === null) return json({ title: "Data Unavailable For Requested Point" }, 404);
       const id = `K${point[1].replace(/\D/g, "")}`;
-      return json({ properties: { relativeLocation: { properties: { city: place.town ?? "Sometown", state: "NY" } }, observationStations: `https://api.weather.gov/gridpoints/XXX/1,1/stations?id=${id}&p=${point[1]},${point[2]}`, forecastHourly: `https://api.weather.gov/gridpoints/XXX/1,1/forecast/hourly?p=${point[1]},${point[2]}` } });
+      return json({ properties: { relativeLocation: { properties: { city: place.town ?? "Sometown", state: "NY" } }, timeZone: place.zone === undefined ? "America/New_York" : place.zone, observationStations: `https://api.weather.gov/gridpoints/XXX/1,1/stations?id=${id}&p=${point[1]},${point[2]}`, forecastHourly: `https://api.weather.gov/gridpoints/XXX/1,1/forecast/hourly?p=${point[1]},${point[2]}` } });
     }
     const where = new URL(address).searchParams.get("p") ?? "";
     if (path.startsWith("/gridpoints/XXX/1,1/stations")) return json({ features: [{ properties: { stationIdentifier: new URL(address).searchParams.get("id") } }] });
@@ -166,14 +166,14 @@ describe("places", () => {
 
 describe("weatherFor (the cache and the fallbacks)", () => {
   it("answers New York's weather to someone who shared nothing", async () => {
-    expect(await weatherFor(null)).toEqual({ covered: true, weather: { condition: "cloudy", cloud: 0.75, tempC: 12.2, night: false, place: "New York", local: false } });
+    expect(await weatherFor(null)).toEqual({ covered: true, weather: { condition: "cloudy", cloud: 0.75, tempC: 12.2, night: false, place: "New York", local: false, zone: "America/New_York" } });
     expect(asked()).toEqual(["/points/40.7,-74.0", "/gridpoints/XXX/1,1/stations?id=K407&p=40.7,-74.0", "/stations/K407/observations/latest"]);
   });
   it("reads one place once in 15 minutes, however many viewers are in it", async () => {
-    service({ [NY]: { text: "Clear", temp: 5 }, "41.9,-87.6": { town: "Chicago", text: "Light Snow", temp: -2, layers: ["OVC"], icon: "https://api.weather.gov/icons/land/night/snow" } });
+    service({ [NY]: { text: "Clear", temp: 5 }, "41.9,-87.6": { town: "Chicago", zone: "America/Chicago", text: "Light Snow", temp: -2, layers: ["OVC"], icon: "https://api.weather.gov/icons/land/night/snow" } });
     const viewers = [[41.8781, -87.6298], [41.91, -87.64], [41.86, -87.62]].map(([lat, lon]) => weatherFor(parseCoords(lat, lon)));
     const answers = await Promise.all(viewers);
-    for (const answer of answers) expect(answer).toEqual({ covered: true, weather: { condition: "snow", cloud: 1, tempC: -2, night: true, place: "Chicago", local: true } });
+    for (const answer of answers) expect(answer).toEqual({ covered: true, weather: { condition: "snow", cloud: 1, tempC: -2, night: true, place: "Chicago", local: true, zone: "America/Chicago" } });
     expect(asked()).toHaveLength(3);
     vi.setSystemTime(NOW + WEATHER_TTL_MS - 1_000);
     await weatherFor(parseCoords(41.9, -87.6));
@@ -186,17 +186,27 @@ describe("weatherFor (the cache and the fallbacks)", () => {
     // New York was never needed for them.
     expect(asked().some((path) => path.includes("40.7"))).toBe(false);
   });
+  it("passes the place's time zone along for the clock, and nothing that isn't a zone name (#532)", async () => {
+    service({ [NY]: { text: "Clear", temp: 5 }, "30.3,-97.8": { town: "Austin", zone: "America/Chicago", text: "Sunny", temp: 30 }, "33.4,-112.1": { town: "Phoenix", zone: "<b>America/Phoenix</b>", text: "Sunny", temp: 35 }, "21.3,-157.9": { town: "Honolulu", zone: null, text: "Sunny", temp: 28 } });
+    expect((await weatherFor(parseCoords(30.3, -97.8))).weather).toMatchObject({ place: "Austin", local: true, zone: "America/Chicago" });
+    expect((await weatherFor(parseCoords(33.4, -112.1))).weather).toMatchObject({ place: "Phoenix", zone: null });
+    expect((await weatherFor(parseCoords(21.3, -157.9))).weather).toMatchObject({ place: "Honolulu", zone: null });
+    // Kept with the reading: asked for again within 15 minutes, nothing more is read.
+    const reads = asked().length;
+    expect((await weatherFor(parseCoords(30.3, -97.8))).weather?.zone).toBe("America/Chicago");
+    expect(asked()).toHaveLength(reads);
+  });
   it("answers New York's weather, marked not covered, for a place outside the service's area", async () => {
     service({ [NY]: { text: "Clear", temp: 5 }, "51.5,-0.1": null });
     const london = await weatherFor(parseCoords(51.5074, -0.1278));
-    expect(london).toEqual({ covered: false, weather: { condition: "clear", cloud: 0.05, tempC: 5, night: false, place: "New York", local: false } });
+    expect(london).toEqual({ covered: false, weather: { condition: "clear", cloud: 0.05, tempC: 5, night: false, place: "New York", local: false, zone: "America/New_York" } });
     // "Not covered" is remembered for the 15 minutes too.
     await weatherFor(parseCoords(51.5, -0.1));
     expect(asked().filter((path) => path.startsWith("/points/51.5"))).toHaveLength(1);
   });
   it("fills in from the hourly forecast when the station has no temperature or description", async () => {
     service({ [NY]: { temp: null, text: "", layers: [], hourly: { temperature: 41, temperatureUnit: "F", shortForecast: "Chance Rain Showers", isDaytime: false } } });
-    expect((await weatherFor(null)).weather).toEqual({ condition: "drizzle", cloud: 0.85, tempC: 5, night: false, place: "New York", local: false });
+    expect((await weatherFor(null)).weather).toEqual({ condition: "drizzle", cloud: 0.85, tempC: 5, night: false, place: "New York", local: false, zone: "America/New_York" });
     // A station with sky cover but no words still says something; no temperature is a null, never a guess.
     resetWeather();
     resetWeatherProvider();
