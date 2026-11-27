@@ -11,10 +11,12 @@
 // and Runner Watch left them, so it goes with #386. #482 AI Insights (20261121130000) checks those room
 // rules are exactly production's before adding its room, so it is left out too. #524's webinar
 // notices (20261126120000) checks the club guard and queue_chat_push the same way, so it is too.
+// #537's Webinars rooms (20261127130000) check the room rules, the room-slug checks and the functions
+// those migrations left, and build on #524's table, so it is left out as well.
 import {readFile,writeFile,unlink} from 'node:fs/promises';
 const target=new URL(`.chat-room-notify-fixture-${process.pid}.mjs`,import.meta.url);
 let source=await readFile(new URL('chat-mobile-fixture.mjs',import.meta.url),'utf8');
 source=source.replaceAll('54404','54596').replaceAll('3204','3396');
-if(process.env.ROOM_NOTIFY_PREMIGRATION==='1')source=source.replace("const productionOnly=['","const productionOnly=['20261126120000_chat_stage_broadcasts.sql','20261121130000_chat_ai_insights.sql','20261115120000_chat_club_admin_posts.sql','20261111143000_chat_whats_new_pictures.sql','20261110140000_chat_runner_watch.sql','20261110100000_chat_activity_inbox_faster.sql','20261109120000_chat_stock_club.sql','20261102180000_chat_improvement_suggestions.sql','20261102120000_chat_activity_inbox_stop_early.sql','20261101100000_chat_faq_reanswer.sql','20261031120000_chat_lb_review.sql','20261031100000_chat_faq_review.sql','20261030220000_chat_faq.sql','20261015180000_chat_room_notification_levels.sql','20261019150000_chat_activity_inbox_fast.sql','20261020130000_chat_gainers_push.sql','20261023200000_chat_whats_new_room.sql','20261029150000_chat_developers_room.sql','");
+if(process.env.ROOM_NOTIFY_PREMIGRATION==='1')source=source.replace("const productionOnly=['","const productionOnly=['20261127130000_chat_webinars_room.sql','20261126120000_chat_stage_broadcasts.sql','20261121130000_chat_ai_insights.sql','20261115120000_chat_club_admin_posts.sql','20261111143000_chat_whats_new_pictures.sql','20261110140000_chat_runner_watch.sql','20261110100000_chat_activity_inbox_faster.sql','20261109120000_chat_stock_club.sql','20261102180000_chat_improvement_suggestions.sql','20261102120000_chat_activity_inbox_stop_early.sql','20261101100000_chat_faq_reanswer.sql','20261031120000_chat_lb_review.sql','20261031100000_chat_faq_review.sql','20261030220000_chat_faq.sql','20261015180000_chat_room_notification_levels.sql','20261019150000_chat_activity_inbox_fast.sql','20261020130000_chat_gainers_push.sql','20261023200000_chat_whats_new_room.sql','20261029150000_chat_developers_room.sql','");
 await writeFile(target,source);
 try{await import(target.href);}finally{await unlink(target);}

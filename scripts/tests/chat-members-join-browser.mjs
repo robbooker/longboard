@@ -114,8 +114,13 @@ try {
   // Open rows (not the locked ones every member sees for rooms they don't have).
   const open = await page.evaluate(() => { const nav = [...document.querySelectorAll('#chat-room-navigation')].find(e => e.checkVisibility()); return [...nav.querySelectorAll('a:not([data-locked])')].filter(a => a.checkVisibility()).map(a => (a.querySelector('[data-initials]')?.nextElementSibling?.firstChild?.textContent ?? a.textContent).trim()); });
   // #385/#386: club buyers also get the Reader (reader entitlement) and the Booker Stock Club room.
+  // #537: and Webinars, and the webinars' recordings (the second "Booker Stock Club", under the Recordings heading).
   // #406: the Reader sits in the Apps section, below the rooms. #528: so does Gainer Balloons, for everyone with Gainers.
-  assert.deepEqual(open.filter(n => n !== 'Features'), ['Gainers', 'Gainers Table', 'News Feed', 'Booker Stock Club', 'Reader', 'Gainer Balloons'], open.join(' | '));
+  assert.deepEqual(open.filter(n => n !== 'Features'), ['Gainers', 'Gainers Table', 'News Feed', 'Booker Stock Club', 'Webinars', 'Booker Stock Club', 'Reader', 'Gainer Balloons'], open.join(' | '));
+  // #537: the two "Booker Stock Club" rows read apart: the second sits under the Recordings heading, and goes to the recordings room.
+  const club = await page.evaluate(() => { const nav = [...document.querySelectorAll('#chat-room-navigation')].find(e => e.checkVisibility()); const text = nav.innerText.replace(/\s+/g, ' ');
+    return { headingThenRoom: /Recordings.*Booker Stock Club/.test(text.slice(text.indexOf('Webinars'))), rooms: [...nav.querySelectorAll('a:not([data-locked])')].filter(a => a.checkVisibility() && a.textContent.includes('Booker Stock Club')).map(a => new URL(a.href).searchParams.get('room')) }; });
+  assert.deepEqual(club, { headingThenRoom: true, rooms: ['club', 'club-recordings'] });
   await (await page.$('a[data-chat-gainers-table]')).click();
   await page.waitForSelector('[data-gainers-table]', { visible: true, timeout: 30000 });
   const status = path => page.evaluate(async p => (await fetch(p)).status, path);
